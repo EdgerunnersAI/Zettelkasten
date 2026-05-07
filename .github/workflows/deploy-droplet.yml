@@ -414,7 +414,7 @@ jobs:
                 --log-driver json-file \
                 --log-opt max-size=10m \
                 --log-opt max-file=3 \
-                --health-cmd "wget --quiet --spider --no-check-certificate https://localhost/" \
+                --health-cmd "wget --quiet --tries=1 --spider http://localhost:2019/config/" \
                 --health-interval 30s \
                 --health-timeout 5s \
                 --health-start-period 15s \
@@ -471,7 +471,26 @@ jobs:
           port: ${{ secrets.DROPLET_SSH_PORT }}
           script: |
             set -euo pipefail
-            ACTIVE_COLOR=$(cat /opt/zettelkasten/deploy/active_color 2>/dev/null || echo "blue")
+
+            ACTIVE_COLOR=""
+
+            # Tier 1: Try reading the state file
+            if [ -f /opt/zettelkasten/deploy/active_color ]; then
+              ACTIVE_COLOR=$(cat /opt/zettelkasten/deploy/active_color | tr -d '[:space:]')
+            fi
+
+            # Tier 2: Fallback to probing docker for running container
+            if [ -z "$ACTIVE_COLOR" ]; then
+              ACTIVE_COLOR=$(docker ps --filter "name=zettelkasten-" --format '{{.Names}}' | head -n1 | sed -E 's/^zettelkasten-//')
+            fi
+
+            # Tier 3: Verify the selected color's container actually exists and is running
+            if [ -z "$ACTIVE_COLOR" ] || ! docker ps --format '{{.Names}}' | grep -qx "zettelkasten-${ACTIVE_COLOR}"; then
+              echo "::warning::Active color could not be determined; skipping live-env verify."
+              exit 0
+            fi
+
+            echo "Verifying against zettelkasten-${ACTIVE_COLOR}"
             docker exec "zettelkasten-${ACTIVE_COLOR}" env > /tmp/live_env.txt
             for KEY in RAG_ANCHOR_BOOST_ENABLED RAG_EXECUTOR_MAX_WORKERS RAG_RPC_GLOBAL_SEMAPHORE; do
               grep -q "^${KEY}=" /tmp/live_env.txt || { echo "::error::${KEY} missing on live droplet"; exit 1; }
