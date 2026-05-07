@@ -659,3 +659,22 @@ PLAN authoring checklist.
 - Verdict: PASS
 - Phase 2 gate: PROCEED
 - Master HEAD at probe time: 255cb64
+
+---
+
+## Phase 2 anchor flip (2026-05-07)
+
+Phase 1 burst-12 probe PASS: total=2059, 502_rate=0, post-burst event_loop_lag.p95=0.574 ms
+(see prior section). Anchor flags flipped to true in STATIC_BODY this commit.
+
+Pre-flip state on droplet (commit 255cb64):
+- RAG_ANCHOR_BOOST_ENABLED=false
+- RAG_ANCHOR_SEED_INJECTION_ENABLED=false
+
+Post-flip state (master HEAD after this commit):
+- RAG_ANCHOR_BOOST_ENABLED=true
+- RAG_ANCHOR_SEED_INJECTION_ENABLED=true
+
+Per Task 34 forensic finding, this is the FIRST genuinely Phase 2 (since iter-11
+final eval ran with anchor-boost active even though operator believed it rolled
+back — workflow STATIC_BODY now controls the value definitively).
