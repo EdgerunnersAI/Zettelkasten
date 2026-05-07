@@ -29,6 +29,8 @@ import time
 from typing import Any
 from uuid import UUID
 
+from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
+
 logger = logging.getLogger(__name__)
 
 # Cold-start floor: do not apply the penalty until the Kasten has at least
@@ -66,10 +68,10 @@ class KastenFrequencyStore:
             self._cache[cache_key] = (now, {})
             return {}
         try:
-            response = client.rpc(
+            response = await rpc_call(client.rpc(
                 "rag_kasten_node_frequencies",
                 {"p_kasten_id": cache_key},
-            ).execute()
+            ))
         except Exception as exc:  # noqa: BLE001 — best-effort
             logger.debug("kasten_freq fetch failed (%s); degrading to empty", exc)
             self._cache[cache_key] = (now, {})
@@ -97,10 +99,10 @@ class KastenFrequencyStore:
         if client is None:
             return
         try:
-            client.rpc(
+            await rpc_call(client.rpc(
                 "rag_kasten_record_node_hit",
                 {"p_kasten_id": str(kasten_id), "p_node_id": node_id},
-            ).execute()
+            ))
         except Exception as exc:  # noqa: BLE001 — best-effort
             logger.debug("kasten_freq record failed (%s)", exc)
             return

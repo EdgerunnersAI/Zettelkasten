@@ -11,6 +11,7 @@ import networkx as nx
 
 from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate
 from website.core.supabase_kg.client import get_supabase_client
+from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
 
 
 _USAGE_EDGES_ENABLED = os.environ.get("RAG_USAGE_EDGES_ENABLED", "true").lower() == "true"
@@ -70,10 +71,10 @@ class LocalizedPageRankScorer:
                 candidate.graph_score = 0.0
             return
 
-        response = self._supabase.rpc(
+        response = await rpc_call(self._supabase.rpc(
             "rag_subgraph_for_pagerank",
             {"p_user_id": str(user_id), "p_node_ids": node_ids},
-        ).execute()
+        ))
         edges = response.data or []
 
         graph = nx.Graph()

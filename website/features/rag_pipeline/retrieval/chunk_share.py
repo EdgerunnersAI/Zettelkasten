@@ -17,6 +17,7 @@ from uuid import UUID
 from cachetools import TTLCache
 
 from website.features.rag_pipeline.types import QueryClass
+from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
 
 
 _log = logging.getLogger("rag.chunk_share")
@@ -88,10 +89,10 @@ class ChunkShareStore:
         # when the deploy restart purged the worker logs).
         try:
             _log.debug("chunk_counts cache_miss sandbox=%s rpc=rag_kasten_chunk_counts", key)
-            response = self._supabase.rpc(
+            response = await rpc_call(self._supabase.rpc(
                 "rag_kasten_chunk_counts",
                 {"p_sandbox_id": key},
-            ).execute()
+            ))
             data = response.data or []
         except Exception as exc:
             _log.warning(

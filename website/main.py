@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, Callable
 
 import uvicorn
@@ -55,6 +56,15 @@ async def _lifespan(
     *,
     loop_factory: Callable[[], Awaitable[None]] = _proc_stats_logger_loop,
 ):
+    # iter-12 Class P: explicit executor sizing. Default min(32, cpu_count+4)=5
+    # threads/process saturates under burst-12. PATH_F sizing per RESEARCH.md.
+    _exec_workers = int(os.environ.get("RAG_EXECUTOR_MAX_WORKERS", "8"))
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(
+        max_workers=_exec_workers,
+        thread_name_prefix="supa",
+    ))
+
     task = asyncio.create_task(loop_factory())
     try:
         yield

@@ -13,6 +13,7 @@ import os
 
 from website.features.rag_pipeline.errors import EmptyScopeError
 from website.features.rag_pipeline.query.metadata import QueryMetadata
+from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
 from website.features.rag_pipeline.query.router import _COMPARE_PATTERN
 from website.features.rag_pipeline.retrieval.kasten_freq import (
     KastenFrequencyStore,
@@ -392,7 +393,7 @@ class HybridRetriever:
         sem_w, fts_w, graph_w = _WEIGHTS_BY_CLASS.get(query_class, _DEFAULT_WEIGHTS)
 
         async def _search(query_text: str, query_vec: list[float]) -> list[dict]:
-            response = self._supabase.rpc(
+            response = await rpc_call(self._supabase.rpc(
                 "rag_hybrid_search",
                 {
                     "p_user_id": str(user_id),
@@ -406,7 +407,7 @@ class HybridRetriever:
                     "p_rrf_k": 60,
                     "p_graph_depth": graph_depth,
                 },
-            ).execute()
+            ))
             return response.data or []
 
         # iter-08 P4.2: per-Kasten chunk-count fetch parallel with hybrid RPCs.
@@ -440,7 +441,7 @@ class HybridRetriever:
                 "dense_fallback_fire scope=%d (hybrid recall=0)", len(effective_nodes)
             )
             try:
-                fallback_resp = self._supabase.rpc(
+                fallback_resp = await rpc_call(self._supabase.rpc(
                     "rag_dense_recall",
                     {
                         "p_user_id": str(user_id),
@@ -448,7 +449,7 @@ class HybridRetriever:
                         "p_query_embedding": embeddings[0],
                         "p_limit": min(limit, 8),
                     },
-                ).execute()
+                ))
                 fallback_rows = fallback_resp.data or []
                 if fallback_rows:
                     results = [fallback_rows]
@@ -576,7 +577,7 @@ class HybridRetriever:
             [scope_filter.node_ids, scope_filter.tags, scope_filter.source_types]
         ):
             return None
-        response = self._supabase.rpc(
+        response = await rpc_call(self._supabase.rpc(
             "rag_resolve_effective_nodes",
             {
                 "p_user_id": str(user_id),
@@ -586,7 +587,7 @@ class HybridRetriever:
                 "p_tag_mode": scope_filter.tag_mode,
                 "p_source_types": [item.value for item in scope_filter.source_types] if scope_filter.source_types else None,
             },
-        ).execute()
+        ))
         return [row["node_id"] for row in (response.data or [])]
 
     def _dedup_and_fuse(

@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
+
 
 async def fetch_anchor_seeds(
     anchor_nodes: list[str],
@@ -19,14 +21,14 @@ async def fetch_anchor_seeds(
     if not anchor_nodes or sandbox_id is None or not query_embedding:
         return []
     try:
-        response = supabase.rpc(
+        response = await rpc_call(supabase.rpc(
             "rag_fetch_anchor_seeds",
             {
                 "p_sandbox_id": str(sandbox_id),
                 "p_anchor_nodes": list(anchor_nodes),
                 "p_query_embedding": list(query_embedding),
             },
-        ).execute()
+        ))
         return list(response.data or [])
     except Exception:
         return []
