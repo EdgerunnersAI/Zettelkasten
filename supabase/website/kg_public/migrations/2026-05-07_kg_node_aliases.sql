@@ -45,8 +45,9 @@ CREATE INDEX IF NOT EXISTS kg_nodes_aliases_trgm
 -- Tier ordering: name → alias → tag → trgm (strict tiers take priority).
 -- The trgm tier uses the % operator (pg_trgm similarity ≥ pg_trgm.similarity_threshold
 -- default 0.3) against aliases_flat for fuzzy/typo recall.
--- Return signature adds matched_via text while keeping node_id first column so
--- existing callers that only read node_id are unaffected.
+-- DROP required: Postgres cannot CREATE OR REPLACE a function that changes its
+-- return type (old signature was TABLE(node_id text); new adds matched_via text).
+DROP FUNCTION IF EXISTS rag_resolve_entity_anchors(uuid, text[]);
 CREATE OR REPLACE FUNCTION rag_resolve_entity_anchors(p_sandbox_id uuid, p_entities text[])
 RETURNS TABLE (node_id text, matched_via text)
 LANGUAGE sql STABLE AS $$
