@@ -737,3 +737,14 @@ guardrail). q13's failure was retrieval-empty, verified. Confidence: HIGH on
 diagnosis; HIGH on SKIP-iter-12 verdict; MEDIUM on iter-13 deferral being the
 right answer (empirical CE-distribution audit may show static floor is
 universally correct).
+
+---
+
+## Task 26 closure (2026-05-07)
+
+Task 26's static `0.85→0.75` demote-factor flip was SUPERSEDED by Task 32's
+percentile-derived demote slope (`RAG_SCORE_RANK_DEMOTE_SLOPE=0.20`, factor
+clamped in [0.70, 0.90]). Task 26's telemetry survived: `_apply_score_rank_demote`
+emits `score_rank_demote class=... n_cands=... slope=... post_top1=... post_top2=... margin=...`
+on every gated call. iter-13 can mine the margin distribution from droplet
+logs to validate that p10 margin > 0.05 on THEMATIC queries.
