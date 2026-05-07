@@ -748,3 +748,22 @@ clamped in [0.70, 0.90]). Task 26's telemetry survived: `_apply_score_rank_demot
 emits `score_rank_demote class=... n_cands=... slope=... post_top1=... post_top2=... margin=...`
 on every gated call. iter-13 can mine the margin distribution from droplet
 logs to validate that p10 margin > 0.05 on THEMATIC queries.
+
+---
+
+## Task 36 cross-reference for operator (2026-05-07)
+
+After running `score_rag_eval.py --iter-dir docs/rag_eval/common/knowledge-management/iter-12`,
+also run `python ops/scripts/post_iter_audit.py --iter iter-12`. Output:
+`iter-12/post_iter_audit.md`. The "Live env-during-eval" section relies on a
+pre-populated capture file at `iter-12/_audit/live_env_capture.txt`; populate
+via:
+
+```bash
+# Git Bash on the machine with droplet SSH access
+ssh deploy@<droplet> "docker exec zettelkasten-\$(cat /opt/zettelkasten/deploy/active_color) env" \
+    | grep -E "^RAG_" > docs/rag_eval/common/knowledge-management/iter-12/_audit/live_env_capture.txt
+```
+
+If SSH is unavailable, the script falls back to the most recent successful
+`deploy-droplet.yml` workflow log (requires `gh` CLI authenticated).
