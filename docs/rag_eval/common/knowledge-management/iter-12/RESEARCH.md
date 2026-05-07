@@ -644,3 +644,18 @@ Recovery (A+B, user-approved):
 Lesson: any `env_file` entry added to a compose file should be tested against a
 fresh droplet snapshot OR explicitly marked `required: false`. Add to the iter-13
 PLAN authoring checklist.
+
+---
+
+## Phase 1 burst-12 probe result (2026-05-07, post-incident-recovery)
+
+- Run: `python ops/scripts/burst_pressure_probe.py --concurrency 12 --duration 60 --target https://zettelkasten.in`
+- Total requests: 2059
+- 502 rate: 0.0
+- 503 rate: 0.0 (retry_after expected)
+- Pre-burst /api/health event_loop_lag.p95_ms: N/A (single post-burst snapshot)
+- Post-burst event_loop_lag.p95_ms: 0.574
+- Latency p50/p95/p99 (ms): 157.0 / 1062.0 / 1844.0
+- Verdict: PASS
+- Phase 2 gate: PROCEED
+- Master HEAD at probe time: 255cb64
