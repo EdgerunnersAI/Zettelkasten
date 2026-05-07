@@ -76,6 +76,9 @@ _TITLE_OVERLAP_DEMOTE_FACTOR = float(
 _TITLE_OVERLAP_DEMOTE_FLOOR = float(
     os.environ.get("RAG_TITLE_OVERLAP_DEMOTE_FLOOR", "0.10")
 )
+# iter-12 Q5: percentile knobs for earned-title exemption threshold.
+_TITLE_OVERLAP_PERCENTILE = int(os.environ.get("RAG_TITLE_OVERLAP_PERCENTILE", "75"))
+_TITLE_OVERLAP_FLOOR_FALLBACK = float(os.environ.get("RAG_TITLE_OVERLAP_FLOOR_FALLBACK", "0.10"))
 
 # iter-12 Class K3: clear-winner confidence-gap bypass. When top1/top2 >= threshold
 # the rerank ordering has already separated the winner; magnet damping is unnecessary.
@@ -192,6 +195,20 @@ class _AnchorSeedDecision:
     reason: str
 
 
+def _percentile(values: list[float], p: int) -> float:
+    """iter-12 Q5: linear-interpolation percentile over a list. Empty → 0.0."""
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    n = len(sorted_v)
+    if n == 1:
+        return sorted_v[0]
+    rank = (p / 100.0) * (n - 1)
+    lo = int(rank)
+    hi = min(lo + 1, n - 1)
+    return sorted_v[lo] * (1 - (rank - lo)) + sorted_v[hi] * (rank - lo)
+
+
 def _top1_top2_gap(candidates) -> float | None:
     """iter-12 Class K3: relative confidence-gap between top-1 and top-2 rrf_score.
 
@@ -255,6 +272,15 @@ def _apply_score_rank_demote(
         return
 
     anchored = anchor_nodes or set()
+
+    # iter-12 Q5: P75 of pool's title-overlap boosts; floor at 0.10 prevents
+    # incidental token-overlap (e.g. 0.05) from earning exemption.
+    pool_boosts = [float(c.metadata.get("_title_overlap_boost", 0.0)) for c in candidates]
+    boost_p_threshold = max(
+        _percentile(pool_boosts, _TITLE_OVERLAP_PERCENTILE),
+        _TITLE_OVERLAP_FLOOR_FALLBACK,
+    )
+
     base_scores = [
         float(c.metadata.get("_base_rrf_score", c.rrf_score))
         for c in candidates
@@ -262,7 +288,7 @@ def _apply_score_rank_demote(
     sorted_base = sorted(base_scores)
     n = len(base_scores)
 
-    def _percentile(score: float) -> float:
+    def _base_percentile(score: float) -> float:
         return sum(1 for s in sorted_base if s <= score) / n
 
     current_sorted = sorted(candidates, key=lambda c: c.rrf_score, reverse=True)
@@ -273,13 +299,13 @@ def _apply_score_rank_demote(
     n_title_demoted = 0
     factor_sum = 0.0
     for c in candidates:
-        # iter-11 Class A: earned exemption — anchored entity OR any positive
-        # title overlap.
+        # iter-12 Q5: earned exemption — anchored entity OR boost >= P75(pool) floor 0.10.
+        # Replaces iter-11 binary > 0.0 that let incidental overlap (~0.05) exempt magnets.
         is_anchored = c.node_id in anchored
-        has_title_overlap = float(c.metadata.get("_title_overlap_boost", 0.0)) > 0.0
-        if is_anchored or has_title_overlap:
+        has_earned_title = float(c.metadata.get("_title_overlap_boost", 0.0)) >= boost_p_threshold
+        if is_anchored or has_earned_title:
             continue
-        base_pct = _percentile(float(c.metadata.get("_base_rrf_score", c.rrf_score)))
+        base_pct = _base_percentile(float(c.metadata.get("_base_rrf_score", c.rrf_score)))
         rank_pct = current_rank[id(c)]
         delta = rank_pct - base_pct
         if delta >= delta_threshold:

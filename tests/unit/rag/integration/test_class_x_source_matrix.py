@@ -124,6 +124,31 @@ _BASELINE = {
         "chunk_counts": {"web-author-page": 3, "web-other-page": 1},
         "expected_primary": "web-author-page",
     },
+    # iter-12 Q5 regression: a github magnet whose name produces only incidental
+    # token-overlap (boost ~0.05) must NOT be exempted when the pool's P75
+    # title-overlap boost is ~0.27. The newsletter sibling with high base_rrf
+    # and genuine title-overlap (boost ~0.30) should be primary.
+    "thematic_unearned_title_magnet_q5": {
+        "class": "thematic",
+        "rows": [
+            _row("gh-zk-org-zk", "github", 0.10,
+                 name="Zettelkasten Org Zk"),
+            _row("nl-the-pragmatic-engineer-t", "newsletter", 0.55,
+                 name="The Pragmatic Engineer T"),
+            _row("yt-programming-workflow-is", "youtube", 0.50,
+                 name="Programming Workflow Is"),
+            _row("yt-matt-walker-sleep-depriv", "youtube", 0.45,
+                 name="Matt Walker Sleep Depriv"),
+        ],
+        "chunk_counts": {
+            "gh-zk-org-zk": 8,
+            "nl-the-pragmatic-engineer-t": 3,
+            "yt-programming-workflow-is": 2,
+            "yt-matt-walker-sleep-depriv": 1,
+        },
+        "query_variants": ["how should a knowledge worker structure a day"],
+        "expected_primary": "nl-the-pragmatic-engineer-t",
+    },
     # iter-11 Class B fixture: a multi-chunk youtube zettel whose name appears
     # verbatim in the query MUST win the THEMATIC tiebreak even though the
     # iter-10 chunk_count_quartile inversion would normally favour the lowest-

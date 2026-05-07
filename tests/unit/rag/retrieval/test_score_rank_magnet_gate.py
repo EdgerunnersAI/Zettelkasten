@@ -148,26 +148,26 @@ def test_anchored_candidate_skips_demote():
 
 
 def test_title_overlap_candidate_also_skips_score_rank_demote():
-    """iter-11 Class A: a candidate with _title_overlap_boost > 0 (query
-    verbatim names this zettel) is exempted from BOTH the score-rank
-    primary demote AND the title-overlap secondary demote — title-match
-    is an earned signal."""
+    """iter-12 Q5: replaces iter-11 binary > 0.0 with percentile threshold.
+    A boost of 0.05 in an all-zero-boost pool: P75=0.0, floor 0.10 binds,
+    so 0.05 < 0.10 threshold → NOT exempted. Incidental overlap no longer
+    earns a free pass — only earned (above-P75) title overlap does."""
     cands = [
         _cand("named-magnet", 0.10, 0.65),
         _cand("real-a", 0.55, 0.60),
         _cand("real-b", 0.50, 0.55),
         _cand("real-c", 0.45, 0.50),
     ]
-    cands[0].metadata["_title_overlap_boost"] = 0.05  # below the 0.10 floor but >0
+    cands[0].metadata["_title_overlap_boost"] = 0.05  # below the 0.10 floor
     _apply_score_rank_demote(
         cands,
         query_class=QueryClass.THEMATIC,
         query_text="topic",
         anchor_nodes=set(),
     )
-    # Score-rank exempts because title boost > 0; title secondary also exempts
-    # for the same reason — both arms covered by the earned-exemption carve-out.
-    assert cands[0].rrf_score == 0.65
+    # 0.05 < floor 0.10 → demoted; another candidate now leads.
+    cands_sorted = sorted(cands, key=lambda c: c.rrf_score, reverse=True)
+    assert cands_sorted[0].node_id != "named-magnet"
 
 
 def test_unanchored_magnet_still_gets_demoted():
