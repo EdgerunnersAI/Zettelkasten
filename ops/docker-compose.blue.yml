@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     env_file:
       - /opt/zettelkasten/compose/.env
+      - /opt/zettelkasten/compose/.env.local
     environment:
       WEBHOOK_PORT: "10000"
       NEXUS_ENABLED: "true"

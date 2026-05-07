@@ -144,9 +144,25 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+  env-drift-check:
+    name: Env knob drift gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all knobs in .env.example are also in STATIC_BODY
+        run: |
+          EXAMPLE_KNOBS=$(grep -E '^RAG_|^GUNICORN_|^GEMINI_COOLDOWN_' ops/.env.example | cut -d= -f1 | sort -u)
+          STATIC_KNOBS=$(grep -oE '"[A-Z_][A-Z0-9_]+=' .github/workflows/deploy-droplet.yml | tr -d '"=' | sort -u)
+          DRIFT=$(comm -23 <(echo "$EXAMPLE_KNOBS") <(echo "$STATIC_KNOBS"))
+          if [ -n "$DRIFT" ]; then
+            echo "::error::Knobs documented in .env.example but missing from STATIC_BODY:"
+            echo "$DRIFT"
+            exit 1
+          fi
+
   deploy:
     name: SSH deploy to droplet
-    needs: [test, build-and-push]
+    needs: [test, build-and-push, env-drift-check]
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
@@ -273,7 +289,54 @@ jobs:
             "DEPLOY_ACTOR=${DEPLOY_ACTOR}" \
             "GUNICORN_WORKERS=2" \
             "GUNICORN_TIMEOUT=240" \
-            "GUNICORN_GRACEFUL_TIMEOUT=90")
+            "GUNICORN_GRACEFUL_TIMEOUT=90" \
+            "RAG_CHUNKS_ENABLED=true" \
+            "RAG_RERANK_CONCURRENCY=2" \
+            "RAG_QUEUE_MAX=3" \
+            "RAG_THEMATIC_MULTIQUERY_N=3" \
+            "RAG_CHUNKER_SENTENCE_SNAP_ENABLED=true" \
+            "RAG_CHUNK_SHARE_NORMALIZATION_ENABLED=true" \
+            "RAG_CITE_HYGIENE_ENABLED=false" \
+            "RAG_CITE_HYGIENE_MIN_KEEP=1" \
+            "RAG_CITE_HYGIENE_FALLBACK_TOPK=3" \
+            "RAG_ANCHOR_BOOST_AMOUNT=0.05" \
+            "RAG_COMPARE_AWARE_ANTIMAGNET_ENABLED=true" \
+            "RAG_SUPPRESS_CITATIONS_ON_REFUSAL=true" \
+            "RAG_UNSUPPORTED_WITH_GOLD_SKIP_ENABLED=true" \
+            "RAG_UNSUPPORTED_WITH_GOLD_SKIP_FLOOR=0.7" \
+            "RAG_CHUNK_SHARE_CLASS_GATE_ENABLED=true" \
+            "RAG_CHUNK_SHARE_MAGNET_RATIO=2.0" \
+            "RAG_ANCHOR_SEED_FLOOR_RRF=0.30" \
+            "RAG_ANCHOR_SEED_MIN_ENTITY_LENGTH=4" \
+            "RAG_ANCHOR_SEED_TOP_K=3" \
+            "RAG_RERANK_INPUT_FLOOR_ENABLED=true" \
+            "RAG_RERANK_INPUT_FLOOR_LOOKUP=0.30" \
+            "RAG_RERANK_INPUT_FLOOR_THEMATIC=0.05" \
+            "RAG_RERANK_INPUT_FLOOR_DEFAULT=0.10" \
+            "RAG_RERANK_INPUT_MIN_KEEP=8" \
+            "RAG_SCORE_RANK_DEMOTE_FACTOR=0.85" \
+            "RAG_SCORE_RANK_DISPROP_QUARTILES=1.0" \
+            "RAG_TITLE_OVERLAP_DEMOTE_FACTOR=0.95" \
+            "RAG_TITLE_OVERLAP_DEMOTE_FLOOR=0.10" \
+            "RAG_DENSE_FALLBACK_ENABLED=true" \
+            "RAG_SLOT_RSS_LOG_ENABLED=true" \
+            "RAG_ANCHOR_BOOST_ENABLED=false" \
+            "RAG_ANCHOR_SEED_INJECTION_ENABLED=false" \
+            "RAG_PARTIAL_NO_RETRY_FLOOR_OFFSET_THEMATIC=-0.1" \
+            "RAG_UNSUPPORTED_WITH_GOLD_SKIP_FLOOR_OFFSET_THEMATIC=-0.1" \
+            "RAG_SCORE_RANK_PROTECT_ANCHORED=true" \
+            "RAG_EXECUTOR_MAX_WORKERS=8" \
+            "RAG_RPC_GLOBAL_SEMAPHORE=8" \
+            "RAG_HTTPX_MAX_CONNECTIONS=16" \
+            "RAG_HTTPX_MAX_KEEPALIVE=8" \
+            "RAG_ENTITY_GATHER_SEMAPHORE=3" \
+            "RAG_SCORE_RANK_GAP_BYPASS=1.5" \
+            "RAG_RETRY_GAP_BYPASS=1.5" \
+            "RAG_KASTEN_BOOTSTRAP_WINDOW=50" \
+            "RAG_TITLE_OVERLAP_PERCENTILE=75" \
+            "RAG_TITLE_OVERLAP_FLOOR_FALLBACK=0.10" \
+            "RAG_ROUTER_VERSION=v4" \
+            "RAG_SCORE_RANK_DEMOTE_SLOPE=0.20")
 
           FULL_ENV="${SECRETS_BODY}"$'\n'"${STATIC_BODY}"
 
@@ -398,3 +461,19 @@ jobs:
           ENV_BODY: ${{ steps.env.outputs.env_body }}
           GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
           SHA: ${{ github.sha }}
+
+      - name: Verify live container env matches STATIC_BODY
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_SSH_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: ${{ secrets.DROPLET_SSH_PORT }}
+          script: |
+            set -euo pipefail
+            ACTIVE_COLOR=$(cat /opt/zettelkasten/deploy/active_color 2>/dev/null || echo "blue")
+            docker exec "zettelkasten-${ACTIVE_COLOR}" env > /tmp/live_env.txt
+            for KEY in RAG_ANCHOR_BOOST_ENABLED RAG_EXECUTOR_MAX_WORKERS RAG_RPC_GLOBAL_SEMAPHORE; do
+              grep -q "^${KEY}=" /tmp/live_env.txt || { echo "::error::${KEY} missing on live droplet"; exit 1; }
+            done
+            echo "[smoke] env spot-check passed for zettelkasten-${ACTIVE_COLOR}"
