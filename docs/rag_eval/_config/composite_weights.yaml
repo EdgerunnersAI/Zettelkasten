@@ -1,9 +1,26 @@
-# Composite-score weights for the RAG eval framework.
-# Per spec §3a, these are HASH-LOCKED at iter-01 and may not change mid-loop.
-# Mid-loop drift is blocked by ops/scripts/lib/rag_eval_diff.py via composite.verify_weights_unchanged.
-# Changing these requires a `decision` claude-mem observation explaining the rationale.
-
-chunking: 0.10
-retrieval: 0.25
-reranking: 0.20
-synthesis: 0.45
+schema_version: 1
+weights_by_iter:
+  legacy:
+    applies_to:
+    - iter-04
+    - iter-05
+    - iter-06
+    - iter-07
+    - iter-08
+    - iter-09
+    - iter-10
+    - iter-11
+    weights:
+      chunking: 0.1
+      retrieval: 0.25
+      reranking: 0.2
+      synthesis: 0.45
+  trust_first:
+    applies_from_iter: 12
+    weights:
+      trust: 0.4
+      accuracy: 0.3
+      retrieval: 0.15
+      calibration: 0.1
+      latency: 0.05
+hash: 0f8469b2e9d5f28ff8009bd8fdead29e72db446a46f4b1f023ae6344fbdcd752

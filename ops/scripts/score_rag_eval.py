@@ -54,11 +54,22 @@ WEIGHTS_PATH = ROOT / "docs" / "rag_eval" / "_config" / "composite_weights.yaml"
 
 
 def _load_weights() -> tuple[dict[str, float], str]:
-    """Load and hash the composite weights config (per spec §3a)."""
+    """Load and hash the composite weights config (per spec §3a).
+
+    Supports both flat legacy yaml and iter-12+ versioned yaml (schema_version=1).
+    For versioned yaml, returns the legacy block weights so the EvalRunner
+    composite formula (chunking/retrieval/reranking/synthesis) is unchanged.
+    """
     import yaml  # local import — script-only dep
     with WEIGHTS_PATH.open("r", encoding="utf-8") as fh:
-        weights = yaml.safe_load(fh)
-    weights = {k: float(v) for k, v in weights.items()}
+        raw = yaml.safe_load(fh)
+    if isinstance(raw, dict) and raw.get("schema_version") == 1:
+        # Versioned yaml: extract legacy weights for EvalRunner compatibility.
+        legacy_block = raw.get("weights_by_iter", {}).get("legacy", {})
+        weights = {k: float(v) for k, v in legacy_block.get("weights", {}).items()}
+    else:
+        # Flat legacy yaml (pre-iter-12 format).
+        weights = {k: float(v) for k, v in raw.items()}
     return weights, hash_weights_file(WEIGHTS_PATH)
 
 
@@ -366,6 +377,28 @@ def _holistic_metrics(qa_checks: list[dict], kasten_slug: str = "") -> dict[str,
     metrics["refused_count"] = refused
     if within_budget_total:
         metrics["within_budget_rate"] = round(within_budget_yes / within_budget_total, 4)
+    # iter-12 Class S + I9: compute trust-first fields from qa_checks detail dicts.
+    # gold_at_1_unconditional above uses retrieved[0]-in-expected (= retrieval_recall_at_1).
+    # primary_citation-in-expected is the separate primary_match signal.
+    i12_rows = [
+        {
+            "primary_citation": (d := (chk.get("detail") or {})).get("primary_citation"),
+            "retrieved": d.get("retrieved_node_ids") or [],
+            "expected": d.get("expected") or [],
+            "refused": bool(d.get("refused")),
+            "over_refusal": bool(d.get("over_refusal")),
+            "faithfulness": d.get("faithfulness"),
+            "query_class": str(d.get("query_class") or "unknown"),
+            "expected_empty": not bool(d.get("expected")),
+        }
+        for chk in qa_checks
+    ]
+    i12 = _aggregate_gold_metrics(i12_rows)
+    metrics["accuracy_user_visible"] = i12["accuracy_user_visible"]
+    metrics["retrieval_recall_at_1"] = i12["retrieval_recall_at_1"]
+    metrics["over_refusal_rate"] = i12["over_refusal_rate"]
+    metrics["under_refusal_rate"] = i12["under_refusal_rate"]
+    metrics["per_class_breakdown"] = _per_class_breakdown(i12_rows)
     return metrics
 
 
@@ -461,29 +494,101 @@ def _decide_iter12_path(metrics: dict) -> dict[str, str]:
 
 
 def _aggregate_gold_metrics(rows: list[dict]) -> dict[str, float]:
-    """iter-10 P6 + iter-11 Class E1: standalone helper for gold@1 split.
+    """iter-12 Class S + I9: trust-first metric set with retrieval-recall split.
 
-    Each row is ``{"gold_at_1": bool, "within_budget": bool, "expected_empty": bool}``.
-    iter-11 Class E1: rows with ``expected_empty=True`` are refusal-expected
-    adversarial queries (e.g. iter-11 q9: "Summarize what this Kasten says
-    about Notion's database features"). The pipeline correctly returns
-    primary=None there, but ``gold_at_1=False`` would mechanically depress the
-    headline metric. We segregate them into ``gold_at_1_not_applicable`` and
-    EXCLUDE them from numerator AND denominator of the ratios.
+    Accepts rows with either the legacy ``gold_at_1`` bool key (iter-04..11)
+    or the iter-12+ rich keys (``primary_citation``, ``retrieved``,
+    ``expected``, ``refused``, ``over_refusal``, ``faithfulness``).
+    iter-11 Class E1: rows with ``expected_empty=True`` are excluded from
+    numerator AND denominator (refusal-expected adversarial queries).
     """
     scored = [r for r in rows if not r.get("expected_empty")]
-    n_na = sum(1 for r in rows if r.get("expected_empty"))
     n_scored = max(len(scored), 1)
-    unc = sum(1 for r in scored if r.get("gold_at_1") is True)
-    wb = sum(
+
+    def _primary_in_expected(r: dict) -> bool:
+        # iter-12+: derive from primary_citation + expected list.
+        # iter-04..11 fallback: use pre-computed gold_at_1 bool.
+        prim = r.get("primary_citation")
+        exp = r.get("expected") or []
+        if prim is not None or exp:
+            return bool(prim) and prim in exp
+        return r.get("gold_at_1") is True
+
+    def _retrieved0_in_expected(r: dict) -> bool:
+        # iter-12+: retrieved[0] in expected (isolates retrieval stage).
+        # iter-04..11 fallback: same as gold_at_1 (only top-1 was tracked).
+        ret = r.get("retrieved") or r.get("retrieved_node_ids") or []
+        exp = r.get("expected") or []
+        if ret and exp:
+            return ret[0] in exp
+        return r.get("gold_at_1") is True
+
+    user_visible_pass = sum(
         1 for r in scored
-        if r.get("gold_at_1") is True and r.get("within_budget") is True
+        if _primary_in_expected(r)
+        and not r.get("over_refusal")
+        and not r.get("refused")
     )
+    primary_match = sum(1 for r in scored if _primary_in_expected(r))
+    retrieved_match = sum(1 for r in scored if _retrieved0_in_expected(r))
+    within_budget_match = sum(
+        1 for r in scored
+        if _primary_in_expected(r) and r.get("within_budget") is True
+    )
+    over_refusal = sum(1 for r in scored if r.get("over_refusal"))
+    answered = [r for r in scored if not r.get("refused")]
+    n_answered = max(len(answered), 1)
+    under_refusal = sum(1 for r in answered if (r.get("faithfulness") or 1.0) < 0.5)
+
     return {
-        "gold_at_1_unconditional": round(unc / n_scored, 4),
-        "gold_at_1_within_budget": round(wb / n_scored, 4),
-        "gold_at_1_not_applicable": n_na,
+        "accuracy_user_visible": round(user_visible_pass / n_scored, 4),
+        "gold_at_1_unconditional": round(primary_match / n_scored, 4),
+        "gold_at_1_within_budget": round(within_budget_match / n_scored, 4),
+        "retrieval_recall_at_1": round(retrieved_match / n_scored, 4),
+        "over_refusal_rate": round(over_refusal / n_scored, 4),
+        "under_refusal_rate": round(under_refusal / n_answered, 4),
+        "gold_at_1_not_applicable": sum(1 for r in rows if r.get("expected_empty")),
     }
+
+
+def _per_class_breakdown(rows: list[dict]) -> dict[str, dict[str, float]]:
+    """iter-12 Class S: per-QueryClass metric breakdown."""
+    by_class: dict[str, list[dict]] = {}
+    for r in rows:
+        cls = r.get("query_class", "unknown")
+        by_class.setdefault(cls, []).append(r)
+    return {cls: _aggregate_gold_metrics(rs) for cls, rs in by_class.items()}
+
+
+def _parse_iter_number(iter_name: str) -> int | None:
+    """Extract the numeric suffix from an iter name like 'iter-12'."""
+    m = re.match(r"iter-(\d+)", iter_name)
+    return int(m.group(1)) if m else None
+
+
+def _composite_weights_for_iter(iter_name: str) -> dict[str, float]:
+    """iter-12 Class W: load weights for the named iteration from yaml.
+
+    iter-04..iter-11 use legacy weights; iter-12+ use trust-first.
+    Falls back to hardcoded legacy if yaml is absent or unreadable.
+    """
+    import yaml  # local import — script-only dep
+    if not WEIGHTS_PATH.exists():
+        return {"chunking": 0.10, "retrieval": 0.25, "reranking": 0.20, "synthesis": 0.45}
+    raw = yaml.safe_load(WEIGHTS_PATH.read_text(encoding="utf-8")) or {}
+    if raw.get("schema_version") != 1:
+        # Flat legacy yaml — only legacy weights available.
+        return {k: float(v) for k, v in raw.items() if k != "hash"}
+    blocks = raw.get("weights_by_iter", {}) or {}
+    iter_num = _parse_iter_number(iter_name)
+    for block in blocks.values():
+        applies_from = block.get("applies_from_iter")
+        applies_to = block.get("applies_to") or []
+        if applies_from is not None and iter_num is not None and iter_num >= applies_from:
+            return {k: float(v) for k, v in block["weights"].items()}
+        if iter_name in applies_to:
+            return {k: float(v) for k, v in block["weights"].items()}
+    raise ValueError(f"No composite weight block found for {iter_name}")
 
 
 def _burst_metrics(verification: dict) -> dict[str, Any] | None:
@@ -558,6 +663,32 @@ def _render_scores_md(
         "",
         "### critic_verdict distribution",
     ]
+    iter_num = _parse_iter_number(iter_id)
+    if iter_num is not None and iter_num >= 12:
+        lines += [
+            "",
+            "## Holistic monitoring (iter-12 trust-first)",
+            f"- accuracy_user_visible:           {holistic.get('accuracy_user_visible', 'n/a')}  "
+            "(HEADLINE — primary_citation in expected, refusal-deducted)",
+            f"- gold_at_1_unconditional:         {holistic.get('gold_at_1_unconditional', 'n/a')}  "
+            "(diagnostic — primary_citation in expected, no refusal deduction)",
+            f"- retrieval_recall_at_1:           {holistic.get('retrieval_recall_at_1', 'n/a')}  "
+            "(diagnostic — retrieved[0] in expected; isolates retrieval-stage from rerank reorder)",
+            f"- over_refusal_rate:               {holistic.get('over_refusal_rate', 'n/a')}",
+            f"- under_refusal_rate:              {holistic.get('under_refusal_rate', 'n/a')}",
+            "",
+        ]
+        pcb = holistic.get("per_class_breakdown") or {}
+        if pcb:
+            lines.append("## Per-class breakdown (iter-12 trust-first)")
+            for cls, cls_metrics in sorted(pcb.items()):
+                lines.append(f"### {cls}")
+                lines.append(f"- accuracy_user_visible: {cls_metrics.get('accuracy_user_visible', 'n/a')}")
+                lines.append(f"- gold_at_1_unconditional: {cls_metrics.get('gold_at_1_unconditional', 'n/a')}")
+                lines.append(f"- retrieval_recall_at_1: {cls_metrics.get('retrieval_recall_at_1', 'n/a')}")
+                lines.append(f"- over_refusal_rate: {cls_metrics.get('over_refusal_rate', 'n/a')}")
+                lines.append(f"- under_refusal_rate: {cls_metrics.get('under_refusal_rate', 'n/a')}")
+            lines.append("")
     for verdict, count in sorted(
         (holistic.get("critic_verdict_distribution") or {}).items(),
         key=lambda kv: -kv[1],
@@ -602,8 +733,10 @@ def _render_scores_md(
         retr = pq.component_breakdown.get("retrieval", 0.0)
         rer = pq.component_breakdown.get("rerank", 0.0)
         gold_hit = "✓" if any(c in pq.retrieved_node_ids for c in pq.cited_node_ids) else "—"
+        refused = getattr(pq, "refused", False)
+        cites_cell = "0 (refused)" if refused else str(len(pq.cited_node_ids))
         lines.append(
-            f"| {pq.query_id} | {retr:.1f} | {rer:.1f} | {gold_hit} | {len(pq.cited_node_ids)} |"
+            f"| {pq.query_id} | {retr:.1f} | {rer:.1f} | {gold_hit} | {cites_cell} |"
         )
     # iter-08 G6: surface measurement-shift caveats so the iter-08 scorecard
     # is read against the right baseline. Auto-strips for any other iter_id.
