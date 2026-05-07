@@ -1,3 +1,14 @@
+-- iter-12 Task 31 — prepend kg_kasten_metrics CREATE for alphabetical-order independence.
+create table if not exists kg_kasten_metrics (
+  id bigserial primary key,
+  sandbox_id uuid not null,
+  top1_node_id text not null,
+  ts timestamptz not null default now()
+);
+
+create index if not exists kg_kasten_metrics_sandbox_ts_idx
+  on kg_kasten_metrics(sandbox_id, ts desc);
+
 -- iter-12 Task 31 R4: Thompson-sampling bandit for per-Kasten anchor-seed floor.
 -- Additive extension to kg_kasten_metrics (Task 7 created the table).
 -- Pool-size stratification: S<30, M<80, L≥80 (R4-followup mod 2).
