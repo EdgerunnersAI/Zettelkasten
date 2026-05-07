@@ -112,6 +112,24 @@ async def health(request: Request):
     monitor = getattr(request.app.state, "event_loop_monitor", None)
     if monitor is not None:
         payload["event_loop_lag"] = monitor.snapshot()
+
+    # iter-12 T31 R4: bandit pathology metrics (5 ops-dashboard fields).
+    # All collected from in-process telemetry; never expose model/score internals.
+    bandit_state = getattr(request.app.state, "bandit_telemetry_snapshot", None)
+    if bandit_state is not None:
+        payload["bandit"] = {
+            # Stuck-arm detection: argmax(α/(α+β)) switches over rolling 24h.
+            # Alert if >3 after 50 pulls.
+            "posterior_mode_flips_24h": bandit_state.get("posterior_mode_flips_24h"),
+            # Near-uniform posterior = no learning. Alert if >1.3 after 200 pulls.
+            "posterior_entropy_nats": bandit_state.get("posterior_entropy_nats"),
+            # Starvation flag. Alert if <0.05 after 100 total pulls.
+            "arm_pull_ratio_min_max": bandit_state.get("arm_pull_ratio_min_max"),
+            # Sampling overhead. Alert if >5ms.
+            "bandit_decision_latency_p99_ms": bandit_state.get("bandit_decision_latency_p99_ms"),
+            # Concurrent-write health. Alert if >5%.
+            "db_upsert_conflict_rate": bandit_state.get("db_upsert_conflict_rate"),
+        }
     return payload
 
 

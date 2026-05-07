@@ -720,6 +720,30 @@ CREATE INDEX IF NOT EXISTS kg_kasten_metrics_sandbox_ts_idx
   ON kg_kasten_metrics(sandbox_id, ts DESC);
 
 
+-- supabase/website/kg_public/migrations/2026-05-07_anchor_seed_bandit.sql.
+-- iter-12 Task 31 R4 — per-Kasten Thompson-sampling bandit posteriors.
+CREATE TABLE IF NOT EXISTS kg_bandit_posteriors (
+  id               bigserial    PRIMARY KEY,
+  p_user_id        uuid         NOT NULL,
+  kasten_id        uuid         NOT NULL,
+  seed_arm         numeric      NOT NULL,
+  seed_pool_bucket text         NOT NULL CHECK (seed_pool_bucket IN ('S','M','L')),
+  seed_alpha       numeric      NOT NULL DEFAULT 1.0,
+  seed_beta        numeric      NOT NULL DEFAULT 1.0,
+  seed_total_pulls int          NOT NULL DEFAULT 0,
+  seed_last_decay_at timestamptz,
+  bandit_disabled_at     timestamptz NULL,
+  bandit_disabled_reason text        NULL,
+  updated_at       timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS kg_bandit_posteriors_key
+  ON kg_bandit_posteriors(p_user_id, kasten_id, seed_arm, seed_pool_bucket);
+
+CREATE INDEX IF NOT EXISTS kg_bandit_posteriors_kasten_idx
+  ON kg_bandit_posteriors(p_user_id, kasten_id, seed_pool_bucket);
+
+
 -- ── Done ────────────────────────────────────────────────────────────────────
 -- Run this SQL in the Supabase SQL Editor (Dashboard → SQL Editor → New query).
 -- After running, verify tables exist in Table Editor.

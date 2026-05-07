@@ -47,6 +47,10 @@ _ANCHOR_BOOST_AMOUNT = float(os.environ.get("RAG_ANCHOR_BOOST_AMOUNT", "0.05"))
 _ANCHOR_SEED_ENABLED = os.environ.get(
     "RAG_ANCHOR_SEED_INJECTION_ENABLED", "true"
 ).lower() not in ("false", "0", "no", "off")
+# iter-12 T31 R4: static fallback (also used when bandit is disabled/cold).
+# The live floor is now provided by the Thompson-sampling bandit in
+# anchor_seed_bandit.sample_floor(); _ANCHOR_SEED_FLOOR_RRF is kept as
+# the module-level fallback constant so log calls that reference it remain valid.
 _ANCHOR_SEED_FLOOR_RRF = float(os.environ.get("RAG_ANCHOR_SEED_FLOOR_RRF", "0.30"))
 # iter-10 P4 mitigations:
 #   2. Min entity-length floor — short entities like "AI"/"ML" tag-collide.
@@ -609,7 +613,10 @@ class HybridRetriever:
         # iter-10 P4: anchor-seed injection through pure-function gate.
         # Drops iter-09 (n_persons + n_entities) >= 1 re-gate (q10 fix);
         # adds class exclusion, entity-length floor, top-K cap, structured log.
+        # iter-12 T31 R4: floor provided by Thompson-sampling bandit.
         anchor_seeds: list[dict] = []
+        _bandit_floor: float = _ANCHOR_SEED_FLOOR_RRF  # static fallback default
+        _bandit_telemetry: dict = {}
         if (
             _ANCHOR_SEED_ENABLED
             and sandbox_id is not None
@@ -630,6 +637,20 @@ class HybridRetriever:
                 from website.features.rag_pipeline.retrieval.anchor_seed import (
                     fetch_anchor_seeds,
                 )
+                # iter-12 T31 R4: sample the bandit floor for this request.
+                try:
+                    from website.features.rag_pipeline.observability.anchor_seed_bandit import (
+                        sample_floor as _bandit_sample_floor,
+                    )
+                    _bandit_floor, _bandit_telemetry = await _bandit_sample_floor(
+                        p_user_id=str(user_id),
+                        kasten_id=str(sandbox_id),
+                        pool_size=sum(len(r) for r in results),
+                        supabase=self._supabase,
+                    )
+                except Exception as _be:
+                    _log.debug("bandit_sample_failed: %s", _be)
+                    _bandit_floor = _ANCHOR_SEED_FLOOR_RRF
                 raw_seeds = await fetch_anchor_seeds(
                     anchor_nodes, sandbox_id, embeddings[0], self._supabase
                 )
@@ -639,17 +660,20 @@ class HybridRetriever:
                     reverse=True,
                 )[:_ANCHOR_SEED_TOP_K]
                 _log.info(
-                    "anchor_seed_inject reason=%s class=%s n_anchors=%d n_seeds=%d floor=%.2f",
+                    "anchor_seed_inject reason=%s class=%s n_anchors=%d n_seeds=%d "
+                    "floor=%.2f fallback=%s entropy=%.4f",
                     decision.reason,
                     getattr(query_class, "value", query_class),
                     len(list(anchor_nodes)),
                     len(anchor_seeds),
-                    _ANCHOR_SEED_FLOOR_RRF,
+                    _bandit_floor,
+                    _bandit_telemetry.get("fallback_reason"),
+                    _bandit_telemetry.get("posterior_entropy_nats") or 0.0,
                 )
             else:
                 _log.debug("anchor_seed skipped: %s", decision.reason)
 
-        return self._dedup_and_fuse(
+        fused = self._dedup_and_fuse(
             results,
             query_variants=query_variants,
             query_metadata=query_metadata,
@@ -659,7 +683,45 @@ class HybridRetriever:
             anchor_neighbours=anchor_neighbours,
             anchor_nodes=set(anchor_nodes) if anchor_nodes else None,
             anchor_seeds=anchor_seeds,
+            anchor_seed_floor=_bandit_floor,
         )
+
+        # iter-12 T31 R4: record bandit reward post-fuse.
+        # Only fires when bandit actually sampled an arm (fallback_reason=None)
+        # and seeds were injected. Fail-open inside record_outcome.
+        if (
+            anchor_seeds
+            and sandbox_id is not None
+            and _bandit_telemetry.get("fallback_reason") is None
+            and _bandit_telemetry.get("arm_sampled") is not None
+        ):
+            try:
+                from website.features.rag_pipeline.observability.anchor_seed_bandit import (
+                    record_outcome as _bandit_record,
+                    bucket_pool_size as _bucket,
+                    _FINAL_TOP_K,
+                )
+                top_k_node_ids = {c.node_id for c in fused[:_FINAL_TOP_K]}
+                pool_sz = sum(len(r) for r in results)
+                bucket = _bucket(pool_sz)
+                arm_used = float(_bandit_telemetry["arm_sampled"])
+                for seed in anchor_seeds:
+                    nid = seed.get("node_id")
+                    if not nid:
+                        continue
+                    survived = nid in top_k_node_ids
+                    await _bandit_record(
+                        p_user_id=str(user_id),
+                        kasten_id=str(sandbox_id),
+                        arm=arm_used,
+                        pool_bucket=bucket,
+                        seed_survived=survived,
+                        supabase=self._supabase,
+                    )
+            except Exception as _re:
+                _log.debug("bandit_record_error: %s", _re)
+
+        return fused
 
     async def _resolve_nodes(
         self,
@@ -696,6 +758,8 @@ class HybridRetriever:
         anchor_neighbours: set[str] | None = None,
         anchor_nodes: set[str] | None = None,
         anchor_seeds: list[dict] | None = None,
+        # iter-12 T31 R4: bandit-sampled floor; falls back to static constant.
+        anchor_seed_floor: float | None = None,
     ) -> list[RetrievalCandidate]:
         by_key = {}
         variant_hits = {}
@@ -724,13 +788,15 @@ class HybridRetriever:
         # iter-09 RES-7 / Q10: inject anchor-seed candidates. When a seed's
         # node is already in the pool, bump its rrf_score floor; when missing,
         # synthesize at the floor so the cross-encoder can decide final rank.
+        # iter-12 T31 R4: floor is bandit-sampled (or static fallback).
+        _effective_floor = anchor_seed_floor if anchor_seed_floor is not None else _ANCHOR_SEED_FLOOR_RRF
         if anchor_seeds:
             for seed in anchor_seeds:
                 nid = seed.get("node_id")
                 if not nid:
                     continue
                 seed_score = float(seed.get("score") or 0.0)
-                floored = max(seed_score, _ANCHOR_SEED_FLOOR_RRF)
+                floored = max(seed_score, _effective_floor)
                 # Match an existing chunk row for this node; else synthesize.
                 matching_keys = [k for k in by_key if k[1] == nid]
                 if matching_keys:
