@@ -678,3 +678,20 @@ Post-flip state (master HEAD after this commit):
 Per Task 34 forensic finding, this is the FIRST genuinely Phase 2 (since iter-11
 final eval ran with anchor-boost active even though operator believed it rolled
 back — workflow STATIC_BODY now controls the value definitively).
+
+---
+
+## Phase 2 burst-12 probe result (2026-05-07)
+
+After anchor-boost flip (master HEAD: 3d440c0):
+- Total requests: 2005
+- 502 rate: 0.0
+- 503 rate: 0.0
+- Post-burst event_loop_lag.p95: 4.098 ms
+- Latency p50/p95/p99: 125.0 / 1328.0 / 4359.0 ms
+- Verdict: PASS
+- Phase 3 gate: PROCEED
+
+Note: q10 single-query smoke test skipped per operator instruction (2026-05-07):
+"I'll run iter-12 myself" — eval is operator-driven. Phase 2 burst probe is
+sufficient validation for the Phase 3 gate decision.
