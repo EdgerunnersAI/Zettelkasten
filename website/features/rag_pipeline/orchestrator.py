@@ -48,6 +48,7 @@ from website.features.rag_pipeline.query.metadata import QueryMetadata, QueryMet
 from website.features.rag_pipeline.query.router import apply_class_overrides
 from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner
 from website.features.rag_pipeline.types import AnswerTurn, Citation, QueryClass
+from website.features.rag_pipeline.retrieval.hybrid import _top1_top2_gap
 
 # T20: env-gated KG-first planner. Defaults on so prod gets the new path,
 # but operators can disable via ``RAG_KG_FIRST_ENABLED=false`` for incident
@@ -108,6 +109,14 @@ _UNSUPPORTED_WITH_GOLD_SKIP_FLOOR = float(
 # literals (CLAUDE.md guardrail). Hard-clamped at _CRITIC_FLOOR_HARD_MIN
 # so an extreme env value cannot disable the gate outright.
 _CRITIC_FLOOR_HARD_MIN = 0.3
+
+# iter-12 Class K3: confidence-gap bypass for retry-skip. When top1/top2 >=
+# threshold the retrieved ordering is already decisive; absolute floors are moot.
+_RETRY_GAP_BYPASS = float(os.environ.get("RAG_RETRY_GAP_BYPASS", "1.5"))
+
+
+def _retry_gap_bypass_threshold() -> float:
+    return _RETRY_GAP_BYPASS
 
 
 def _offset_for_class(query_class: "QueryClass | None", env_key: str) -> float:
@@ -219,6 +228,11 @@ def _should_skip_retry(
     tag and for tracing.
     """
     top_score = _top_candidate_score(used_candidates)
+    # iter-12 Class K3: clear-winner bypass — absolute floors are moot when gap >= 1.5.
+    gap = _top1_top2_gap(used_candidates)
+    if gap is not None and gap >= _RETRY_GAP_BYPASS:
+        logger.info("retry_skip bypass=clear_winner gap=%.3f", gap)
+        return True, "skip_clear_winner"
     # iter-08 Fix A: protect partial-with-gold first-pass answers. When the
     # critic returned ``partial`` AND retrieval surfaced a gold-tier chunk
     # (rerank >= 0.5), the partial draft is materially better than any retry

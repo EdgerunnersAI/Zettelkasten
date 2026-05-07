@@ -77,6 +77,10 @@ _TITLE_OVERLAP_DEMOTE_FLOOR = float(
     os.environ.get("RAG_TITLE_OVERLAP_DEMOTE_FLOOR", "0.10")
 )
 
+# iter-12 Class K3: clear-winner confidence-gap bypass. When top1/top2 >= threshold
+# the rerank ordering has already separated the winner; magnet damping is unnecessary.
+_SCORE_RANK_GAP_BYPASS = float(os.environ.get("RAG_SCORE_RANK_GAP_BYPASS", "1.5"))
+
 from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate, ScopeFilter, SourceType, ChunkKind
 
 # iter-10 P3: score-rank-correlation magnet gate. THEMATIC/STEP_BACK only.
@@ -188,6 +192,20 @@ class _AnchorSeedDecision:
     reason: str
 
 
+def _top1_top2_gap(candidates) -> float | None:
+    """iter-12 Class K3: relative confidence-gap between top-1 and top-2 rrf_score.
+
+    Returns top1/top2 ratio, or None when fewer than 2 candidates exist.
+    Used by _apply_score_rank_demote (magnet-gate bypass) and _retry_gap_bypass_threshold.
+    """
+    if not candidates or len(candidates) < 2:
+        return None
+    sorted_cands = sorted(candidates, key=lambda c: c.rrf_score, reverse=True)
+    top1 = sorted_cands[0].rrf_score
+    top2 = max(sorted_cands[1].rrf_score, 1e-9)
+    return top1 / top2
+
+
 _TIEBREAK_INVERT_CLASSES = (
     QueryClass.THEMATIC, QueryClass.MULTI_HOP, QueryClass.STEP_BACK,
 )
@@ -228,6 +246,14 @@ def _apply_score_rank_demote(
         return
     if not candidates or len(candidates) < 4:
         return
+
+    # iter-12 Class K3: clear-winner bypass — skip demote when top1/top2 >= 1.5.
+    gap = _top1_top2_gap(candidates)
+    if gap is not None and gap >= _SCORE_RANK_GAP_BYPASS:
+        _log.info("score_rank_gate bypass=clear_winner gap=%.3f class=%s",
+                  gap, getattr(query_class, "value", query_class))
+        return
+
     anchored = anchor_nodes or set()
     base_scores = [
         float(c.metadata.get("_base_rrf_score", c.rrf_score))
