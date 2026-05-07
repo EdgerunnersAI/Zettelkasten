@@ -1,0 +1,38 @@
+name: Migration CI
+
+on:
+  pull_request:
+    paths: ['supabase/**/*.sql']
+  push:
+    branches: [master]
+    paths: ['supabase/**/*.sql']
+
+jobs:
+  migrate-fresh:
+    name: Fresh-DB migration apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: kg_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply all kg_public migrations from scratch
+        env:
+          PGPASSWORD: ci
+        run: |
+          for f in $(ls supabase/website/kg_public/migrations/*.sql | sort); do
+            echo "::group::Applying $f"
+            psql -h localhost -U postgres -d kg_ci -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
