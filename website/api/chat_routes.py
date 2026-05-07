@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from website.api._citation_guard import check_cited_in_context
 from website.api._concurrency import QueueFull, acquire_rerank_slot
 from website.api.auth import get_current_user
 from website.features.rag_pipeline.service import get_rag_runtime, load_example_queries
@@ -215,10 +216,15 @@ async def _run_answer(runtime, kg_user_id: UUID, session: dict, body: ChatMessag
         )
     )
 
-    return {
-        "session_id": session["id"],
-        "turn": turn.model_dump(),
-    }
+    # iter-12 R3 T1: citation drift guard (flag only; never blocks)
+    _cites = getattr(turn, "citations", None) or []
+    _primary = _cites[0].node_id if _cites else None
+    _retrieved = getattr(turn, "retrieved_node_ids", None) or []
+    _drift = not check_cited_in_context(primary_citation=_primary, retrieved_node_ids=_retrieved)
+    payload: dict = {"session_id": session["id"], "turn": turn.model_dump()}
+    if _drift:
+        payload["_citation_drift"] = True
+    return payload
 
 
 SSE_HEARTBEAT_INTERVAL_SECONDS = 10.0
@@ -354,6 +360,11 @@ async def _stream_answer(
                                 body.scope_filter.model_dump(),
                             )
                         )
+                        # iter-12 R3 T1: citation drift guard (flag only; never blocks)
+                        turn_data = (event.get("turn") or {})
+                        _primary = (turn_data.get("citations") or [{}])[0].get("node_id") if (turn_data.get("citations") or []) else None
+                        if not check_cited_in_context(primary_citation=_primary, retrieved_node_ids=turn_data.get("retrieved_node_ids") or []):
+                            event = dict(event, _citation_drift=True)
                     yield _sse_encode(event)
                 last_exc = None
                 break
