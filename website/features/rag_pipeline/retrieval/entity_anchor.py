@@ -16,16 +16,22 @@ to a per-entity loop that unions the resolved node ids. Reasons:
 iter-12 Class P: per-entity calls are now gathered concurrently via
 asyncio.gather with a Semaphore(3) per-request gate. RPC bodies run in
 asyncio.to_thread via rpc_call so the event loop is never blocked.
+
+iter-12 R6: optional EntityBlocklist wired in — records miss/hit per entity
+so consistently-unresolvable entities are blocked from future RPC calls.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from uuid import UUID
 
 from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
+
+if TYPE_CHECKING:
+    from website.features.rag_pipeline.query.blocklist import EntityBlocklist
 
 _log = logging.getLogger(__name__)
 
@@ -36,12 +42,25 @@ async def resolve_anchor_nodes(
     entities: list[str],
     sandbox_id: UUID | str | None,
     supabase: Any,
+    *,
+    blocklist: "EntityBlocklist | None" = None,
+    kasten_node_count: int = 0,
 ) -> set[str]:
     """Map entity names to canonical Kasten node_ids via fuzzy title/tag match.
 
     iter-11 Class C: per-entity calls with union semantics. iter-12 Class P:
     calls are concurrent via asyncio.gather with a Semaphore(3) per-request
     gate so fan-out stays bounded.
+
+    iter-12 R6: if blocklist is provided, records miss/hit per entity and
+    skips the RPC entirely for currently-blocked entities (fail-open).
+
+    Args:
+        entities: entity text strings (already confidence-filtered by R6).
+        sandbox_id: Kasten UUID.
+        supabase: Supabase client.
+        blocklist: optional EntityBlocklist; None disables miss/hit recording.
+        kasten_node_count: passed through to blocklist cold-start guard.
     """
     if not entities or sandbox_id is None:
         return set()
@@ -53,6 +72,16 @@ async def resolve_anchor_nodes(
         cleaned = entity.strip()
         if not cleaned:
             return set()
+
+        # iter-12 R6: skip blocked entities (fail-open — is_blocked returns False on error)
+        if blocklist is not None:
+            try:
+                if await blocklist.is_blocked(str(sandbox_id), cleaned, node_count=kasten_node_count):
+                    _log.debug("entity_anchor skip_blocked entity=%r", cleaned)
+                    return set()
+            except Exception as exc:  # noqa: BLE001 — fail-open
+                _log.warning("entity_anchor blocklist.is_blocked error entity=%r: %s", cleaned, exc)
+
         try:
             response = await rpc_call(
                 supabase.rpc(
@@ -61,7 +90,19 @@ async def resolve_anchor_nodes(
                 ),
                 request_sem=request_sem,
             )
-            return {row["node_id"] for row in (response.data or []) if row.get("node_id")}
+            node_ids = {row["node_id"] for row in (response.data or []) if row.get("node_id")}
+
+            # iter-12 R6: record resolution outcome for blocklist
+            if blocklist is not None:
+                try:
+                    if node_ids:
+                        await blocklist.record_hit(str(sandbox_id), cleaned)
+                    else:
+                        await blocklist.record_miss(str(sandbox_id), cleaned, node_count=kasten_node_count)
+                except Exception as exc:  # noqa: BLE001 — never let blocklist writes fail the request
+                    _log.warning("entity_anchor blocklist record error entity=%r: %s", cleaned, exc)
+
+            return node_ids
         except Exception as exc:  # noqa: BLE001 — best-effort, isolated
             _log.debug("entity_anchor rpc_error entity=%r exc=%s", cleaned, type(exc).__name__)
             return set()
