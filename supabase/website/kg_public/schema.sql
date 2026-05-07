@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS kg_nodes (
     metadata        JSONB       NOT NULL DEFAULT '{}',
     engine_version          TEXT,
     extraction_confidence   TEXT,
+    aliases         TEXT[]      NOT NULL DEFAULT '{}',
+    summary_hash    TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
@@ -107,6 +109,14 @@ COMMENT ON COLUMN kg_links.relation_type IS
 -- Tag-based queries: "find nodes with tag X", "nodes matching any of [X, Y]"
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_tags
     ON kg_nodes USING GIN (tags);
+
+-- Alias array containment lookups (rag_resolve_entity_anchors alias branch)
+CREATE INDEX IF NOT EXISTS kg_nodes_aliases_gin
+    ON kg_nodes USING GIN (aliases);
+
+-- Fuzzy alias matching via pg_trgm
+CREATE INDEX IF NOT EXISTS kg_nodes_aliases_trgm
+    ON kg_nodes USING GIN (array_to_string(aliases, ' ') gin_trgm_ops);
 
 -- Filter by source type per user
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_user_source

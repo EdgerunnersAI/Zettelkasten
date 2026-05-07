@@ -1,0 +1,66 @@
+-- iter-12 Task 28 R5: ingest-time entity canonicalization via LLM-generated aliases.
+--
+-- Adds two new columns to kg_nodes:
+--   aliases       text[]  — LLM-generated alternative names for the node entity
+--   summary_hash  text    — SHA-256 prefix of the summary used to generate the aliases
+--                           (used to skip re-generation when summary is unchanged)
+--
+-- Adds a GIN index on aliases for fast array-contains lookups and a trigram
+-- index on the flattened alias string for fuzzy ILIKE matching.
+--
+-- Replaces rag_resolve_entity_anchors to also match against node aliases and
+-- emit a matched_via column so callers can see whether the match was on the
+-- canonical name, tags, or an alias.
+--
+-- Safe to re-run (all DDL is IF NOT EXISTS or CREATE OR REPLACE).
+
+ALTER TABLE kg_nodes ADD COLUMN IF NOT EXISTS aliases text[] NOT NULL DEFAULT '{}';
+ALTER TABLE kg_nodes ADD COLUMN IF NOT EXISTS summary_hash text;
+
+CREATE INDEX IF NOT EXISTS kg_nodes_aliases_gin
+    ON kg_nodes USING GIN (aliases);
+
+CREATE INDEX IF NOT EXISTS kg_nodes_aliases_trgm
+    ON kg_nodes USING GIN (array_to_string(aliases, ' ') gin_trgm_ops);
+
+-- Replace rag_resolve_entity_anchors to also match aliases + emit matched_via.
+-- Return signature adds matched_via text while keeping node_id first column so
+-- existing callers that only read node_id are unaffected.
+CREATE OR REPLACE FUNCTION rag_resolve_entity_anchors(p_sandbox_id uuid, p_entities text[])
+RETURNS TABLE (node_id text, matched_via text)
+LANGUAGE sql STABLE AS $$
+    SELECT DISTINCT ON (n.id)
+        n.id AS node_id,
+        CASE
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                WHERE n.name ILIKE '%' || e || '%'
+            ) THEN 'name'
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                WHERE e = ANY(n.tags)
+            ) THEN 'tag'
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                         , unnest(n.aliases) a
+                WHERE a ILIKE '%' || e || '%'
+            ) THEN 'alias'
+            ELSE 'name'
+        END AS matched_via
+    FROM rag_sandbox_members m
+    JOIN kg_nodes n
+      ON n.id = m.node_id
+     AND n.user_id = m.user_id
+    WHERE m.sandbox_id = p_sandbox_id
+      AND (
+        EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+            WHERE n.name ILIKE '%' || e || '%' OR e = ANY(n.tags)
+        )
+        OR EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+                     , unnest(n.aliases) a
+            WHERE a ILIKE '%' || e || '%'
+        )
+      )
+$$;

@@ -17,6 +17,10 @@ iter-12 Class P: per-entity calls are now gathered concurrently via
 asyncio.gather with a Semaphore(3) per-request gate. RPC bodies run in
 asyncio.to_thread via rpc_call so the event loop is never blocked.
 
+iter-12 R5: rag_resolve_entity_anchors now returns (node_id, matched_via).
+The matched_via column ('name' | 'tag' | 'alias') is logged per-node so alias
+coverage is observable without changing the public set[str] return type.
+
 iter-12 R6: optional EntityBlocklist wired in — records miss/hit per entity
 so consistently-unresolvable entities are blocked from future RPC calls.
 """
@@ -66,19 +70,20 @@ async def resolve_anchor_nodes(
         return set()
     request_sem = asyncio.Semaphore(_ENTITY_GATHER_SIZE)
 
-    async def _resolve_one(entity: str) -> set[str]:
+    async def _resolve_one(entity: str) -> list[dict]:
+        """Return list of {node_id, matched_via} rows; empty list on miss/error."""
         if not isinstance(entity, str):
-            return set()
+            return []
         cleaned = entity.strip()
         if not cleaned:
-            return set()
+            return []
 
         # iter-12 R6: skip blocked entities (fail-open — is_blocked returns False on error)
         if blocklist is not None:
             try:
                 if await blocklist.is_blocked(str(sandbox_id), cleaned, node_count=kasten_node_count):
                     _log.debug("entity_anchor skip_blocked entity=%r", cleaned)
-                    return set()
+                    return []
             except Exception as exc:  # noqa: BLE001 — fail-open
                 _log.warning("entity_anchor blocklist.is_blocked error entity=%r: %s", cleaned, exc)
 
@@ -90,7 +95,17 @@ async def resolve_anchor_nodes(
                 ),
                 request_sem=request_sem,
             )
-            node_ids = {row["node_id"] for row in (response.data or []) if row.get("node_id")}
+            # iter-12 R5: RPC now returns (node_id, matched_via); old schema
+            # returned only node_id — default matched_via to 'name' for compat.
+            rows = [
+                {
+                    "node_id": row["node_id"],
+                    "matched_via": row.get("matched_via") or "name",
+                }
+                for row in (response.data or [])
+                if row.get("node_id")
+            ]
+            node_ids = {r["node_id"] for r in rows}
 
             # iter-12 R6: record resolution outcome for blocklist
             if blocklist is not None:
@@ -102,20 +117,28 @@ async def resolve_anchor_nodes(
                 except Exception as exc:  # noqa: BLE001 — never let blocklist writes fail the request
                     _log.warning("entity_anchor blocklist record error entity=%r: %s", cleaned, exc)
 
-            return node_ids
+            return rows
         except Exception as exc:  # noqa: BLE001 — best-effort, isolated
             _log.debug("entity_anchor rpc_error entity=%r exc=%s", cleaned, type(exc).__name__)
-            return set()
+            return []
 
-    results = await asyncio.gather(*[_resolve_one(e) for e in entities])
-    resolved = set().union(*results)
+    per_entity_rows: list[list[dict]] = await asyncio.gather(*[_resolve_one(e) for e in entities])
+    # Build node_id → matched_via map; last-seen matched_via wins on duplicates.
+    node_matched_via: dict[str, str] = {}
+    for rows in per_entity_rows:
+        for row in rows:
+            node_matched_via[row["node_id"]] = row["matched_via"]
+
+    resolved = set(node_matched_via)
     clean_entities = {e.strip() for e in entities if isinstance(e, str) and e.strip()}
     missing = clean_entities - resolved
     missing_repr = sorted(missing)[:10]
+    # iter-12 R5: log matched_via distribution so alias coverage is observable
     _log.info(
-        "entity_anchor_resolve n_entities=%d resolved=%d missing=%r",
+        "entity_anchor_resolve n_entities=%d resolved=%d matched_via=%r missing=%r",
         len(entities),
         len(resolved),
+        {nid: via for nid, via in node_matched_via.items()},
         missing_repr,
     )
     return resolved
