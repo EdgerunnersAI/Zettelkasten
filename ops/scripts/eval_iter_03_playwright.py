@@ -295,6 +295,26 @@ def _is_refusal(text: str) -> bool:
     return any(p.search(text or "") for p in REFUSAL_PATTERNS)
 
 
+def _set_gold_for_query(result: dict, *, primary: str | None, expected: list[str]) -> None:
+    """iter-12 Task 15: E1 contract — refusal-expected rows get gold_at_1=None (N/A)."""
+    result["expected_empty"] = not bool(expected)
+    if result["expected_empty"]:
+        result["gold_at_1"] = None  # E1 N/A; excluded from scored denominator
+    else:
+        result["gold_at_1"] = bool(primary and primary in expected)
+
+
+def _set_latency_fields(result: dict, *, synth_ms: float | None, p_user_complete_ms: float | None) -> None:
+    """iter-12 Task 15: clarify the historical latency_ms_server misname.
+
+    latency_ms_server was the synth-after-TTFT timer (H4); iter-12 adds explicit
+    names. Legacy field kept one iter for reader transition; remove in iter-13.
+    """
+    result["latency_ms_synth_after_ttft"] = synth_ms
+    result["latency_ms_server_total"] = p_user_complete_ms
+    result["latency_ms_server"] = synth_ms  # legacy alias; remove in iter-13
+
+
 def _shoot(page: Page, slug: str) -> str:
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     out = SCREENSHOTS_DIR / f"{slug}.png"
@@ -1095,7 +1115,7 @@ def phase_post_diversification_qa(page: Page, token: str, sandbox_id: str,
             result["primary_citation"] = citations[0]["node_id"] if citations else None
             result["critic_verdict"] = turn.get("critic_verdict")
             result["llm_model"] = turn.get("llm_model")
-            result["latency_ms_server"] = turn.get("latency_ms")
+            _set_latency_fields(result, synth_ms=turn.get("latency_ms"), p_user_complete_ms=result.get("p_user_complete_ms"))
             refused = _is_refusal(result["answer"])
             result["refused"] = refused
             # Match: primary citation matches one of the new node_ids.
@@ -1209,7 +1229,7 @@ def phase_rag_qa_chain(page: Page, token: str, sandbox_id: str,
         }
         if not resp.get("ok"):
             result["error"] = resp.get("error") or resp.get("raw") or "unknown"
-            result["gold_at_1"] = False
+            _set_gold_for_query(result, primary=None, expected=list(_expected_set(q)))
         else:
             if use_sse:
                 turn = resp.get("turn") or {}
@@ -1226,7 +1246,7 @@ def phase_rag_qa_chain(page: Page, token: str, sandbox_id: str,
             result["critic_verdict"] = turn.get("critic_verdict")
             result["llm_model"] = turn.get("llm_model")
             result["query_class"] = turn.get("query_class")
-            result["latency_ms_server"] = turn.get("latency_ms")
+            _set_latency_fields(result, synth_ms=turn.get("latency_ms"), p_user_complete_ms=result.get("p_user_complete_ms"))
             result["retrieved_node_ids"] = turn.get("retrieved_node_ids", [])
             if use_sse:
                 result["session_id"] = turn.get("session_id") or resp.get("session_id")
@@ -1235,15 +1255,8 @@ def phase_rag_qa_chain(page: Page, token: str, sandbox_id: str,
             refused = _is_refusal(result.get("answer", ""))
             expected = _expected_set(q)
             result["refused"] = refused
-            if q.get("class") == "adversarial-negative" or qid == "q9":
-                result["gold_at_1"] = (not citations) or refused
-            elif not expected:
-                result["gold_at_1"] = False
-            else:
-                result["gold_at_1"] = bool(
-                    result["primary_citation"] and result["primary_citation"] in expected
-                )
-            result["over_refusal"] = refused and (q.get("class") != "adversarial-negative") and (qid != "q9")
+            _set_gold_for_query(result, primary=result["primary_citation"], expected=list(expected))
+            result["over_refusal"] = refused and not result["expected_empty"]
 
         budget = RAG_HIGH_LATENCY_BUDGET_MS if quality == "high" else RAG_FAST_LATENCY_BUDGET_MS
         # iter-09 RES-5: prefer p_user_complete_ms (TTLT) over elapsed_ms once SSE
@@ -1443,8 +1456,19 @@ def phase_modal_select_all(page: Page, site: str) -> PhaseReport:
 
 def _qa_summary(qa: PhaseReport) -> dict:
     rows = [c.detail or {} for c in qa.checks if c.detail]
+    # iter-12 Task 15: E1 — refusal-expected rows are N/A; scored = non-empty-expected only.
+    scored = [r for r in rows if not r.get("expected_empty")]
+    n_scored = len(scored)
     total = len(rows)
-    passes = sum(1 for r in rows if r.get("gold_at_1"))
+    # accuracy_user_visible: gold@1 AND not refused AND not over_refusal, over scored rows only.
+    user_visible_passes = sum(
+        1 for r in scored
+        if r.get("gold_at_1") is True
+        and not r.get("over_refusal")
+        and not r.get("refused")
+    )
+    # end_to_end_gold_at_1: unconditional primary-match over scored rows (legacy metric preserved).
+    primary_passes = sum(1 for r in scored if r.get("gold_at_1") is True)
     over_refusals = sum(1 for r in rows if r.get("over_refusal"))
     infra = sum(1 for r in rows if (r.get("http_status") or 0) >= 500)
     elapsed = sorted((r.get("elapsed_ms") or 0) for r in rows)
@@ -1464,7 +1488,10 @@ def _qa_summary(qa: PhaseReport) -> dict:
 
     return {
         "total": total,
-        "end_to_end_gold_at_1": round(passes / max(total, 1), 4),
+        "n_scored": n_scored,
+        "n_not_applicable": total - n_scored,
+        "accuracy_user_visible": round(user_visible_passes / max(n_scored, 1), 4),
+        "end_to_end_gold_at_1": round(primary_passes / max(n_scored, 1), 4),
         "synthesizer_over_refusals": over_refusals,
         "infra_failures": infra,
         "p95_latency_ms": p95,
