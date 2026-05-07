@@ -9,6 +9,10 @@
 -- pgcrypto for gen_random_uuid() (usually enabled by default in Supabase)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- pg_trgm for trigram-similarity indexes and the % operator used in
+-- rag_resolve_entity_anchors trgm tier.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 
 -- ── Table: kg_users ─────────────────────────────────────────────────────────
 -- Maps external Render auth users to KG-local records.
@@ -27,6 +31,15 @@ CREATE TABLE IF NOT EXISTS kg_users (
 
 COMMENT ON TABLE  kg_users IS 'KG user records — maps Render auth IDs to local UUIDs';
 COMMENT ON COLUMN kg_users.render_user_id IS 'External user ID from Render authentication';
+
+
+-- ── Helper: immutable_array_to_text ─────────────────────────────────────────
+-- Must be defined before kg_nodes so the GENERATED ALWAYS AS column can
+-- reference it. array_to_string is STABLE; wrapping makes it IMMUTABLE for
+-- pure-text inputs (no locale-dependent code paths).
+CREATE OR REPLACE FUNCTION immutable_array_to_text(text[])
+  RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE
+  AS $$ SELECT array_to_string($1, ' ') $$;
 
 
 -- ── Table: kg_nodes ─────────────────────────────────────────────────────────
@@ -50,6 +63,8 @@ CREATE TABLE IF NOT EXISTS kg_nodes (
     extraction_confidence   TEXT,
     aliases         TEXT[]      NOT NULL DEFAULT '{}',
     summary_hash    TEXT,
+    -- Generated column for trigram index; kept in sync with aliases automatically.
+    aliases_flat    TEXT        GENERATED ALWAYS AS (immutable_array_to_text(aliases)) STORED,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
@@ -114,9 +129,9 @@ CREATE INDEX IF NOT EXISTS idx_kg_nodes_tags
 CREATE INDEX IF NOT EXISTS kg_nodes_aliases_gin
     ON kg_nodes USING GIN (aliases);
 
--- Fuzzy alias matching via pg_trgm
+-- Fuzzy alias matching via pg_trgm on the generated aliases_flat column.
 CREATE INDEX IF NOT EXISTS kg_nodes_aliases_trgm
-    ON kg_nodes USING GIN (array_to_string(aliases, ' ') gin_trgm_ops);
+    ON kg_nodes USING GIN (aliases_flat gin_trgm_ops);
 
 -- Filter by source type per user
 CREATE INDEX IF NOT EXISTS idx_kg_nodes_user_source
@@ -555,22 +570,59 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 
--- ── RPC: rag_resolve_entity_anchors (iter-08 Phase 6 entity anchor) ─────────
--- Map entity-name list to canonical Kasten member node_ids via fuzzy title
--- (kg_nodes.name ILIKE %e%) or exact tag membership. Migration:
--- supabase/website/kg_public/migrations/2026-05-03_rag_entity_anchor.sql.
+-- ── RPC: rag_resolve_entity_anchors (iter-12 Task 28 hotfix 2026-05-07) ──────
+-- Map entity-name list to canonical Kasten member node_ids. Tier order:
+--   name (ILIKE) → alias (ILIKE) → tag (exact) → trgm fuzzy (aliases_flat %)
+-- matched_via column lets callers observe which tier fired. Migration:
+-- supabase/website/kg_public/migrations/2026-05-07_kg_node_aliases.sql.
 CREATE OR REPLACE FUNCTION rag_resolve_entity_anchors(p_sandbox_id uuid, p_entities text[])
-RETURNS TABLE (node_id text)
+RETURNS TABLE (node_id text, matched_via text)
 LANGUAGE sql STABLE AS $$
-    SELECT DISTINCT n.id AS node_id
+    SELECT DISTINCT ON (n.id)
+        n.id AS node_id,
+        CASE
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                WHERE n.name ILIKE '%' || e || '%'
+            ) THEN 'name'
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                         , unnest(n.aliases) a
+                WHERE a ILIKE '%' || e || '%'
+            ) THEN 'alias'
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                WHERE e = ANY(n.tags)
+            ) THEN 'tag'
+            WHEN EXISTS (
+                SELECT 1 FROM unnest(p_entities) e
+                WHERE n.aliases_flat % e
+            ) THEN 'trgm'
+            ELSE 'name'
+        END AS matched_via
     FROM rag_sandbox_members m
     JOIN kg_nodes n
       ON n.id = m.node_id
      AND n.user_id = m.user_id
     WHERE m.sandbox_id = p_sandbox_id
-      AND EXISTS (
-        SELECT 1 FROM unnest(p_entities) e
-        WHERE n.name ILIKE '%' || e || '%' OR e = ANY(n.tags)
+      AND (
+        EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+            WHERE n.name ILIKE '%' || e || '%'
+        )
+        OR EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+                     , unnest(n.aliases) a
+            WHERE a ILIKE '%' || e || '%'
+        )
+        OR EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+            WHERE e = ANY(n.tags)
+        )
+        OR EXISTS (
+            SELECT 1 FROM unnest(p_entities) e
+            WHERE n.aliases_flat % e
+        )
       )
 $$;
 
