@@ -43,6 +43,7 @@ if str(ROOT) not in sys.path:
 from website.features.rag_pipeline.evaluation.composite import hash_weights_file
 from website.features.rag_pipeline.evaluation.eval_runner import EvalRunner
 from website.features.rag_pipeline.evaluation.types import GoldQuery, GraphLift
+from website.features.rag_pipeline.observability.kasten_stats import KastenStats
 
 WEIGHTS_PATH = ROOT / "docs" / "rag_eval" / "_config" / "composite_weights.yaml"
 
@@ -255,7 +256,7 @@ def _align_queries(
     return aligned_gold, aligned_ans
 
 
-def _holistic_metrics(qa_checks: list[dict]) -> dict[str, Any]:
+def _holistic_metrics(qa_checks: list[dict], kasten_slug: str = "") -> dict[str, Any]:
     """Compute the iter-04 holistic monitoring metrics straight off the
     Playwright qa_checks. All derivable from verification_results.json
     today; no harness change required.
@@ -331,9 +332,23 @@ def _holistic_metrics(qa_checks: list[dict]) -> dict[str, Any]:
             within_budget_yes += int(wb)
     metrics["n_queries"] = n
     metrics["critic_verdict_distribution"] = verdicts
-    # Magnet-spotter: nodes that won >= 25% of queries' primary slot.
-    threshold = max(1, n // 4)
-    magnets = {nid: c for nid, c in primary_counts.items() if c >= threshold}
+    # Magnet-spotter: per-Kasten bootstrap threshold (iter-12 K4).
+    # Build KastenStats from this eval's rows; kasten_slug is the bootstrap key.
+    _stats = KastenStats(window=50, n_min=20)
+    for _chk in qa_checks:
+        _primary = (_chk.get("detail") or {}).get("primary_citation")
+        if _primary and kasten_slug:
+            _stats.record(kasten_slug, _primary)
+    _dyn_threshold = _stats.bootstrap_threshold(kasten_slug) if kasten_slug else 0.25
+    _n_with_primary = sum(
+        1 for _chk in qa_checks
+        if (_chk.get("detail") or {}).get("primary_citation")
+    )
+    _is_static = _n_with_primary < 20
+    metrics["magnet_threshold"] = _dyn_threshold
+    metrics["magnet_threshold_is_static"] = _is_static
+    count_threshold = max(1, round(_dyn_threshold * n))
+    magnets = {nid: c for nid, c in primary_counts.items() if c >= count_threshold}
     metrics["primary_citation_distribution"] = primary_counts
     metrics["primary_citation_magnets"] = magnets
     metrics["query_class_distribution"] = classes
@@ -555,7 +570,14 @@ def _render_scores_md(
     ):
         lines.append(f"- {qc}: {count}")
     magnets = holistic.get("primary_citation_magnets") or {}
-    lines += ["", "### magnet-spotter (>=25% top-1 share)"]
+    _thr = holistic.get("magnet_threshold", 0.25)
+    _static = holistic.get("magnet_threshold_is_static", True)
+    _thr_label = (
+        f">= 0.25 (static fallback, n<20)"
+        if _static
+        else f">= dynamic threshold {_thr:.2f}"
+    )
+    lines += ["", f"### magnet-spotter ({_thr_label})"]
     if magnets:
         for nid, count in sorted(magnets.items(), key=lambda kv: -kv[1]):
             lines.append(f"- ⚠️ {nid}: top-1 in {count}/{n_queries} queries")
@@ -688,7 +710,8 @@ async def main_async(args) -> int:
         graph_lift=GraphLift(composite=0.0, retrieval=0.0, reranking=0.0),
     )
 
-    holistic = _holistic_metrics(qa_checks)
+    kasten_slug = queries_json.get("_meta", {}).get("kasten_slug", "")
+    holistic = _holistic_metrics(qa_checks, kasten_slug=kasten_slug)
     burst = _burst_metrics(verification)
 
     eval_payload = result.model_dump(mode="json")

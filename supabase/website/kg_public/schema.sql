@@ -697,6 +697,19 @@ $$;
 GRANT EXECUTE ON FUNCTION rag_dense_recall(uuid, text[], vector, int) TO anon, authenticated;
 
 
+-- supabase/website/kg_public/migrations/2026-05-07_kasten_metrics.sql.
+-- iter-12 Task 7 / Class K4 — per-Kasten rolling top-1 frequency record.
+CREATE TABLE IF NOT EXISTS kg_kasten_metrics (
+  id           bigserial    PRIMARY KEY,
+  sandbox_id   uuid         NOT NULL,
+  top1_node_id text         NOT NULL,
+  ts           timestamptz  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS kg_kasten_metrics_sandbox_ts_idx
+  ON kg_kasten_metrics(sandbox_id, ts DESC);
+
+
 -- ── Done ────────────────────────────────────────────────────────────────────
 -- Run this SQL in the Supabase SQL Editor (Dashboard → SQL Editor → New query).
 -- After running, verify tables exist in Table Editor.
