@@ -48,6 +48,9 @@ class KGNode(BaseModel):
     extraction_confidence: str | None = None
     engine_version: str | None = None
     embedding: list[float] | None = Field(default=None, description="Semantic embedding vector (768-dim)")
+    # iter-12 R5: LLM-generated entity aliases + hash for idempotent re-gen
+    aliases: list[str] = Field(default_factory=list)
+    summary_hash: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
