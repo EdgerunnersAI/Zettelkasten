@@ -695,3 +695,45 @@ After anchor-boost flip (master HEAD: 3d440c0):
 Note: q10 single-query smoke test skipped per operator instruction (2026-05-07):
 "I'll run iter-12 myself" — eval is operator-driven. Phase 2 burst probe is
 sufficient validation for the Phase 3 gate decision.
+
+---
+
+## Task 33 — Q13 forensic finding + SKIP rationale (2026-05-07)
+
+**Verified from `iter-11/verification_results.json:1149-1180` + droplet logs:**
+q13 (multi_hop, gold=`nl-the-pragmatic-engineer-t`) failed not because of the
+critic floor, but because retrieval was empty. `latency_ms_server=14118 ms`,
+`retrieved_node_ids=[]`, `reranked_node_ids=[]`, `cited_node_ids=[]`,
+`critic_verdict=retry_budget_exceeded`. STEP_BACK-mutation retry hit the 12s
+`_RETRY_BUDGET_S` `asyncio.wait_for` timeout.
+
+**Why "lower `_UNSUPPORTED_WITH_GOLD_SKIP_FLOOR(LOOKUP)` 0.7→0.5" is wrong:**
+the proposal targets the post-rerank gold-skip gate. q13 never reached that
+gate — retrieval had zero candidates to score. Lowering the floor cannot fix
+a query where retrieval itself failed.
+
+**q13's actual fixes live in iter-12 retrieval-stage tasks:**
+- Class P (PATH_F) eliminates sync-RPC blocking that competed for thread
+  budget against burst neighbours during eval (T1).
+- Task 28 (R5 alias canonicalization) makes "Pragmatic Engineer" /
+  "product-minded engineer" resolve to `nl-the-pragmatic-engineer-t` through
+  the alias array even when the metadata extractor surfaces only fragments.
+- Task 29 (R6 confidence-thresholded extraction + cap-3) reduces noise
+  entities competing for anchor-resolve RPC budget.
+- Task 32 (R2 slot-1 anchor pin) ensures any successfully-resolved anchor is
+  never lost to xQuAD's slot-1 = argmax(rrf) collision.
+
+**iter-13+ deferred alternatives (good engineering, but DOES NOT address q13):**
+
+| Alternative | Trigger condition for iter-13 |
+|---|---|
+| Per-Kasten quantile-calibrated rerank floor (rolling p70) | `audit_ce_distribution.py` decision = `ACTIVATE_A1_PER_KASTEN_FLOOR` (T35 monitor). Otherwise close. |
+| Top-K NLI faithfulness voting | iter-12 D3 carry-over (~150 MB DeBERTa); ship if `under_refusal_rate > 0.05` after iter-12 |
+| Conformal selective abstention (per-Kasten coverage target) | iter-14+: requires labeled calibration set per Kasten (10-30 graded queries) |
+| Adaptive retry budget (`base + 0.5 × first_pass_pool_size`, capped 22s) | MEDIUM confidence per R1; iter-13 carry-over |
+
+**Static `_UNSUPPORTED_WITH_GOLD_SKIP_FLOOR=0.7` REMAINS in iter-12** (CLAUDE.md
+guardrail). q13's failure was retrieval-empty, verified. Confidence: HIGH on
+diagnosis; HIGH on SKIP-iter-12 verdict; MEDIUM on iter-13 deferral being the
+right answer (empirical CE-distribution audit may show static floor is
+universally correct).
