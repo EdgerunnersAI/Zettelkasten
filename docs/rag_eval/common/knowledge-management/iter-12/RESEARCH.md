@@ -616,3 +616,31 @@ Additionally: the q5 failure-mode attribution ("iter-11 Class A title-overlap ex
 ## Class P implementation note — semaphore acquisition order (2026-05-07)
 
 PLAN.md L201-205 sketches the rpc_call wrapper with `_RPC_SEM` (global) as the outer context manager and `request_sem` (per-request) as the inner. The implemented code in `_async_helpers.py` reverses that nesting (`request_sem` outer, `_RPC_SEM` inner). The reversal avoids priority inversion: with PLAN's order, a coroutine that holds a scarce global slot can be blocked waiting on its own per-request gate, idling a global slot. With the implemented order, the cheap per-request slot is held while the scarce global slot is awaited — the standard "acquire cheap before scarce" pattern. Effective concurrency under steady state is identical (`min(request_sem, _RPC_SEM)`); only queueing dynamics differ. User-approved deviation 2026-05-07.
+
+---
+
+## Phase 1 deploy incident (2026-05-07)
+
+Initial Phase 1 push (`051a732` → origin/master) failed at the Docker Compose
+startup step. Commit `cdc1959` (Task 23) added `/opt/zettelkasten/compose/.env.local`
+as a second `env_file` entry on both compose files. Docker Compose v2's default
+behavior is `required: true` for every env_file entry; the file did not exist
+on the droplet, so blue and green both failed to start, and the rollback to the
+prior green also failed (same missing file). Caddy lost both upstreams;
+zettelkasten.in served 502 for approximately 8 minutes (first failure
+2026-05-07T14:06:44Z → touch + rerun triggered 14:14:23Z).
+
+Recovery (A+B, user-approved):
+- A: SSH to droplet via local `zettelkasten_deploy` key; `touch /opt/zettelkasten/compose/.env.local`
+  as the `deploy` user (owns the compose dir — no sudo needed); mode 600; re-ran
+  the failed GHA deploy run `25500631032`. Service restored.
+- B: Hotfix commit changes the env_file entries to the explicit `path:` /
+  `required:` form so `.env.local` is optional. Docker Compose v5.1.1 on the
+  droplet fully supports `required: false`. Future droplet rebuilds with no
+  `.env.local` will start cleanly. Tests (`test_compose_blue_has_env_local_overlay`,
+  `test_compose_green_has_env_local_overlay`) still pass — both use a substring
+  check for `.env.local` which is present in the new `path:` syntax.
+
+Lesson: any `env_file` entry added to a compose file should be tested against a
+fresh droplet snapshot OR explicitly marked `required: false`. Add to the iter-13
+PLAN authoring checklist.

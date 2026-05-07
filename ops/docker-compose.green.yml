@@ -5,8 +5,10 @@ services:
     hostname: zettelkasten-green
     restart: unless-stopped
     env_file:
-      - /opt/zettelkasten/compose/.env
-      - /opt/zettelkasten/compose/.env.local
+      - path: /opt/zettelkasten/compose/.env
+        required: true
+      - path: /opt/zettelkasten/compose/.env.local
+        required: false
     environment:
       WEBHOOK_PORT: "10000"
       NEXUS_ENABLED: "true"
