@@ -93,3 +93,81 @@ def test_anchor_node_exempted_unconditionally():
         anchor_nodes={"anchored-magnet"},
     )
     assert cands[0].rrf_score == pre_score, "anchored candidate must not demote"
+
+
+def test_pick_anchor_pin_returns_anchored_with_evidence():
+    """Anchored candidate with title boost >= 0.05 is the chosen pin."""
+    from website.features.rag_pipeline.retrieval.hybrid import _pick_anchor_pin
+    cands = [
+        _cand("a", 0.55, 0.60, title_boost=0.30),
+        _cand("anchored", 0.10, 0.50, title_boost=0.10),
+        _cand("b", 0.50, 0.55, title_boost=0.20),
+    ]
+    pin = _pick_anchor_pin(cands, anchor_neighbours={"anchored"}, evidence_floor=0.05)
+    assert pin is not None
+    assert pin.node_id == "anchored"
+
+
+def test_pick_anchor_pin_returns_none_without_evidence():
+    """Anchored but boost < evidence_floor → no pin (vanilla xQuAD path)."""
+    from website.features.rag_pipeline.retrieval.hybrid import _pick_anchor_pin
+    cands = [
+        _cand("a", 0.55, 0.60, title_boost=0.30),
+        _cand("anchored", 0.10, 0.50, title_boost=0.0),
+    ]
+    pin = _pick_anchor_pin(cands, anchor_neighbours={"anchored"}, evidence_floor=0.05)
+    assert pin is None
+
+
+def test_pick_anchor_pin_returns_none_when_anchor_not_in_pool():
+    """Anchor resolved but candidate not retrieved → None."""
+    from website.features.rag_pipeline.retrieval.hybrid import _pick_anchor_pin
+    cands = [_cand("a", 0.55, 0.60, title_boost=0.30)]
+    pin = _pick_anchor_pin(cands, anchor_neighbours={"missing"}, evidence_floor=0.05)
+    assert pin is None
+
+
+def test_pick_anchor_pin_picks_highest_rrf_among_qualifying():
+    """When multiple anchors qualify, the highest rrf wins."""
+    from website.features.rag_pipeline.retrieval.hybrid import _pick_anchor_pin
+    cands = [
+        _cand("a1", 0.10, 0.40, title_boost=0.10),
+        _cand("a2", 0.10, 0.60, title_boost=0.20),
+        _cand("a3", 0.10, 0.50, title_boost=0.15),
+    ]
+    pin = _pick_anchor_pin(cands, anchor_neighbours={"a1", "a2", "a3"}, evidence_floor=0.05)
+    assert pin is not None
+    assert pin.node_id == "a2"
+
+
+def test_demote_factor_percentile_top_pool_gentle():
+    """Magnet at the top percentile gets a gentle factor (~0.90)."""
+    from website.features.rag_pipeline.retrieval.hybrid import _demote_factor_for_candidate
+    pool = [0.10, 0.30, 0.50, 0.55, 0.60]
+    top_cand = _cand("magnet", 0.60, 0.65)
+    factor = _demote_factor_for_candidate(top_cand, pool)
+    # base 0.60 is the max → percentile ≈ 1.0 → factor ≈ 0.90
+    assert 0.85 <= factor <= 0.91
+
+
+def test_demote_factor_percentile_bottom_firm():
+    """Magnet near the bottom of the rrf pool gets a firmer factor than the top.
+
+    base=0.05 is below pool min 0.10 → rank_above=0.0 →
+    factor = 1.0 - 0.20*(1.0-0.0) = 0.80 (firmer than top-cand 0.90).
+    """
+    from website.features.rag_pipeline.retrieval.hybrid import _demote_factor_for_candidate
+    pool = [0.10, 0.30, 0.50, 0.55, 0.60]
+    bottom_cand = _cand("magnet", 0.05, 0.65)  # base 0.05 below pool
+    factor = _demote_factor_for_candidate(bottom_cand, pool)
+    # rank_above=0.0, slope=0.20 → factor = 0.80
+    assert 0.79 <= factor <= 0.81
+
+
+def test_demote_factor_clamped_in_range():
+    """Factor always in [0.70, 0.90]."""
+    from website.features.rag_pipeline.retrieval.hybrid import _demote_factor_for_candidate
+    cand = _cand("x", 0.5, 0.5)
+    pool_normal = [0.1, 0.3, 0.5]
+    f = _demote_factor_for_candidate(cand, pool_normal)
+    assert 0.70 <= f <= 0.90

@@ -64,9 +64,7 @@ _DENSE_FALLBACK_ENABLED = os.environ.get(
 
 # iter-10 P3 magnet-gate scalar knobs (the QueryClass tuple lives after the
 # types import a few lines down).
-_SCORE_RANK_DEMOTE_FACTOR = float(
-    os.environ.get("RAG_SCORE_RANK_DEMOTE_FACTOR", "0.85")
-)
+# _SCORE_RANK_DEMOTE_FACTOR removed — replaced by _demote_factor_for_candidate (iter-12 T32)
 _SCORE_RANK_DISPROP_QUARTILES = float(
     os.environ.get("RAG_SCORE_RANK_DISPROP_QUARTILES", "1.0")
 )
@@ -83,6 +81,9 @@ _TITLE_OVERLAP_FLOOR_FALLBACK = float(os.environ.get("RAG_TITLE_OVERLAP_FLOOR_FA
 # iter-12 Class K3: clear-winner confidence-gap bypass. When top1/top2 >= threshold
 # the rerank ordering has already separated the winner; magnet damping is unnecessary.
 _SCORE_RANK_GAP_BYPASS = float(os.environ.get("RAG_SCORE_RANK_GAP_BYPASS", "1.5"))
+
+# iter-12 Task 32 (R2): percentile-derived demote slope; replaces static 0.85 factor.
+_DEMOTE_SLOPE = float(os.environ.get("RAG_SCORE_RANK_DEMOTE_SLOPE", "0.20"))
 
 from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate, ScopeFilter, SourceType, ChunkKind
 
@@ -157,6 +158,45 @@ _XQUAD_LAMBDA_BY_CLASS: dict[QueryClass, float] = {
 
 def _xquad_lambda_for_class(query_class: QueryClass | None) -> float:
     return _XQUAD_LAMBDA_BY_CLASS.get(query_class, _XQUAD_LAMBDA_DEFAULT)
+
+
+def _pick_anchor_pin(
+    candidates,
+    anchor_neighbours,
+    *,
+    evidence_floor: float = 0.05,
+):
+    """iter-12 Task 32 (R2 slot-constraint pattern).
+
+    Pick the highest-rrf anchored candidate whose `_title_overlap_boost`
+    crosses `evidence_floor`. Returns None when no candidate qualifies
+    (vanilla xQuAD fallback). Cap pin to slot-1 only — anchors 2/N still
+    compete via xQuAD diversity.
+    """
+    if not anchor_neighbours:
+        return None
+    qualifying = [
+        c for c in candidates
+        if c.node_id in anchor_neighbours
+        and float(c.metadata.get("_title_overlap_boost", 0.0)) >= evidence_floor
+    ]
+    if not qualifying:
+        return None
+    return max(qualifying, key=lambda c: c.rrf_score)
+
+
+def _demote_factor_for_candidate(candidate, base_rrf_pool: list[float]) -> float:
+    """iter-12 Task 32 (R2 percentile-derived demote).
+
+    Replaces static 0.85 factor. Top-percentile magnet gets gentle ~0.90;
+    bottom-percentile gets firmer ~0.70. Single slope knob scales per query.
+    """
+    base = float(candidate.metadata.get("_base_rrf_score", candidate.rrf_score))
+    n = len(base_rrf_pool)
+    if n == 0:
+        return 0.85  # legacy fallback — edge case with empty pool
+    rank_above = sum(1 for s in base_rrf_pool if s <= base) / n
+    return max(0.70, min(0.90, 1.0 - _DEMOTE_SLOPE * (1.0 - rank_above)))
 
 
 # iter-08 Phase 3.3: text-only compare-intent detection. Closes iter-07
@@ -295,6 +335,8 @@ def _apply_score_rank_demote(
     current_rank = {id(c): (n - i) / n for i, c in enumerate(current_sorted)}
 
     delta_threshold = _SCORE_RANK_DISPROP_QUARTILES * 0.25
+    # iter-12 Task 32: build base_rrf_pool once for percentile-derived factor.
+    base_pool = [float(c.metadata.get("_base_rrf_score", c.rrf_score)) for c in candidates]
     n_demoted = 0
     n_title_demoted = 0
     factor_sum = 0.0
@@ -309,23 +351,23 @@ def _apply_score_rank_demote(
         rank_pct = current_rank[id(c)]
         delta = rank_pct - base_pct
         if delta >= delta_threshold:
-            c.rrf_score *= _SCORE_RANK_DEMOTE_FACTOR
+            factor = _demote_factor_for_candidate(c, base_pool)
+            c.rrf_score *= factor
             n_demoted += 1
-            factor_sum += _SCORE_RANK_DEMOTE_FACTOR
+            factor_sum += factor
         title_boost = float(c.metadata.get("_title_overlap_boost", 0.0))
         if title_boost >= _TITLE_OVERLAP_DEMOTE_FLOOR:
             c.rrf_score *= _TITLE_OVERLAP_DEMOTE_FACTOR
             n_title_demoted += 1
-    # iter-11 observability: structured log so iter-12+ can tune demote factor.
-    mean_factor = (factor_sum / n_demoted) if n_demoted else 0.0
+    # iter-12 Task 26/32 telemetry: margin tracks separation after demote.
+    post_demote = sorted(candidates, key=lambda c: c.rrf_score, reverse=True)
+    top1 = post_demote[0].rrf_score if post_demote else 0.0
+    top2 = post_demote[1].rrf_score if len(post_demote) > 1 else 0.0
+    margin = top1 - top2
     _log.info(
-        "score_rank_demote class=%s n_cands=%d n_demoted=%d title_demoted=%d mean_factor=%.3f anchored_n=%d",
+        "score_rank_demote class=%s n_cands=%d slope=%.3f post_top1=%.4f post_top2=%.4f margin=%.4f",
         getattr(query_class, "value", query_class),
-        n,
-        n_demoted,
-        n_title_demoted,
-        mean_factor,
-        len(anchored),
+        n, _DEMOTE_SLOPE, top1, top2, margin,
     )
 
 
@@ -884,7 +926,15 @@ class HybridRetriever:
         # lambda*rel - (1-lambda)*overlap_with_already_picked, where overlap
         # counts node_ids already in the picked set. Diversity-aware ranking
         # is what prevents one node monopolising the top-K (q5 fix).
-        ordered = _xquad_select(ordered, lam=_xquad_lambda_for_class(query_class))
+        # iter-12 Task 32: slot-1 anchor pin — highest-evidence anchored
+        # candidate is placed first; remaining slots run normal xQuAD.
+        lam = _xquad_lambda_for_class(query_class)
+        pin = _pick_anchor_pin(ordered, anchor_neighbours or set(), evidence_floor=0.05)
+        if pin is not None:
+            ordered_rest = [c for c in ordered if c is not pin]
+            ordered = [pin] + _xquad_select(ordered_rest, lam=lam)
+        else:
+            ordered = _xquad_select(ordered, lam=lam)
 
         # iter-04: q5 cross-corpus thematic still misses members because xQuAD's
         # 0.3 demotion can't overcome a 1.5x score gap. Promote one chunk per Kasten member

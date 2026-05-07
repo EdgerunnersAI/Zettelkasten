@@ -149,6 +149,79 @@ _BASELINE = {
         "query_variants": ["how should a knowledge worker structure a day"],
         "expected_primary": "nl-the-pragmatic-engineer-t",
     },
+    # iter-12 Task 32 fixture: multi-anchor compare-q10 shape. Two anchors
+    # in the pool; only one has earned title-overlap (name matches query).
+    # The highest-rrf qualifying anchor is pinned to slot-1; the second
+    # anchor competes via xQuAD diversity (cap pin = 1, per T32 guardrail).
+    "thematic_anchored_compare_q10": {
+        "class": "thematic",
+        "rows": [
+            _row("yt-naval-interview", "youtube", 0.40, name="Naval Interview"),
+            _row("yt-balaji-interview", "youtube", 0.38, name="Balaji Interview"),
+            _row("nl-general-essay", "newsletter", 0.50),
+            _row("web-broad-topic", "web", 0.45),
+        ],
+        "chunk_counts": {
+            "yt-naval-interview": 3,
+            "yt-balaji-interview": 3,
+            "nl-general-essay": 2,
+            "web-broad-topic": 1,
+        },
+        # query mentions "Naval Interview" verbatim → title boost fires → pin
+        "query_variants": ["what did Naval Interview say about wealth"],
+        "anchor_neighbours": {"yt-naval-interview", "yt-balaji-interview"},
+        "anchor_nodes": {"yt-naval-interview", "yt-balaji-interview"},
+        # Anchor yt-naval-interview has title-overlap → pinned slot-1.
+        # nl-general-essay has highest base rrf (0.50) but no anchor/title-pin.
+        "expected_primary": "yt-naval-interview",
+    },
+    # iter-12 Task 32 fixture: dense single-topic with a named anchor.
+    # Anchor has low base_rrf but its name matches the query verbatim.
+    # Siblings have higher rrf but no title-overlap; anchor wins via pin.
+    "thematic_dense_single_topic": {
+        "class": "thematic",
+        "rows": [
+            _row("yt-sleep-depriv", "youtube", 0.30, name="Sleep Depriv Talk"),
+            _row("nl-health-essay", "newsletter", 0.55),
+            _row("web-health-note", "web", 0.50),
+            _row("gh-health-repo", "github", 0.45),
+        ],
+        "chunk_counts": {
+            "yt-sleep-depriv": 2,
+            "nl-health-essay": 4,
+            "web-health-note": 3,
+            "gh-health-repo": 1,
+        },
+        # query mentions "Sleep Depriv Talk" verbatim → title boost fires
+        "query_variants": ["how does Sleep Depriv Talk affect cognition"],
+        "anchor_neighbours": {"yt-sleep-depriv"},
+        "anchor_nodes": {"yt-sleep-depriv"},
+        "expected_primary": "yt-sleep-depriv",
+    },
+    # iter-12 Task 32 fixture: anchor resolves but evidence floor not crossed
+    # (query does NOT mention the anchor name) → pin = None → vanilla xQuAD.
+    # nl-broad-essay has highest rrf and no score-rank disproportion → primary.
+    "thematic_anchor_mismatch": {
+        "class": "thematic",
+        "rows": [
+            _row("yt-obscure-talk", "youtube", 0.20, name="Obscure Talk"),
+            _row("nl-broad-essay", "newsletter", 0.55),
+            _row("web-related-note", "web", 0.50),
+            _row("gh-ref-repo", "github", 0.45),
+        ],
+        "chunk_counts": {
+            "yt-obscure-talk": 2,
+            "nl-broad-essay": 3,
+            "web-related-note": 2,
+            "gh-ref-repo": 1,
+        },
+        # query does NOT mention "Obscure Talk" → no title-overlap → no pin
+        "query_variants": ["how do knowledge workers stay productive"],
+        "anchor_neighbours": {"yt-obscure-talk"},
+        "anchor_nodes": {"yt-obscure-talk"},
+        # vanilla xQuAD path: nl-broad-essay wins on score + diversity
+        "expected_primary": "nl-broad-essay",
+    },
     # iter-11 Class B fixture: a multi-chunk youtube zettel whose name appears
     # verbatim in the query MUST win the THEMATIC tiebreak even though the
     # iter-10 chunk_count_quartile inversion would normally favour the lowest-
@@ -205,7 +278,9 @@ def test_class_x_source_baseline_no_regression(name: str, case: dict) -> None:
         query_class=qclass,
         chunk_counts=case["chunk_counts"],
         effective_nodes=None,
-        anchor_neighbours=None,
+        # iter-12 Task 32: pass anchor sets when the fixture defines them.
+        anchor_neighbours=case.get("anchor_neighbours"),
+        anchor_nodes=case.get("anchor_nodes"),
         anchor_seeds=None,
     )
     assert candidates, f"{name}: empty result"
