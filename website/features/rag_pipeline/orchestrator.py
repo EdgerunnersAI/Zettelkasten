@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import enum
 import hashlib
 import logging
 import os
@@ -118,6 +119,31 @@ _RETRY_GAP_BYPASS = float(os.environ.get("RAG_RETRY_GAP_BYPASS", "1.5"))
 
 def _retry_gap_bypass_threshold() -> float:
     return _RETRY_GAP_BYPASS
+
+
+# iter-12 Task 35: per-query retry outcome label for iter-13 empirical gate.
+class RetryOutcomeClass(str, enum.Enum):
+    SUCCESS = "success"
+    EMPTY_POOL = "empty_pool"
+    TIMEOUT = "timeout"
+    FLOOR_FAILED = "floor_failed"
+    STILL_UNSUPPORTED = "still_unsupported"
+
+
+def classify_retry_outcome(
+    *, retrieved_count: int, retry_fired: bool, timed_out: bool,
+    critic_verdict: str,
+) -> RetryOutcomeClass:
+    """Map retrieval/retry state to a telemetry label. Pure function, no side-effects."""
+    if retrieved_count == 0:
+        return RetryOutcomeClass.EMPTY_POOL
+    if timed_out:
+        return RetryOutcomeClass.TIMEOUT
+    if critic_verdict in ("unsupported_with_gold_skip",):
+        return RetryOutcomeClass.FLOOR_FAILED
+    if critic_verdict in ("unsupported_no_retry",) and retry_fired:
+        return RetryOutcomeClass.STILL_UNSUPPORTED
+    return RetryOutcomeClass.SUCCESS
 
 
 def _offset_for_class(query_class: "QueryClass | None", env_key: str) -> float:
@@ -1152,6 +1178,38 @@ class RAGOrchestrator:
         # iter-08 Phase 4.2: kasten_freq replaced by chunk-share normalization
         # (RES-2: floor=50 was never crossed in 6 iters of production runs).
         # record_hit was already a no-op writeback; bypassed for clarity.
+
+        # iter-12 Task 35: per-query telemetry monitors (pure log + field — no behavior change).
+        _retry_fired = "retry" in verdict
+        _timed_out = verdict == "retry_budget_exceeded"
+        _outcome = classify_retry_outcome(
+            retrieved_count=len(pre_validation_candidates),
+            retry_fired=_retry_fired,
+            timed_out=_timed_out,
+            critic_verdict=verdict,
+        )
+        turn.token_counts = dict(turn.token_counts or {})
+        turn.token_counts["retry_outcome_class"] = _outcome.value
+        _ce_scores = [
+            float(c.rerank_score) for c in pre_validation_candidates
+            if c.rerank_score is not None
+        ]
+        if _ce_scores:
+            _desc = sorted(_ce_scores, reverse=True)
+            _asc = sorted(_ce_scores)
+            _n = len(_ce_scores)
+            logger.info(
+                "ce_score_distribution session_id=%s query_class=%s phase=%s "
+                "n=%d top1=%.4f top3=%.4f median=%.4f p70=%.4f",
+                prepared.session_id,
+                getattr(prepared.query_class, "value", "unknown"),
+                "retry" if _retry_fired else "initial",
+                _n,
+                _desc[0],
+                _desc[2] if _n >= 3 else _desc[0],
+                _asc[_n // 2],
+                _asc[int(0.7 * _n)] if _n >= 4 else _asc[-1],
+            )
 
         return _PipelineResult(turn=turn, replaced_text=replaced_text)
 

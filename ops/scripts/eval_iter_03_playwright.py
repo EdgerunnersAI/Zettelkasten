@@ -1248,6 +1248,16 @@ def phase_rag_qa_chain(page: Page, token: str, sandbox_id: str,
             result["query_class"] = turn.get("query_class")
             _set_latency_fields(result, synth_ms=turn.get("latency_ms"), p_user_complete_ms=result.get("p_user_complete_ms"))
             result["retrieved_node_ids"] = turn.get("retrieved_node_ids", [])
+            # iter-12 Task 35: pool-size + timing monitors from token_counts.stage_timings.
+            # Values are None when the server hasn't supplied them; audit script degrades gracefully.
+            _tc = turn.get("token_counts") or {}
+            _st = _tc.get("stage_timings") or {}
+            result["retrieval_pool_size_initial"] = turn.get("pool_size_initial", 0)
+            result["retrieval_pool_size_retry"] = turn.get("pool_size_retry", 0)
+            result["retry_outcome_class"] = _tc.get("retry_outcome_class", "success")
+            result["t_db_wait_ms"] = _st.get("t_retrieval_ms")
+            result["t_rerank_ms"] = _st.get("t_rerank_ms")
+            result["t_synth_ms"] = _st.get("t_synth_ms")
             if use_sse:
                 result["session_id"] = turn.get("session_id") or resp.get("session_id")
             else:
