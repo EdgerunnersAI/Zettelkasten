@@ -610,3 +610,9 @@ The per-query failure-mode table in that section attributes q10's failure to "ro
 Additionally: the q5 failure-mode attribution ("iter-11 Class A title-overlap exemption with `>0.0` threshold accidentally exempted the magnet via incidental token-overlap") remains valid regardless of anchor-boost state, since Q5's mechanism (title-overlap exemption in `_apply_score_rank_demote`) is independent of the anchor flags.
 
 **No change to Class P priority:** PATH_F (asyncio.to_thread) is still the critical fix — the 50% burst 502 rate and the OOM kill (`docker inspect zettelkasten-green oom_killed=true`, confirmed in this run) both occurred WITH anchor-boost active. The sync-blocking RPCs from both the anchor-resolve loop and the main hybrid path are the structural cause, regardless of flag state.
+
+---
+
+## Class P implementation note — semaphore acquisition order (2026-05-07)
+
+PLAN.md L201-205 sketches the rpc_call wrapper with `_RPC_SEM` (global) as the outer context manager and `request_sem` (per-request) as the inner. The implemented code in `_async_helpers.py` reverses that nesting (`request_sem` outer, `_RPC_SEM` inner). The reversal avoids priority inversion: with PLAN's order, a coroutine that holds a scarce global slot can be blocked waiting on its own per-request gate, idling a global slot. With the implemented order, the cheap per-request slot is held while the scarce global slot is awaited — the standard "acquire cheap before scarce" pattern. Effective concurrency under steady state is identical (`min(request_sem, _RPC_SEM)`); only queueing dynamics differ. User-approved deviation 2026-05-07.

@@ -28,7 +28,7 @@ async def rpc_call(rpc_obj: Any, *, request_sem: asyncio.Semaphore | None = None
             method is called inside asyncio.to_thread.
         request_sem: Optional per-request semaphore for caller-side fan-out
             bounding (e.g. entity_anchor per-entity gather). Acquired BEFORE
-            the global semaphore so caller gates run first.
+            the global semaphore (outer) so a coroutine never holds a scarce global slot while blocked on its own per-request gate.
 
     Returns:
         The response object from ``.execute()`` (same as the sync call).
@@ -36,6 +36,7 @@ async def rpc_call(rpc_obj: Any, *, request_sem: asyncio.Semaphore | None = None
     Raises:
         Any exception raised by ``.execute()`` is propagated to the caller.
     """
+    # iter-12 Class P: request_sem outer / _RPC_SEM inner avoids priority inversion (a coroutine holding a scarce global slot while waiting for its own per-request gate).
     if request_sem is not None:
         async with request_sem:
             async with _RPC_SEM:

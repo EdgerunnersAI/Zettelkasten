@@ -68,10 +68,14 @@ async def resolve_anchor_nodes(
 
     results = await asyncio.gather(*[_resolve_one(e) for e in entities])
     resolved = set().union(*results)
+    clean_entities = {e.strip() for e in entities if isinstance(e, str) and e.strip()}
+    missing = clean_entities - resolved
+    missing_repr = sorted(missing)[:10]
     _log.info(
-        "entity_anchor_resolve n_entities=%d resolved=%d",
-        len([e for e in entities if isinstance(e, str) and e.strip()]),
+        "entity_anchor_resolve n_entities=%d resolved=%d missing=%r",
+        len(entities),
         len(resolved),
+        missing_repr,
     )
     return resolved
 
