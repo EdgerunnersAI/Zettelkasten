@@ -28,7 +28,8 @@ SCHEMA_FILES = [
 DB_ONLY_COLUMNS: dict[str, set[str]] = {
     "kg_users": set(),
     "kg_nodes": {
-        "fts",  # generated tsvector column for full-text search; server-side only
+        "fts",          # generated tsvector column for full-text search; server-side only
+        "aliases_flat", # GENERATED ALWAYS AS column for trgm index; Python never reads/writes it
     },
     "kg_links": {
         # iter-08 Phase 8: enum column for future edge-weighted PageRank.
