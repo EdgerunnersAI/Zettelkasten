@@ -9,6 +9,7 @@ import os
 import re
 import time
 import traceback
+from collections import namedtuple
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -346,6 +347,32 @@ _GOLD_RETRIEVED_DETAILS_TAG = (
     "Answer reflects retrieved sources; some details may be paraphrased rather than quoted verbatim."
     "</details>"
 )
+
+# iter-12 Q3 gate — return type for _decide_gold_skip_action.
+GoldSkipDecision = namedtuple("GoldSkipDecision", ["verdict", "apply_gold_tag"])
+
+
+def _decide_gold_skip_action(
+    *,
+    answer_text: str,
+    raw_content: str,
+    valid_ids: set,
+) -> GoldSkipDecision:
+    """iter-12 Q3 gate: honor gold-skip only when synth produced a real cited draft.
+
+    Returns unsupported_no_retry when answer_text==REFUSAL_PHRASE (upstream
+    citation-validation substituted it) so the user sees honest low-conf labeling
+    instead of a masked "reflects retrieved sources" tag (q3 root cause).
+    """
+    raw = (raw_content or "").strip()
+    has_real_draft = (
+        answer_text != REFUSAL_PHRASE
+        and bool(raw)
+        and has_valid_citation(raw, valid_ids)
+    )
+    if has_real_draft:
+        return GoldSkipDecision(verdict="unsupported_with_gold_skip", apply_gold_tag=True)
+    return GoldSkipDecision(verdict="unsupported_no_retry", apply_gold_tag=False)
 
 
 def _dedupe_anchor_entities(values: list[str]) -> list[str]:
@@ -989,13 +1016,19 @@ class RAGOrchestrator:
                     # answer_text and replaced_text intentionally untouched;
                     # the partial draft is the user-facing answer.
                 elif skip_reason == "unsupported_with_gold_skip":
-                    # iter-09 RES-1: LOOKUP-only sibling of partial-skip.
-                    # Surface the first-pass draft with a neutral "reflects
-                    # sources" tag rather than the negative-valence
-                    # low-confidence tag — the answer is grounded.
-                    verdict = "unsupported_with_gold_skip"
-                    if "<summary>How sure am I?</summary>" not in (answer_text or ""):
-                        answer_text = (answer_text or "") + _GOLD_RETRIEVED_DETAILS_TAG
+                    # iter-12 Q3: gate gold-skip tag on a real cited draft.
+                    decision = _decide_gold_skip_action(
+                        answer_text=answer_text,
+                        raw_content=generation.content,
+                        valid_ids=valid_ids,
+                    )
+                    verdict = decision.verdict
+                    if decision.apply_gold_tag:
+                        if "<summary>How sure am I?</summary>" not in (answer_text or ""):
+                            answer_text = (answer_text or "") + _GOLD_RETRIEVED_DETAILS_TAG
+                    else:
+                        # Refusal-substituted draft → honest low-conf tag.
+                        answer_text = _wrap_with_low_confidence_tag(answer_text or "")
                     replaced_text = answer_text
                 else:
                     verdict = "unsupported_no_retry"
