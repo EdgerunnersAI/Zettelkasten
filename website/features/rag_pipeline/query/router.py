@@ -13,12 +13,37 @@ import cachetools
 from website.features.rag_pipeline.adapters.pool_factory import get_generation_pool
 from website.features.rag_pipeline.types import QueryClass
 
-_ROUTER_PROMPT = """Classify the user query into exactly one class:\n- lookup\n- vague\n- multi_hop\n- thematic\n- step_back\n\nReturn strict JSON with a single key named class.\n\nQuery: {query}"""
+_ROUTER_PROMPT = """\
+Classify the user's query into one of: lookup, vague, thematic, multi_hop, step_back.
+
+Definitions:
+- lookup: precise question about a specific entity, fact, or concept named in the query.
+- vague: under-specified discovery query ('anything about X', 'what's there on Y').
+- thematic: cross-corpus synthesis on a topic ('the implicit theory of', 'how do these compare').
+- multi_hop: chains 2+ sub-questions or requires reasoning across documents.
+- step_back: meta-question that requires generalising before retrieving.
+
+Examples:
+"What does Steve Jobs mean by 'connecting the dots'?" => lookup
+"Where does the Pragmatic Engineer post live?" => lookup
+"Anything about commencement?" => vague
+"Got something on personal wikis?" => vague
+"What's the implicit theory of focus across these zettels?" => thematic
+"How do the productivity zettels portray deep work?" => thematic
+"Compare Walker on sleep loss with the programming-workflow zettel on debugging." => multi_hop
+"Steve Jobs and Naval Ravikant both speak about meaningful work — compare." => multi_hop
+"What general principle do these capture about creative work?" => step_back
+"Why might these knowledge-management ideas converge across authors?" => step_back
+
+Return strict JSON with a single key named class.
+
+Query: {query}
+Class:"""
 
 
 # iter-09 RES-6: cache-key invalidator. Bump ON ANY rule change so prior
 # router answers don't leak across iterations.
-ROUTER_VERSION = "v3"
+ROUTER_VERSION = "v4"  # iter-12: invalidate v3 cache; few-shot + regex override
 
 # Process-level shared cache (TTLCache, 24h, 10k entries). Each query is
 # normalised to lowercase + stripped before hashing; the key includes
@@ -71,6 +96,36 @@ _RELATE_PATTERN = re.compile(r"\bhow does .+ relate to .+", re.IGNORECASE)
 _SUMMARY_OF_PATTERN = re.compile(
     r"\b(summary|summarize|key ideas) of\b", re.IGNORECASE
 )
+
+# iter-12 Q7: vague-discovery regex + 3 guards (negation / length / proper-noun).
+# Word-boundary anchored (not line-start) so "Got something on X" also fires;
+# bare "\babout\b" is safe because 'about' must be preceded by a discovery word.
+_VAGUE_DISCOVERY_PATTERN = re.compile(
+    r"\b(anything|something|stuff|things|info|notes?)"
+    r"\s+(about|on|regarding|re|around|related to)\b",
+    re.IGNORECASE,
+)
+_NEGATION_PATTERN = re.compile(
+    r"\b(not|isn'?t|except|excluding|without)\b", re.IGNORECASE,
+)
+_YEAR_PATTERN = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def _matches_vague_discovery(query: str) -> bool:
+    """iter-12 Q7: 3-guarded regex for 'Anything about X?' shape."""
+    if not _VAGUE_DISCOVERY_PATTERN.search(query):
+        return False
+    if _NEGATION_PATTERN.search(query):
+        return False  # negation guard
+    if len(query.split()) >= 25:
+        return False  # length guard preserves long-query MULTI_HOP
+    # Proper-noun guard: year or any capitalised non-leading word → named-entity LOOKUP.
+    if _YEAR_PATTERN.search(query):
+        return False
+    words = query.split()
+    if any(re.sub(r"[^A-Za-z]", "", w)[:1].isupper() for w in words[1:]):
+        return False
+    return True
 
 
 def _cache_enabled() -> bool:
@@ -165,6 +220,9 @@ def apply_class_overrides(
         return QueryClass.MULTI_HOP, "override_relate_pattern"
     if _SUMMARY_OF_PATTERN.search(query):
         return QueryClass.THEMATIC, "override_summary_of_pattern"
+    # iter-12 Q7: vague-discovery override BEFORE word-count fallback.
+    if _matches_vague_discovery(query):
+        return (QueryClass.VAGUE, "override_vague_discovery_shape")
     word_count = len(query.split())
     if word_count >= 25 and llm_class is QueryClass.LOOKUP and not persons:
         return QueryClass.MULTI_HOP, "override_long_query_upgrade"

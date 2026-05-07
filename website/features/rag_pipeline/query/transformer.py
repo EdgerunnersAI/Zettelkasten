@@ -50,25 +50,9 @@ class QueryTransformer:
             # A/B once recall is fixed.
             _thematic_n = int(os.environ.get("RAG_THEMATIC_MULTIQUERY_N", "3"))
             base_variants = await self._multi_query(query, n=_thematic_n, entities=ents)
-            # iter-11 Class D: short-THEMATIC queries (e.g. "Anything about
-            # commencement?") get the VAGUE-style gazetteer + HyDE path on
-            # top of the multi-query paraphrases. Router does not always
-            # catch "Anything about X?" as VAGUE, so the rewriter lifts the
-            # gazetteer eligibility floor for itself.
-            _short_thematic_threshold = int(
-                os.environ.get("RAG_SHORT_THEMATIC_THRESHOLD", "4")
-            )
-            if len(query.split()) <= _short_thematic_threshold:
-                gazetteer_variants = expand_vague(query)
-                hyde_variant = await self._hyde(query)
-                variants = [
-                    query,
-                    hyde_variant,
-                    *gazetteer_variants,
-                    *base_variants,
-                ]
-            else:
-                variants = [query, *base_variants]
+            # iter-12 Class D-out: short-THEMATIC routes to VAGUE via Q7 regex (router.py).
+            # VAGUE branch still uses expand_vague; iter-13 K6 replaces with LLM.
+            variants = [query, *base_variants]
         elif cls is QueryClass.STEP_BACK:
             variants = [query, await self._step_back(query)]
         else:

@@ -1,10 +1,9 @@
-"""iter-11 Class D: short-THEMATIC queries get gazetteer + HyDE expansion.
+"""iter-12 Class D-out: gazetteer removed from THEMATIC branch.
 
-q7 ('Anything about commencement?') was router-classified as THEMATIC, not
-VAGUE, so the iter-07 ``expand_vague`` gazetteer path never fired. The fix
-extends gazetteer + HyDE eligibility to THEMATIC queries with
-``len(query.split()) <= RAG_SHORT_THEMATIC_THRESHOLD`` words. Long THEMATIC
-queries keep the iter-08 multi-query-only path.
+iter-11 added gazetteer + HyDE to short-THEMATIC queries. iter-12 removes it:
+short-THEMATIC now routes to VAGUE via Q7 regex (router.py) where the
+gazetteer fires naturally. The THEMATIC branch uses only multi-query paraphrases.
+VAGUE branch keeps expand_vague; iter-13 K6 replaces it with LLM.
 """
 from __future__ import annotations
 
@@ -28,28 +27,26 @@ def _stub_pool(text: str):
 
 
 @pytest.mark.asyncio
-async def test_short_thematic_query_gets_vague_expansion():
-    """A 3-word THEMATIC query like 'Anything about commencement?' must
-    receive the iter-07 gazetteer expansion that previously only fired for
-    VAGUE class. The gazetteer ships a ``commencement`` key with graduation /
-    stanford / valedictory expansions; the joined variants must include at
-    least one of these tokens."""
+async def test_short_thematic_no_longer_invokes_gazetteer():
+    """iter-12 Class D-out: short-THEMATIC routes to VAGUE via router; the
+    THEMATIC branch itself NO longer calls expand_vague. A short query like
+    'Anything about commencement?' must NOT include gazetteer expansions
+    (graduation/stanford/valedictory) when processed as THEMATIC class."""
     pool = _stub_pool("alt: paraphrase 1\nalt: paraphrase 2\nalt: paraphrase 3")
     qt = QueryTransformer(pool=pool)
     variants = await qt.transform("Anything about commencement?", QueryClass.THEMATIC)
     joined = " ".join(variants).lower()
-    assert (
-        "graduation" in joined
-        or "stanford" in joined
-        or "valedictory" in joined
-    ), f"short-THEMATIC gazetteer expansion missing; got variants={variants}"
+    # Gazetteer keys MUST NOT appear in THEMATIC variants (Class D-out removed the call).
+    assert "graduation" not in joined
+    assert "stanford" not in joined
+    assert "valedictory" not in joined
 
 
 @pytest.mark.asyncio
-async def test_long_thematic_query_no_vague_expansion():
-    """A 10+ word THEMATIC query stays on the iter-08 multi-query-only path:
-    no gazetteer fires (we don't have keys for the long-form tokens) and
-    HyDE is skipped — only the original + paraphrases remain."""
+async def test_long_thematic_query_multiquery_only():
+    """All THEMATIC queries use only iter-08 multi-query: no gazetteer, no HyDE.
+    Only the original + paraphrases remain (iter-12 Class D-out removed the
+    conditional gazetteer path)."""
     pool = _stub_pool("alt: paraphrase 1\nalt: paraphrase 2\nalt: paraphrase 3")
     qt = QueryTransformer(pool=pool)
     long_q = (
@@ -60,29 +57,6 @@ async def test_long_thematic_query_no_vague_expansion():
     # Must include the original query + at least one paraphrase.
     assert variants[0] == long_q
     assert len(variants) >= 2
-
-
-@pytest.mark.asyncio
-async def test_short_thematic_threshold_env_overrideable(monkeypatch):
-    """The threshold is env-driven; setting it to 1 forces the long-q test
-    case onto the multi-query-only path again, proving the gate is honoured."""
-    monkeypatch.setenv("RAG_SHORT_THEMATIC_THRESHOLD", "1")
-    # Force module to re-read env on next import.
-    from website.features.rag_pipeline.query import transformer as tx
-    import importlib
-    importlib.reload(tx)
-    pool = _stub_pool("alt: paraphrase 1")
-    qt = tx.QueryTransformer(pool=pool)
-    variants = await qt.transform("Anything about commencement?", QueryClass.THEMATIC)
-    joined = " ".join(variants).lower()
-    # With threshold=1, the 3-word query no longer qualifies as short — no
-    # gazetteer expansion fires.
-    assert "graduation" not in joined
-    assert "stanford" not in joined
-    assert "valedictory" not in joined
-    # Restore the default for other tests.
-    monkeypatch.delenv("RAG_SHORT_THEMATIC_THRESHOLD", raising=False)
-    importlib.reload(tx)
 
 
 @pytest.mark.asyncio
