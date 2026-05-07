@@ -1,6 +1,10 @@
 """iter-12 Phase 7 / Task 15: E1 in _qa_summary, q9 hardcode removal, latency rename."""
 import pytest
 
+# playwright is a dev-only / operator-run dependency — not installed in CI.
+# Skip the whole module if it's absent rather than failing with ImportError.
+pytest.importorskip("playwright", reason="playwright not installed in this environment")
+
 
 def test_qa_summary_excludes_refusal_expected_via_E1():
     """_qa_summary must skip rows with expected_empty=True (E1)."""
