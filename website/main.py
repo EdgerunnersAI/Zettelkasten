@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from website.api import _proc_stats as _proc_stats_module
 from website.app import create_app
 from website.core.settings import get_settings
+from website.features.rag_pipeline.observability.event_loop_monitor import EventLoopMonitor
 
 logger = logging.getLogger("website.main")
 
@@ -65,6 +66,11 @@ async def _lifespan(
         thread_name_prefix="supa",
     ))
 
+    # iter-12 Class P: lag canary — p95 < 50 ms gates Phase-2 anchor-boost.
+    lag_monitor = EventLoopMonitor(interval_ms=100)
+    await lag_monitor.start()
+    _app.state.event_loop_monitor = lag_monitor
+
     task = asyncio.create_task(loop_factory())
     try:
         yield
@@ -74,6 +80,7 @@ async def _lifespan(
             await task
         except (asyncio.CancelledError, Exception):
             pass
+        await lag_monitor.stop()
 
 
 # Module-level ASGI app. gunicorn imports ``website.main:app`` with --preload.

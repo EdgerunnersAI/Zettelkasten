@@ -107,8 +107,12 @@ def _check_rate_limit(ip: str) -> bool:
 
 
 @router.get("/health")
-async def health():
-    return {"status": "ok"}
+async def health(request: Request):
+    payload: dict = {"status": "ok"}
+    monitor = getattr(request.app.state, "event_loop_monitor", None)
+    if monitor is not None:
+        payload["event_loop_lag"] = monitor.snapshot()
+    return payload
 
 
 @router.get("/health/warm")
