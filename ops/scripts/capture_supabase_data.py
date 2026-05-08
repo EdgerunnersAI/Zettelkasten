@@ -76,6 +76,13 @@ def copy_with_verify(src: Path, dst: Path) -> dict:
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
+def _strip_surrounding_quotes(value: str) -> str:
+    """Remove a single matched pair of surrounding ASCII quotes."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
+
+
 def parse_frontmatter(body: str) -> dict:
     """Tiny YAML subset parser — handles `key: value` and `key: [a, b]` only.
 
@@ -93,9 +100,9 @@ def parse_frontmatter(body: str) -> dict:
         key, value = key.strip(), value.strip()
         if value.startswith("[") and value.endswith("]"):
             inner = value[1:-1]
-            data[key] = [item.strip() for item in inner.split(",") if item.strip()]
+            data[key] = [_strip_surrounding_quotes(item.strip()) for item in inner.split(",") if item.strip()]
         else:
-            data[key] = value
+            data[key] = _strip_surrounding_quotes(value)
     return data
 
 

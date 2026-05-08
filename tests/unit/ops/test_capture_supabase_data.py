@@ -103,6 +103,20 @@ def test_parse_frontmatter_extracts_yaml_block() -> None:
     assert fm["tags"] == ["a", "b"]
 
 
+def test_parse_frontmatter_strips_surrounding_quotes() -> None:
+    body = (
+        "---\n"
+        'title: "jina-ai/reader"\n'
+        "url: 'https://example.com'\n"
+        'tags: ["a", "b"]\n'
+        "---\nbody"
+    )
+    fm = parse_frontmatter(body)
+    assert fm["title"] == "jina-ai/reader"
+    assert fm["url"] == "https://example.com"
+    assert fm["tags"] == ["a", "b"]
+
+
 def test_parse_frontmatter_returns_empty_when_absent() -> None:
     assert parse_frontmatter("# Just a heading\n\nNo frontmatter") == {}
 
