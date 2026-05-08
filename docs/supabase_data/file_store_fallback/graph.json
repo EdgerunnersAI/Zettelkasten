@@ -1,0 +1,607 @@
+{
+  "nodes": [
+    {
+      "id": "yt-attention",
+      "name": "Attention Is All You Need — Paper Explained",
+      "group": "youtube",
+      "summary": "Visual walkthrough of the Transformer architecture: self-attention, multi-head attention, positional encoding, and why it replaced RNNs for sequence modelling.",
+      "tags": [
+        "machine-learning",
+        "transformers",
+        "deep-learning",
+        "nlp"
+      ],
+      "url": "https://www.youtube.com/watch?v=XowwKOAWYoQ",
+      "date": "2026-03-15"
+    },
+    {
+      "id": "yt-second-brain",
+      "name": "Building a Second Brain with Obsidian",
+      "group": "youtube",
+      "summary": "Tiago Forte's PARA method adapted for Obsidian: capture, organise, distil, express — with live vault walkthrough and template demos.",
+      "tags": [
+        "pkm",
+        "obsidian",
+        "zettelkasten",
+        "productivity"
+      ],
+      "url": "https://www.youtube.com/watch?v=OP3dA2GcAh8",
+      "date": "2026-03-12"
+    },
+    {
+      "id": "yt-fastapi",
+      "name": "FastAPI Full Course — Modern Python APIs",
+      "group": "youtube",
+      "summary": "End-to-end FastAPI tutorial covering async endpoints, Pydantic models, dependency injection, middleware, background tasks, and deployment with Docker.",
+      "tags": [
+        "python",
+        "fastapi",
+        "web-framework",
+        "async"
+      ],
+      "url": "https://www.youtube.com/watch?v=7t2alSnE2-I",
+      "date": "2026-03-10"
+    },
+    {
+      "id": "yt-zettelkasten",
+      "name": "The Art of Note-Taking — Zettelkasten Method",
+      "group": "youtube",
+      "summary": "Deep dive into Niklas Luhmann's slip-box method: atomic notes, unique IDs, bidirectional linking, and emergence of unexpected connections.",
+      "tags": [
+        "zettelkasten",
+        "pkm",
+        "note-taking",
+        "knowledge-graph"
+      ],
+      "url": "https://www.youtube.com/watch?v=rOSZOCoqOo8",
+      "date": "2026-03-08"
+    },
+    {
+      "id": "yt-gpt4",
+      "name": "GPT-4 Architecture Deep Dive",
+      "group": "youtube",
+      "summary": "Technical breakdown of GPT-4's mixture-of-experts design, training at scale, RLHF alignment, and benchmark comparisons with Claude and Gemini.",
+      "tags": [
+        "llm",
+        "ai",
+        "transformers",
+        "deep-learning"
+      ],
+      "url": "https://www.youtube.com/watch?v=bZQun8Y4L2A",
+      "date": "2026-03-05"
+    },
+    {
+      "id": "rd-async-python",
+      "name": "r/Python — Best Practices for Async Programming",
+      "group": "reddit",
+      "summary": "Community thread on asyncio patterns: structured concurrency with TaskGroups, avoiding callback hell, when to use threads vs async, and real-world pitfalls.",
+      "tags": [
+        "python",
+        "async",
+        "concurrency",
+        "best-practices"
+      ],
+      "url": "https://www.reddit.com/r/Python/comments/abc123",
+      "date": "2026-03-20"
+    },
+    {
+      "id": "rd-obsidian-workflow",
+      "name": "r/ObsidianMD — My Zettelkasten Workflow After 2 Years",
+      "group": "reddit",
+      "summary": "Detailed breakdown of a mature Obsidian vault: folder structure, daily notes, MOCs, Dataview queries, and lessons learned from 3,000+ notes.",
+      "tags": [
+        "obsidian",
+        "zettelkasten",
+        "pkm",
+        "workflow"
+      ],
+      "url": "https://www.reddit.com/r/ObsidianMD/comments/def456",
+      "date": "2026-03-18"
+    },
+    {
+      "id": "rd-rag-vs-ft",
+      "name": "r/MachineLearning — RAG vs Fine-Tuning: When to Use What",
+      "group": "reddit",
+      "summary": "Heated debate on retrieval-augmented generation vs fine-tuning for domain-specific tasks. Consensus: RAG for dynamic knowledge, fine-tuning for style/format.",
+      "tags": [
+        "llm",
+        "rag",
+        "machine-learning",
+        "ai"
+      ],
+      "url": "https://www.reddit.com/r/MachineLearning/comments/ghi789",
+      "date": "2026-03-16"
+    },
+    {
+      "id": "rd-docker-compose",
+      "name": "r/selfhosted — Docker Compose Best Practices",
+      "group": "reddit",
+      "summary": "Community-curated guide: named volumes vs bind mounts, health checks, restart policies, .env files, multi-stage builds, and security hardening.",
+      "tags": [
+        "docker",
+        "devops",
+        "self-hosting",
+        "best-practices"
+      ],
+      "url": "https://www.reddit.com/r/selfhosted/comments/jkl012",
+      "date": "2026-03-14"
+    },
+    {
+      "id": "rd-rust-replacing-cpp",
+      "name": "r/programming — Why Rust Is Replacing C++ in Systems Work",
+      "group": "reddit",
+      "summary": "Analysis of Rust adoption at Microsoft, Google, and Linux kernel: memory safety guarantees, zero-cost abstractions, and the borrow checker learning curve.",
+      "tags": [
+        "rust",
+        "systems-programming",
+        "memory-safety",
+        "programming-languages"
+      ],
+      "url": "https://www.reddit.com/r/programming/comments/mno345",
+      "date": "2026-03-11"
+    },
+    {
+      "id": "gh-langchain",
+      "name": "langchain/langchain — LLM Application Framework",
+      "group": "github",
+      "summary": "Python framework for building LLM-powered apps: chains, agents, tools, vector stores, and retrieval pipelines. 80K+ stars, rapid ecosystem growth.",
+      "tags": [
+        "llm",
+        "ai",
+        "python",
+        "rag"
+      ],
+      "url": "https://github.com/langchain-ai/langchain",
+      "date": "2026-03-22"
+    },
+    {
+      "id": "gh-obsidian",
+      "name": "obsidianmd/obsidian-releases — Obsidian Release Notes",
+      "group": "github",
+      "summary": "Official release tracker for Obsidian: Canvas improvements, Properties editor, new plugin API hooks, and performance optimizations in v1.7+.",
+      "tags": [
+        "obsidian",
+        "pkm",
+        "note-taking",
+        "knowledge-graph"
+      ],
+      "url": "https://github.com/obsidianmd/obsidian-releases",
+      "date": "2026-03-21"
+    },
+    {
+      "id": "gh-fastapi",
+      "name": "tiangolo/fastapi — Modern Python Web Framework",
+      "group": "github",
+      "summary": "High-performance async Python framework: auto-generated OpenAPI docs, Pydantic validation, dependency injection, WebSocket support. 75K+ stars.",
+      "tags": [
+        "python",
+        "fastapi",
+        "web-framework",
+        "async"
+      ],
+      "url": "https://github.com/tiangolo/fastapi",
+      "date": "2026-03-19"
+    },
+    {
+      "id": "gh-vscode",
+      "name": "microsoft/vscode — Visual Studio Code Editor",
+      "group": "github",
+      "summary": "Open-source code editor built on Electron: extension marketplace, integrated terminal, Git support, remote development, and Copilot integration.",
+      "tags": [
+        "dev-tools",
+        "editor",
+        "typescript",
+        "productivity"
+      ],
+      "url": "https://github.com/microsoft/vscode",
+      "date": "2026-03-17"
+    },
+    {
+      "id": "gh-transformers",
+      "name": "huggingface/transformers — ML Model Hub",
+      "group": "github",
+      "summary": "State-of-the-art NLP/vision/audio models: 200K+ pretrained models, AutoModel API, training pipelines, and ONNX/TensorRT export for production.",
+      "tags": [
+        "machine-learning",
+        "transformers",
+        "ai",
+        "python"
+      ],
+      "url": "https://github.com/huggingface/transformers",
+      "date": "2026-03-13"
+    },
+    {
+      "id": "ss-pragmatic-engineer",
+      "name": "The Pragmatic Engineer — System Design at Scale",
+      "group": "substack",
+      "summary": "Gergely Orosz on designing distributed systems: load balancing strategies, database sharding, caching layers, and real-world post-mortems from Big Tech.",
+      "tags": [
+        "system-design",
+        "architecture",
+        "distributed-systems",
+        "engineering"
+      ],
+      "url": "https://newsletter.pragmaticengineer.com/p/system-design",
+      "date": "2026-03-25"
+    },
+    {
+      "id": "ss-ai-snake-oil",
+      "name": "AI Snake Oil — LLM Limitations Nobody Talks About",
+      "group": "substack",
+      "summary": "Arvind Narayanan on LLM failure modes: hallucination rates, evaluation gaming, benchmark saturation, and the gap between demos and production reliability.",
+      "tags": [
+        "llm",
+        "ai",
+        "evaluation",
+        "critical-thinking"
+      ],
+      "url": "https://www.aisnakeoil.com/p/llm-limitations",
+      "date": "2026-03-23"
+    },
+    {
+      "id": "ss-lenny",
+      "name": "Lenny's Newsletter — Product Metrics That Matter",
+      "group": "substack",
+      "summary": "Framework for choosing North Star metrics: leading vs lagging indicators, engagement ratios, cohort analysis, and common metric anti-patterns.",
+      "tags": [
+        "product-management",
+        "metrics",
+        "analytics",
+        "startups"
+      ],
+      "url": "https://www.lennysnewsletter.com/p/metrics-that-matter",
+      "date": "2026-03-20"
+    },
+    {
+      "id": "ss-bytebytego",
+      "name": "ByteByteGo — API Design Patterns for Scale",
+      "group": "substack",
+      "summary": "Alex Xu on REST vs GraphQL vs gRPC trade-offs, pagination strategies, rate limiting, versioning, and idempotency patterns for high-traffic APIs.",
+      "tags": [
+        "api-design",
+        "system-design",
+        "architecture",
+        "web-framework"
+      ],
+      "url": "https://blog.bytebytego.com/p/api-design-patterns",
+      "date": "2026-03-18"
+    },
+    {
+      "id": "ss-the-batch",
+      "name": "The Batch by Andrew Ng — AI Industry Trends 2026",
+      "group": "substack",
+      "summary": "Weekly AI roundup: agentic workflows outperforming chain-of-thought, multimodal models closing the gap, and the shift from pre-training to post-training.",
+      "tags": [
+        "ai",
+        "machine-learning",
+        "industry-trends",
+        "deep-learning"
+      ],
+      "url": "https://www.deeplearning.ai/the-batch/ai-trends-2026",
+      "date": "2026-03-15"
+    },
+    {
+      "id": "md-clean-arch",
+      "name": "Clean Architecture in Python — Hexagonal Patterns",
+      "group": "medium",
+      "summary": "Applying Uncle Bob's Clean Architecture to Python: ports and adapters, dependency inversion with protocols, and testing strategies for layered apps.",
+      "tags": [
+        "python",
+        "architecture",
+        "clean-code",
+        "best-practices"
+      ],
+      "url": "https://medium.com/@author/clean-architecture-python",
+      "date": "2026-03-26"
+    },
+    {
+      "id": "md-knowledge-graphs",
+      "name": "Knowledge Graphs for Personal Use — Beyond Enterprise",
+      "group": "medium",
+      "summary": "How individuals can build personal knowledge graphs: tools (Obsidian, Logseq, Roam), graph schemas, emergent structure, and the power of bidirectional links.",
+      "tags": [
+        "knowledge-graph",
+        "pkm",
+        "obsidian",
+        "note-taking"
+      ],
+      "url": "https://medium.com/@author/personal-knowledge-graphs",
+      "date": "2026-03-24"
+    },
+    {
+      "id": "md-vector-db",
+      "name": "Vector Databases Explained — From Embeddings to Search",
+      "group": "medium",
+      "summary": "How vector databases work: embedding models, HNSW indexing, cosine similarity, and when to choose Pinecone vs Weaviate vs Chroma for RAG pipelines.",
+      "tags": [
+        "vector-database",
+        "rag",
+        "ai",
+        "embeddings"
+      ],
+      "url": "https://medium.com/@author/vector-databases-explained",
+      "date": "2026-03-22"
+    },
+    {
+      "id": "md-local-first",
+      "name": "The Rise of Local-First Software",
+      "group": "medium",
+      "summary": "Why local-first is gaining traction: CRDTs for sync, offline capability, data ownership, and the architectural shift from cloud-centric to edge-centric apps.",
+      "tags": [
+        "architecture",
+        "local-first",
+        "distributed-systems",
+        "self-hosting"
+      ],
+      "url": "https://medium.com/@author/local-first-software",
+      "date": "2026-03-19"
+    },
+    {
+      "id": "md-prompt-eng",
+      "name": "Prompt Engineering Best Practices for Production",
+      "group": "medium",
+      "summary": "Battle-tested prompting patterns: system prompts, few-shot examples, chain-of-thought, output parsing, guardrails, and version control for prompt templates.",
+      "tags": [
+        "prompt-engineering",
+        "llm",
+        "ai",
+        "best-practices"
+      ],
+      "url": "https://medium.com/@author/prompt-engineering-production",
+      "date": "2026-03-16"
+    },
+    {
+      "id": "web-test-title",
+      "name": "Test Title",
+      "group": "medium",
+      "summary": "Brief",
+      "tags": [],
+      "url": "https://example.com",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "web-persist-meta-probe-17770",
+      "name": "persist-meta-probe-1777028264",
+      "group": "web",
+      "summary": "{\"brief_summary\": \"probe brief\", \"detailed_summary\": \"probe detailed body.\"}",
+      "tags": [
+        "probe",
+        "persist-meta"
+      ],
+      "url": "https://example.test/persist-meta-probe-1777028264",
+      "date": "2026-04-24"
+    }
+  ],
+  "links": [
+    {
+      "source": "yt-attention",
+      "target": "gh-transformers",
+      "relation": "transformers"
+    },
+    {
+      "source": "yt-attention",
+      "target": "yt-gpt4",
+      "relation": "deep-learning"
+    },
+    {
+      "source": "yt-attention",
+      "target": "ss-the-batch",
+      "relation": "machine-learning"
+    },
+    {
+      "source": "yt-second-brain",
+      "target": "yt-zettelkasten",
+      "relation": "pkm"
+    },
+    {
+      "source": "yt-second-brain",
+      "target": "rd-obsidian-workflow",
+      "relation": "obsidian"
+    },
+    {
+      "source": "yt-second-brain",
+      "target": "gh-obsidian",
+      "relation": "obsidian"
+    },
+    {
+      "source": "yt-second-brain",
+      "target": "md-knowledge-graphs",
+      "relation": "pkm"
+    },
+    {
+      "source": "yt-fastapi",
+      "target": "gh-fastapi",
+      "relation": "fastapi"
+    },
+    {
+      "source": "yt-fastapi",
+      "target": "rd-async-python",
+      "relation": "async"
+    },
+    {
+      "source": "yt-fastapi",
+      "target": "md-clean-arch",
+      "relation": "python"
+    },
+    {
+      "source": "yt-fastapi",
+      "target": "ss-bytebytego",
+      "relation": "web-framework"
+    },
+    {
+      "source": "yt-zettelkasten",
+      "target": "rd-obsidian-workflow",
+      "relation": "zettelkasten"
+    },
+    {
+      "source": "yt-zettelkasten",
+      "target": "gh-obsidian",
+      "relation": "note-taking"
+    },
+    {
+      "source": "yt-zettelkasten",
+      "target": "md-knowledge-graphs",
+      "relation": "knowledge-graph"
+    },
+    {
+      "source": "yt-gpt4",
+      "target": "gh-transformers",
+      "relation": "transformers"
+    },
+    {
+      "source": "yt-gpt4",
+      "target": "ss-ai-snake-oil",
+      "relation": "llm"
+    },
+    {
+      "source": "yt-gpt4",
+      "target": "rd-rag-vs-ft",
+      "relation": "llm"
+    },
+    {
+      "source": "yt-gpt4",
+      "target": "md-prompt-eng",
+      "relation": "llm"
+    },
+    {
+      "source": "rd-async-python",
+      "target": "gh-fastapi",
+      "relation": "async"
+    },
+    {
+      "source": "rd-async-python",
+      "target": "md-clean-arch",
+      "relation": "python"
+    },
+    {
+      "source": "rd-obsidian-workflow",
+      "target": "gh-obsidian",
+      "relation": "obsidian"
+    },
+    {
+      "source": "rd-obsidian-workflow",
+      "target": "md-knowledge-graphs",
+      "relation": "pkm"
+    },
+    {
+      "source": "rd-rag-vs-ft",
+      "target": "gh-langchain",
+      "relation": "rag"
+    },
+    {
+      "source": "rd-rag-vs-ft",
+      "target": "md-vector-db",
+      "relation": "rag"
+    },
+    {
+      "source": "rd-rag-vs-ft",
+      "target": "ss-ai-snake-oil",
+      "relation": "llm"
+    },
+    {
+      "source": "rd-rag-vs-ft",
+      "target": "md-prompt-eng",
+      "relation": "llm"
+    },
+    {
+      "source": "rd-docker-compose",
+      "target": "md-local-first",
+      "relation": "self-hosting"
+    },
+    {
+      "source": "rd-docker-compose",
+      "target": "ss-pragmatic-engineer",
+      "relation": "engineering"
+    },
+    {
+      "source": "rd-rust-replacing-cpp",
+      "target": "gh-vscode",
+      "relation": "programming"
+    },
+    {
+      "source": "gh-langchain",
+      "target": "md-vector-db",
+      "relation": "rag"
+    },
+    {
+      "source": "gh-langchain",
+      "target": "md-prompt-eng",
+      "relation": "llm"
+    },
+    {
+      "source": "gh-langchain",
+      "target": "ss-ai-snake-oil",
+      "relation": "ai"
+    },
+    {
+      "source": "gh-langchain",
+      "target": "gh-transformers",
+      "relation": "ai"
+    },
+    {
+      "source": "gh-obsidian",
+      "target": "md-knowledge-graphs",
+      "relation": "knowledge-graph"
+    },
+    {
+      "source": "gh-fastapi",
+      "target": "md-clean-arch",
+      "relation": "python"
+    },
+    {
+      "source": "gh-fastapi",
+      "target": "ss-bytebytego",
+      "relation": "api-design"
+    },
+    {
+      "source": "gh-vscode",
+      "target": "gh-transformers",
+      "relation": "dev-tools"
+    },
+    {
+      "source": "ss-pragmatic-engineer",
+      "target": "ss-bytebytego",
+      "relation": "system-design"
+    },
+    {
+      "source": "ss-pragmatic-engineer",
+      "target": "md-local-first",
+      "relation": "architecture"
+    },
+    {
+      "source": "ss-ai-snake-oil",
+      "target": "md-prompt-eng",
+      "relation": "llm"
+    },
+    {
+      "source": "ss-ai-snake-oil",
+      "target": "ss-the-batch",
+      "relation": "ai"
+    },
+    {
+      "source": "ss-lenny",
+      "target": "ss-pragmatic-engineer",
+      "relation": "engineering"
+    },
+    {
+      "source": "ss-the-batch",
+      "target": "gh-transformers",
+      "relation": "machine-learning"
+    },
+    {
+      "source": "ss-the-batch",
+      "target": "md-prompt-eng",
+      "relation": "ai"
+    },
+    {
+      "source": "md-clean-arch",
+      "target": "ss-pragmatic-engineer",
+      "relation": "architecture"
+    },
+    {
+      "source": "md-vector-db",
+      "target": "gh-transformers",
+      "relation": "embeddings"
+    }
+  ]
+}
