@@ -43,10 +43,6 @@ zettelkasten.in {
     @api_graph path /api/graph
     header @api_graph Cache-Control "public, max-age=30"
 
-    # Skip access logging for the Telegram webhook.
-    @telegram path /telegram/webhook
-    log_skip @telegram
-
     # Application reverse proxy — upstream is hot-swappable
     import /etc/caddy/upstream.snippet
 
