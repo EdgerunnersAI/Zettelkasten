@@ -1,8 +1,8 @@
 """Canonical persistence helpers for summarize → write-everywhere fanout.
 
 This module is the **single source of truth** for persisting a summarize
-result into the knowledge graph. Every ingest path (Telegram bot, website
-``/api/summarize``, eval register scripts, future callers) should call
+result into the knowledge graph. Every ingest path (website ``/api/summarize``,
+eval register scripts, future callers) should call
 :func:`persist_summarized_result`.
 
 Historically this code lived at
@@ -109,7 +109,7 @@ def get_supabase_scope(user_id_override: str | None = None) -> tuple[KGRepositor
 # Internal sentinel tokens that must never leak to persisted surfaces.
 # Mirrors summarization.common.structured._SENTINEL_TAG_RE but also covers
 # bracketed/angle forms the LLM sometimes emits mid-text (e.g. ``[RESERVED]``,
-# ``<SENTINEL:foo>``) that pollute Obsidian notes and KG node summaries.
+# ``<SENTINEL:foo>``) that pollute persisted KG node summaries.
 _SENTINEL_TEXT_RE = re.compile(
     r"(\[(?:RESERVED|SENTINEL)[^\]]*\])|(<SENTINEL[^>]*>)|(\b_[a-z][a-z0-9_]*_\b)",
     re.IGNORECASE,
@@ -489,10 +489,8 @@ def _encode_summary_payload(payload: dict[str, Any]) -> str:
 
     Applies the deterministic polish + caveat-strip stack at the WRITE
     boundary so every persisted row is born clean. Idempotent — re-encoding
-    an already-polished payload is a no-op. This complements the read-time
-    polish in ``summary_normalizer.normalize_summary_for_wire`` so non-API
-    consumers (Telegram bot, Obsidian export, GitHub writer) see the same
-    cleaned text.
+    an already-polished payload is a no-op. Complements the read-time polish
+    in ``summary_normalizer.normalize_summary_for_wire``.
     """
     brief = _normalize_summary_text(payload.get("brief_summary"))
     detailed = _normalize_summary_text(payload.get("detailed_summary") or payload.get("summary"))
