@@ -93,7 +93,7 @@ def main() -> None:
         level=settings.log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    port = settings.webhook_port or 10000
+    port = settings.server_port
     logger.info("Starting Zettelkasten website on 0.0.0.0:%d (uvicorn dev mode)", port)
     uvicorn.run(
         app,
