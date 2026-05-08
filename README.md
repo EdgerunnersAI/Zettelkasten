@@ -1,12 +1,12 @@
-# Zettelkasten Capture Bot
+# Zettelkasten
 
-A Telegram bot and web app that captures URLs from five content sources (Reddit, YouTube, GitHub, newsletters, and generic web articles) and writes AI-summarized Obsidian notes to your knowledge graph. Send a URL via Telegram or the web UI; get a structured Markdown note.
+A web app that captures URLs from five content sources (Reddit, YouTube, GitHub, newsletters, and generic web articles) and produces AI-summarized entries in a Supabase-backed knowledge graph. Paste any URL into the web UI; get a structured summary with tags.
 
 ---
 
 ## Features
 
-- **Auto-detect source type** - paste any URL and the bot picks the right extractor automatically
+- **Auto-detect source type** - paste any URL and the engine picks the right extractor automatically
 - **Five extractors**: Reddit threads (with top comments), YouTube videos (transcript + metadata), GitHub repos/issues/PRs, newsletter articles (Substack, Beehiiv, Buttondown, Mailchimp), and generic web pages
 - **AI summarization** - Google Gemini produces a title, summary, and multi-dimensional tags for every capture
 - **More reliable Gemini usage** - supports a comma-separated API key pool (`GEMINI_API_KEYS`) with key rotation plus a model fallback chain (graceful degradation to raw content when needed)
@@ -14,10 +14,7 @@ A Telegram bot and web app that captures URLs from five content sources (Reddit,
 - **Knowledge graph analytics** - enriches nodes with metrics (PageRank, communities, centrality) for better exploration
 - **Graph search and Q&A (Supabase-backed)** - hybrid search and natural-language querying when Supabase is configured
 - **Accounts (optional)** - Supabase Auth-backed user profiles (including avatar), plus a personal home page and zettels view
-- **Cloud note storage (optional)** - push notes to a GitHub repo via the Contents API (useful when you do not want to rely on local disk)
-- **Duplicate detection** - re-capture the same URL only when you explicitly use `/force`
 - **SSRF protection** - URL validation blocks private/reserved IPs; tracking params are stripped for dedup consistency
-- **Two run modes** - long-polling for development, webhook for production (bot + web UI share a single port)
 - **Zero-downtime deploys** - production is designed around a blue/green Docker Compose stack with TLS termination, health checks, and rollback
 
 ---
@@ -39,13 +36,13 @@ pip install -r ops/requirements-dev.txt
 
 # 4. Configure
 cp ops/.env.example .env
-# Open .env and fill in TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_ID, and GEMINI_API_KEYS (preferred) or GEMINI_API_KEY
+# Open .env and fill in GEMINI_API_KEYS (preferred) or GEMINI_API_KEY
 
-# 5. Run (polling / development mode)
-python run.py
+# 5. Run (dev mode)
+ENV=dev python run.py
 ```
 
-The bot starts polling Telegram. Send it any URL to test.
+The web app starts on `http://localhost:10000`. Paste any URL on the home page to test.
 
 ---
 
@@ -55,23 +52,11 @@ Copy `ops/.env.example` to `.env` and fill in your credentials. Settings are loa
 
 ---
 
-## Bot Commands
-
-| Command | Description |
-|---|---|
-| `/start` | Show the welcome message and command list |
-| `/reddit <url>` | Capture a Reddit post or thread |
-| `/yt <url>` | Capture a YouTube video |
-| `/newsletter <url>` | Capture a newsletter article |
-| `/github <url>` | Capture a GitHub repository, issue, or PR |
-| `/force <url>` | Re-capture a URL even if already captured (skips deduplication) |
-| *(bare URL)* | Paste any URL without a command - source type is auto-detected |
-
 ---
 
 ## Web UI
 
-The FastAPI web frontend is served alongside the bot in webhook mode, with mobile routes under `/m/`:
+The FastAPI web frontend serves all traffic, with mobile routes under `/m/`:
 
 | Page | URL | Description |
 |---|---|---|
@@ -122,20 +107,10 @@ Build the production image:
 docker build -f ops/Dockerfile -t zettelkasten-kg-website .
 ```
 
-Polling (Telegram bot only):
+Run (web UI + API on port 10000):
 
 ```bash
-docker run --env-file .env zettelkasten-kg-website
-```
-
-Webhook mode (web UI + API on port 10000):
-
-```bash
-docker run -p 10000:10000 --env-file .env ^
-  -e WEBHOOK_MODE=true ^
-  -e WEBHOOK_URL=http://localhost:10000 ^
-  -e WEBHOOK_PORT=10000 ^
-  zettelkasten-kg-website
+docker run -p 10000:10000 --env-file .env zettelkasten-kg-website
 ```
 
 ### Production: DigitalOcean Droplet (blue/green)
@@ -143,15 +118,6 @@ docker run -p 10000:10000 --env-file .env ^
 The canonical production environment runs on a DigitalOcean Premium Intel droplet (2 GB RAM / 1 vCPU / 70 GB NVMe SSD) with a Reserved IP, fronted by Cloudflare DNS for the apex `zettelkasten.in`. A Caddy 2 container terminates TLS (Let's Encrypt) and reverse-proxies to whichever Docker Compose color is live: blue binds `127.0.0.1:10000`, green binds `127.0.0.1:10001`.
 
 Deploys are automated from GitHub Actions. On pushes to `master`, `.github/workflows/deploy-droplet.yml` runs the mocked pytest suite, builds `ops/Dockerfile`, pushes `ghcr.io/chintanmehta21/zettelkasten-kg-website:<git-sha>`, then SSHes into the droplet and runs `/opt/zettelkasten/deploy/deploy.sh <git-sha>` to flip colors with a graceful Caddy reload (zero dropped connections).
-
-### Note Storage Modes
-
-| Mode | When | Notes survive redeploys? |
-|---|---|---|
-| **Local** | Default - writes to `KG_DIRECTORY` | Depends on host |
-| **Cloud** | `GITHUB_TOKEN` + `GITHUB_REPO` set | Yes - pushed to GitHub via Contents API |
-
-For cloud mode, clone the target repo into your Obsidian vault directory for automatic sync.
 
 ---
 
@@ -162,7 +128,7 @@ For cloud mode, clone the target repo into your Obsidian vault directory for aut
 pytest
 
 # Unit tests only (no network)
-pytest tests/ --ignore=tests/integration_tests
+pytest tests/ -m "not live"
 
 # A specific test module
 pytest tests/unit/website/test_settings.py -v
@@ -212,9 +178,4 @@ Source ingestion lives in `website/features/summarization_engine/source_ingest/`
 
 ---
 
-## Vault Sync
-
-**GitHub (cloud mode):** Set `GITHUB_TOKEN` and `GITHUB_REPO` to push notes to a GitHub repository. Clone that repo into your Obsidian vault.
-
-**SyncThing (self-hosted):** For syncing `KG_DIRECTORY` without a cloud service, see **[docs/SYNCTHING-ALTERNATIVES.md](docs/SYNCTHING-ALTERNATIVES.md)**.
 
