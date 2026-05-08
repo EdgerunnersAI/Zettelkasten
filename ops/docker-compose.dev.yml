@@ -15,9 +15,6 @@ services:
     env_file:
       - ../.env
     environment:
-      WEBHOOK_MODE: "true"
-      WEBHOOK_PORT: "10000"
-      WEBHOOK_URL: "http://localhost:10000"
       NEXUS_ENABLED: "true"
       RAG_MODEL_DIR: "/app/models"
     ports:

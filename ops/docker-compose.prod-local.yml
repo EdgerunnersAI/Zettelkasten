@@ -22,7 +22,6 @@ services:
     env_file:
       - ../.env
     environment:
-      WEBHOOK_PORT: "10000"
       NEXUS_ENABLED: "true"
     networks:
       - zettelnet
@@ -60,7 +59,6 @@ services:
     env_file:
       - ../.env
     environment:
-      WEBHOOK_PORT: "10000"
       NEXUS_ENABLED: "true"
     networks:
       - zettelnet

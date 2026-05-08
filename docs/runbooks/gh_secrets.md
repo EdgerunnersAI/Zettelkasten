@@ -37,17 +37,12 @@ step in `deploy-droplet.yml`. Setting them updates production behaviour.
 
 | Secret name                       | Purpose                                                                                                                       |
 |-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| `TELEGRAM_BOT_TOKEN`              | Telegram bot identity. Required for the bot half of the app.                                                                  |
-| `ALLOWED_CHAT_ID`                 | Chat-ID allow-list for the Telegram bot.                                                                                      |
-| `WEBHOOK_SECRET`                  | Validates `X-Telegram-Bot-Api-Secret-Token` on the webhook route.                                                             |
 | `GEMINI_API_KEY` / `GEMINI_API_KEYS` | Single key or newline-separated list. The pool prefers `GEMINI_API_KEYS`.                                                   |
 | `SUPABASE_URL`                    | Public Supabase URL (for the website KG client; not the DB DSN).                                                              |
 | `SUPABASE_ANON_KEY`               | Anon JWT for the website KG client.                                                                                           |
 | `SUPABASE_SERVICE_ROLE_KEY`       | Service-role JWT used by ops scripts (e.g. `migrate_graph_to_supabase.py`). **Not** the DB password.                          |
 | `REDDIT_CLIENT_ID`                | Reddit OAuth client id. Without it, RAG chunk density caps at ~1/post.                                                        |
 | `REDDIT_CLIENT_SECRET`            | Reddit OAuth client secret.                                                                                                   |
-| `GH_TOKEN_FOR_NOTES`              | GH PAT used by the bot to push notes to the notes repo (renamed to `GITHUB_TOKEN` in the container).                          |
-| `GH_REPO_FOR_NOTES`               | Notes-repo slug (renamed to `GITHUB_REPO` in the container).                                                                  |
 
 ## 3. Audit current state (read-only)
 

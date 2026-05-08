@@ -10,7 +10,6 @@ services:
       - path: /opt/zettelkasten/compose/.env.local
         required: false
     environment:
-      WEBHOOK_PORT: "10000"
       NEXUS_ENABLED: "true"
       # iter-03 §6: models are baked into the image read-only; runtime writes
       # go to /app/runtime via the mount below.

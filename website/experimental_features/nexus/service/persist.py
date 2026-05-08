@@ -1,9 +1,8 @@
 """Backward-compatible re-exports for the canonical persist module.
 
 The canonical implementation now lives at :mod:`website.core.persist` so every
-ingest path (Telegram bot, website ``/api/summarize``, eval register scripts,
-future callers) goes through a single function. This shim keeps existing
-imports working unchanged.
+ingest path (website ``/api/summarize``, eval register scripts, future callers)
+goes through a single function. This shim keeps existing imports working unchanged.
 """
 
 from website.core.persist import (  # noqa: F401

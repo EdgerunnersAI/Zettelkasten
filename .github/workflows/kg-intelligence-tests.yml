@@ -37,7 +37,5 @@ jobs:
           pip install -r ops/requirements-dev.txt
       - name: Run KG intelligence tests
         env:
-          TELEGRAM_BOT_TOKEN: "000:ci-stub"
-          ALLOWED_CHAT_ID: "1"
           GEMINI_API_KEY: "ci-stub"
         run: python -m pytest tests/kg_intelligence/ -v --tb=short

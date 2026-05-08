@@ -175,14 +175,6 @@ batch:
 writers:
   supabase:
     enabled: true
-  obsidian:
-    enabled: false
-    kg_directory_env: "KG_DIRECTORY"
-  github_repo:
-    enabled: false
-    token_env: "GITHUB_TOKEN"
-    repo_env: "GITHUB_REPO"
-    branch_env: "GITHUB_BRANCH"
 
 logging:
   level: "INFO"
