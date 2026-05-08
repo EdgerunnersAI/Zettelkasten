@@ -2,9 +2,8 @@
 
 Hooks at the read boundary already polish ``/api/graph`` responses live, but
 the source-of-truth row in ``kg_nodes.summary`` (and the file-backed
-``graph.json``) must also be born clean so non-API consumers (Telegram bot,
-Obsidian export, downstream analytics) see the same cleaned text without
-running the read-time normalizer.
+``graph.json``) must also be born clean so persisted text is never re-rendered
+by downstream consumers without running the read-time normalizer.
 """
 from __future__ import annotations
 

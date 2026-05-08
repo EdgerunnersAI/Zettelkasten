@@ -103,17 +103,7 @@ def cache_key_for_url(url: str) -> str:
     and avoids URL-encoding mismatches between callers that have different
     normalization stages upstream.
     """
-    try:
-        from telegram_bot.utils.url_utils import normalize_url  # type: ignore
-    except Exception:
-        # ``telegram_bot`` module has been deleted in the modern website-only
-        # layout. Fall back to a local minimal normalizer that strips
-        # whitespace and lowercases the scheme/host. This keeps the cache key
-        # stable across callers without depending on any removed module.
-        def normalize_url(u: str) -> str:  # type: ignore[misc]
-            return (u or "").strip()
-
-    normalized = normalize_url(url or "")
+    normalized = (url or "").strip()
     return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
 
 

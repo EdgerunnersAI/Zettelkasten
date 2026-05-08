@@ -38,8 +38,6 @@ jobs:
 
       - name: Run pytest
         env:
-          TELEGRAM_BOT_TOKEN: "000:ci-stub"
-          ALLOWED_CHAT_ID: "1"
           GEMINI_API_KEY: "ci-stub"
         run: |
           pytest -q --maxfail=5

@@ -1,7 +1,6 @@
 """FastAPI application factory for the web frontend.
 
-Serves the static web UI and the /api routes.  In webhook mode, also
-handles Telegram webhook forwarding so both services share a single port.
+Serves the static web UI and the /api routes.
 """
 
 from __future__ import annotations
@@ -101,7 +100,7 @@ def create_app(lifespan=None) -> FastAPI:
 
     Args:
         lifespan: Optional async context manager for startup/shutdown events.
-                  Used in webhook mode to manage the PTB Application lifecycle.
+                  Used by ``website.main`` for the proc-stats logger task.
     """
     kwargs = dict(
         title="Zettelkasten Summarizer",

@@ -5,11 +5,10 @@ Pure-library summarization engine that ingests URLs from 9 content sources and p
 ## Public API
 - `summarize_url(url, user_id)` - single URL, real-time
 - `BatchProcessor(user_id).run(input_path | input_bytes)` - CSV/JSON batch
-- Writers are composable: `SupabaseWriter`, `ObsidianWriter`, `GithubRepoWriter`
+- Single writer: `SupabaseWriter` (writes the structured summary into `kg_nodes.summary`).
 
 ## Integration
 - `/api/v2/summarize` and `/api/v2/batch*` endpoints alongside existing `/api/summarize`
-- Replaces the legacy capture pipeline; the former `telegram_bot/` module is deleted
 - Reuses `website/features/api_key_switching/key_pool.py`
 
 See `docs/superpowers/specs/2026-04-10-summarization-engine-v2-design.md` for full design.

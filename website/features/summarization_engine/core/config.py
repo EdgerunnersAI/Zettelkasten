@@ -66,8 +66,6 @@ class BatchConfig(BaseModel):
 
 class WritersConfig(BaseModel):
     supabase: dict[str, Any] = Field(default_factory=lambda: {"enabled": True})
-    obsidian: dict[str, Any] = Field(default_factory=lambda: {"enabled": False})
-    github_repo: dict[str, Any] = Field(default_factory=lambda: {"enabled": False})
 
 
 class LoggingConfig(BaseModel):

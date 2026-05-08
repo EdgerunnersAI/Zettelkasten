@@ -1,0 +1,302 @@
+{
+  "generator": "capture_supabase_data.py",
+  "generated_at": "2026-05-08T14:26:54.550116+00:00",
+  "file_count": 42,
+  "total_bytes": 275482,
+  "files": [
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_features\\001_intelligence.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_features\\001_intelligence.sql",
+      "size": 23990,
+      "sha256": "d95dc2e7b812b33b0da20a0770e9552c3e604bbda19499ce24bce3fff7e462bf",
+      "captured_at": "2026-05-08T14:26:53.914500+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_features\\002_global_scale.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_features\\002_global_scale.sql",
+      "size": 13296,
+      "sha256": "fcaf4343a818f1221c4acf3e77ae30299e6594b5c08fb960152aea5b036fbd55",
+      "captured_at": "2026-05-08T14:26:53.950048+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_features\\003_scale_storage_optimizations.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_features\\003_scale_storage_optimizations.sql",
+      "size": 7811,
+      "sha256": "f943d1d92ef30ae6c9cc947933dc2e052a4b5bec1a6c9dbab1553e9728c603b2",
+      "captured_at": "2026-05-08T14:26:53.958051+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-24_source_type_enum_and_node_columns.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-24_source_type_enum_and_node_columns.sql",
+      "size": 2820,
+      "sha256": "dd6c3f2dca7a53355d79641393aaa813ee8eb0c07dab6884970f25ec144cfb0c",
+      "captured_at": "2026-05-08T14:26:53.964050+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-26_delete_test_node.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-26_delete_test_node.sql",
+      "size": 1156,
+      "sha256": "d06528437c828f051b9d2f0a9ebe069640c78a35dd87b26b5edf54e511f7e182",
+      "captured_at": "2026-05-08T14:26:53.971052+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-26_expand_subgraph.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-26_expand_subgraph.sql",
+      "size": 2182,
+      "sha256": "c689a9716ead6abf09cc03d082b552219a978da43631ccc3b96a3d3810d6a76b",
+      "captured_at": "2026-05-08T14:26:53.978051+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-26_fix_rag_bulk_add_to_sandbox.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-26_fix_rag_bulk_add_to_sandbox.sql",
+      "size": 7939,
+      "sha256": "6af44e7b855384b5644930306f42a12cea37c413a27784e35755f629dc52e8bb",
+      "captured_at": "2026-05-08T14:26:53.983619+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-26_kg_usage_edges.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-26_kg_usage_edges.sql",
+      "size": 3548,
+      "sha256": "e328839c5eb599d9aa94053c55963dd1b4940878effc26e0417dd06b3c0d7dbc",
+      "captured_at": "2026-05-08T14:26:53.991347+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-26_metadata_enriched_at.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-26_metadata_enriched_at.sql",
+      "size": 1286,
+      "sha256": "09ba825458e209ff6d9676400348363da59f235a0e7cbc15d9de8370c904716a",
+      "captured_at": "2026-05-08T14:26:53.997340+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-27_migrations_applied_table.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-27_migrations_applied_table.sql",
+      "size": 730,
+      "sha256": "bee40f4edb4bbd50efbe2f579707160229443e5a0e14261bd1fb3b014ace4060",
+      "captured_at": "2026-05-08T14:26:54.004334+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-28_migrations_audit_columns.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-28_migrations_audit_columns.sql",
+      "size": 756,
+      "sha256": "5e40560f90f0dfe44458831659a02a585861cf78e81e2683bf8dd1d1240309c0",
+      "captured_at": "2026-05-08T14:26:54.011360+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-29_critic_verdict_retry_states.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-29_critic_verdict_retry_states.sql",
+      "size": 1226,
+      "sha256": "7fe339823bc818ab7e4cde5ace6b1ef7c22e5824c9d4ec249fa8dbed79b3d195",
+      "captured_at": "2026-05-08T14:26:54.017354+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-04-30_kasten_node_frequency.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-04-30_kasten_node_frequency.sql",
+      "size": 2687,
+      "sha256": "447483e99a01303804044073800230806286eb944cbf12ef96c85490738410d3",
+      "captured_at": "2026-05-08T14:26:54.025368+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-01_user_pricing.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-01_user_pricing.sql",
+      "size": 9892,
+      "sha256": "97b797a6158868a9477c8dba2c33e28e87cee8edaff63836c509ab4d29bf8580",
+      "captured_at": "2026-05-08T14:26:54.060625+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-03_kg_link_relation_enum.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-03_kg_link_relation_enum.sql",
+      "size": 846,
+      "sha256": "62c1bf25d5ce2a6c5232dc5d8c2026d3a40f5cf4cf17cb16d5b31dfa10a958b1",
+      "captured_at": "2026-05-08T14:26:54.066630+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-03_rag_entity_anchor.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-03_rag_entity_anchor.sql",
+      "size": 1861,
+      "sha256": "cb2ff74cb278bf18153139706bb3ab6747cf2ff3fa7f10d6b6c9ab879c06ce13",
+      "captured_at": "2026-05-08T14:26:54.074624+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-03_rag_kasten_chunk_counts.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-03_rag_kasten_chunk_counts.sql",
+      "size": 691,
+      "sha256": "4084856e6df841bd949b9f4b1990eb3eb3d605d0a832987da4103bbbb57c063d",
+      "captured_at": "2026-05-08T14:26:54.079624+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-04_chat_messages_verdict_constraint_v2.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-04_chat_messages_verdict_constraint_v2.sql",
+      "size": 979,
+      "sha256": "42d812aac40243909373aea6089d715ed095f9608b732c5f9fe5c5bf36f8f6cb",
+      "captured_at": "2026-05-08T14:26:54.085638+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-04_rag_fetch_anchor_seeds.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-04_rag_fetch_anchor_seeds.sql",
+      "size": 2646,
+      "sha256": "bf10c8a3445465bfa4c172e52086fa64e7c669606c16016ff5d54c9cd4283a16",
+      "captured_at": "2026-05-08T14:26:54.092624+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-05_rag_dense_recall.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-05_rag_dense_recall.sql",
+      "size": 2325,
+      "sha256": "148eb2b0dcef0b7934e36247fdc0b4869fd6eab5a5bc9be657203e1a018126ee",
+      "captured_at": "2026-05-08T14:26:54.097624+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-07_anchor_seed_bandit.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-07_anchor_seed_bandit.sql",
+      "size": 6352,
+      "sha256": "5d4a4f8c3734c9ae315195a1b15e56da47b5316f908b3a48852559642a55281f",
+      "captured_at": "2026-05-08T14:26:54.104630+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-07_kasten_metrics.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-07_kasten_metrics.sql",
+      "size": 446,
+      "sha256": "8f4d94f39146ce447499093f0e363aa9dbc68ec30f257bde89ce9438c104b260",
+      "captured_at": "2026-05-08T14:26:54.110671+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-07_kg_extraction_blocklist.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-07_kg_extraction_blocklist.sql",
+      "size": 714,
+      "sha256": "f9bfca67a6af158bd9710ebbe72cbd11afa67ddf1286eb9abf32bd16b6a03350",
+      "captured_at": "2026-05-08T14:26:54.116669+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\migrations\\2026-05-07_kg_node_aliases.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\migrations\\2026-05-07_kg_node_aliases.sql",
+      "size": 4070,
+      "sha256": "02dbecb02f3f718583d9cc75cf40e0523bae6e79b324d073d0c25b48b6fec28b",
+      "captured_at": "2026-05-08T14:26:54.169208+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\kg_public\\schema.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\kg_public\\schema.sql",
+      "size": 33205,
+      "sha256": "2f698e73dcd5eacdad59352e5c6e69a61646f069cfaf39d8d805c8d77875751a",
+      "captured_at": "2026-05-08T14:26:54.191191+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\nexus\\schema.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\nexus\\schema.sql",
+      "size": 19858,
+      "sha256": "8e645a8fe8b7569e39a57197666dd66517f2c1e8fac1133c13541f0139df6a4e",
+      "captured_at": "2026-05-08T14:26:54.229772+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\001_hnsw_migration.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\001_hnsw_migration.sql",
+      "size": 1638,
+      "sha256": "b5d3a2cc06b1e3b67c6b61f800c6474ea101fb805c3e694c272f233ab4ac2ae9",
+      "captured_at": "2026-05-08T14:26:54.237769+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\002_chunks_table.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\002_chunks_table.sql",
+      "size": 5262,
+      "sha256": "7e368201b8d7c0afbf1ea72ea0b1ecfe41ca76dbddbb582ebb38b13139b3dbd0",
+      "captured_at": "2026-05-08T14:26:54.244762+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\003_sandboxes.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\003_sandboxes.sql",
+      "size": 6794,
+      "sha256": "7b672e18ad5fcf9957345f67519a9b1c3102be5fc293f8b2512521b416a94cfc",
+      "captured_at": "2026-05-08T14:26:54.252806+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\004_chat_sessions.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\004_chat_sessions.sql",
+      "size": 7871,
+      "sha256": "baec8af0d71aef19b8f0d46dd50dcb64f8874cfc96df2e580345b9e533522e34",
+      "captured_at": "2026-05-08T14:26:54.261794+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\005_rag_rpcs.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\005_rag_rpcs.sql",
+      "size": 16776,
+      "sha256": "029a1098008bf4587968660d4077b4a04dc86bf27fd2e8e6efef3b15ed2c285f",
+      "captured_at": "2026-05-08T14:26:54.301988+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\006_fix_rag_rpc_variable_conflict.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\006_fix_rag_rpc_variable_conflict.sql",
+      "size": 10092,
+      "sha256": "bc5f3c8bcff76941d3be58b6e1bcd52ab076a0e21f2406f23b235e40b1c79ebf",
+      "captured_at": "2026-05-08T14:26:54.334538+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\rag_chatbot\\CLAUDE.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\rag_chatbot\\CLAUDE.md",
+      "size": 45,
+      "sha256": "9130a62a3b702d31d5d51c8ebf380d8fcfaa1c827178bb88ed19f66385ad649d",
+      "captured_at": "2026-05-08T14:26:54.343631+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\summarization_engine\\001_engine_v2.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\summarization_engine\\001_engine_v2.sql",
+      "size": 1778,
+      "sha256": "46eb0cea50146050fb8546c5684ff3e90334cf75c79e86689671bdf54aa78ec0",
+      "captured_at": "2026-05-08T14:26:54.350658+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\user_auth\\schema.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\user_auth\\schema.sql",
+      "size": 3354,
+      "sha256": "054b530c5a74a87456308de8d494c6327ec38e25a1e4ccf007182bc1d4adec81",
+      "captured_at": "2026-05-08T14:26:54.387658+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\supabase\\website\\user_pricing\\schema.sql",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\schemas\\user_pricing\\schema.sql",
+      "size": 13290,
+      "sha256": "69f0b10c305042fdfd087a819f3217e555c5bea59b72fd3ba76e9c147efa2736",
+      "captured_at": "2026-05-08T14:26:54.422992+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\website\\features\\knowledge_graph\\content\\graph.json",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\file_store_fallback\\graph.json",
+      "size": 18850,
+      "sha256": "fedc38e73efa08f9c39b7cb2ed3597d3587d4d9871f6ac32985c54e6612d31d1",
+      "captured_at": "2026-05-08T14:26:54.452534+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Syncthing\\Obsidian\\KG\\github_2026-03-27_jina-aireader.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\obsidian_export\\corpus\\github_2026-03-27_jina-aireader.md",
+      "size": 5839,
+      "sha256": "232cbf607380535d3a277ffc6070924ff36e3a0286cdaba703b802e6632c4a2a",
+      "captured_at": "2026-05-08T14:26:54.465541+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Syncthing\\Obsidian\\KG\\github_2026-03-28_markuspfundsteinmcp-obsidian-a5204a.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\obsidian_export\\corpus\\github_2026-03-28_markuspfundsteinmcp-obsidian-a5204a.md",
+      "size": 5844,
+      "sha256": "d730ddadaf3e27ddc9402aedf83ba3b1d14fd3e49bde6c519e7116c47e6d981e",
+      "captured_at": "2026-05-08T14:26:54.472532+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Syncthing\\Obsidian\\KG\\newsletter_2026-03-27_is-something-bugging-you.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\obsidian_export\\corpus\\newsletter_2026-03-27_is-something-bugging-you.md",
+      "size": 8072,
+      "sha256": "31eb7b8beb07b0a8bd04425b8d390adf154d313ee8a8cd5e0d5e21dfb1aa08e8",
+      "captured_at": "2026-05-08T14:26:54.480535+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Syncthing\\Obsidian\\KG\\youtube_2026-03-27_notebooklm-changed-completely-heres-what-matters-in-2026.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\obsidian_export\\corpus\\youtube_2026-03-27_notebooklm-changed-completely-heres-what-matters-in-2026.md",
+      "size": 8130,
+      "sha256": "d0dbe99f5adb5a984fd34ee0a907df8e4de07059edd9b2ef8bea663b527d6bd8",
+      "captured_at": "2026-05-08T14:26:54.487541+00:00"
+    },
+    {
+      "src": "C:\\Users\\LENOVO\\Documents\\Syncthing\\Obsidian\\KG\\youtube_2026-03-28_notebooklm-changed-completely-heres-what-matters-in-2026.md",
+      "dst": "C:\\Users\\LENOVO\\Documents\\Claude_Code\\Projects\\Obsidian_Vault\\.claude\\worktrees\\strange-fermi-e5f426\\docs\\supabase_data\\obsidian_export\\corpus\\youtube_2026-03-28_notebooklm-changed-completely-heres-what-matters-in-2026.md",
+      "size": 8535,
+      "sha256": "b828704a6c239991f9b22532f35237db8cde2ef9256b8816a08b76d6bdf302e6",
+      "captured_at": "2026-05-08T14:26:54.541121+00:00"
+    }
+  ]
+}

@@ -32,8 +32,6 @@ jobs:
 
       - name: pytest --live
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          ALLOWED_CHAT_ID: ${{ secrets.ALLOWED_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

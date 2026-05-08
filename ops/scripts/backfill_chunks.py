@@ -231,11 +231,7 @@ async def _refetch_content(node: dict[str, Any]):
 
 
 class _RefetchedContent:
-    """Lightweight container so the rest of the script stays the same.
-
-    Mirrors the shape the previous telegram_bot.ExtractedContent provided
-    without importing it.
-    """
+    """Lightweight container with body / title / metadata for the script to consume."""
 
     __slots__ = ("body", "title", "metadata")
 

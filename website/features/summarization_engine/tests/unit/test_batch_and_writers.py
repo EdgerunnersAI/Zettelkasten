@@ -19,8 +19,6 @@ from website.features.summarization_engine.core.models import (
     SummaryResult,
 )
 from website.features.summarization_engine.writers.markdown import render_markdown
-from website.features.summarization_engine.writers.obsidian import ObsidianWriter
-from website.features.summarization_engine.writers.github_repo import GithubRepoWriter
 
 
 def test_load_batch_input_csv():
@@ -78,36 +76,10 @@ async def test_batch_processor_stress_uses_bounded_workers(monkeypatch):
     assert max_active <= 3
 
 
-@pytest.mark.asyncio
-async def test_obsidian_writer_writes_markdown(tmp_path):
-    result = _summary_result()
-    output = await ObsidianWriter(tmp_path).write(result, user_id=UUID("00000000-0000-0000-0000-000000000001"))
-    assert output["path"].endswith("test-note.md")
-    assert "## Detailed Summary" in (tmp_path / "test-note.md").read_text(encoding="utf-8")
-
-
 def test_render_markdown_contains_frontmatter():
     rendered = render_markdown(_summary_result())
     assert "source_type: web" in rendered
     assert "# Test note" in rendered
-
-
-@pytest.mark.asyncio
-async def test_github_writer_updates_existing_file(monkeypatch, httpx_mock: HTTPXMock):
-    monkeypatch.setenv("GITHUB_TOKEN", "token")
-    monkeypatch.setenv("GITHUB_REPO", "owner/repo")
-    httpx_mock.add_response(json={"sha": "abc123"})
-    httpx_mock.add_response(json={"content": {"path": "notes/test-note.md"}})
-
-    output = await GithubRepoWriter().write(
-        _summary_result(),
-        user_id=UUID("00000000-0000-0000-0000-000000000001"),
-    )
-
-    put_request = httpx_mock.get_requests()[-1]
-    assert put_request.method == "PUT"
-    assert b'"sha":"abc123"' in put_request.content
-    assert output == {"path": "notes/test-note.md", "status": "updated"}
 
 
 def _summary_result(url: str = "https://example.com") -> SummaryResult:
