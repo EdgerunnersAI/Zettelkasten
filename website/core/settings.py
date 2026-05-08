@@ -1,19 +1,17 @@
-"""Website-native application settings.
+"""Website application settings.
 
 Pydantic BaseSettings layering (env > .env > ops/config.yaml) for the FastAPI
-app. Historical note: this module originated as a port of the legacy
-``telegram_bot`` configuration, which has since been deleted; the layering is
-retained here without any ``telegram_bot`` module dependency.
+app.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Tuple, Type
 
-from pydantic import field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -41,28 +39,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    telegram_bot_token: str = ""
-    allowed_chat_id: int = 0
-
-    @field_validator("allowed_chat_id", mode="before")
-    @classmethod
-    def _coerce_empty_chat_id(cls, value: Any) -> Any:
-        if isinstance(value, str) and value.strip() == "":
-            return 0
-        return value
-
     gemini_api_key: str = ""
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
-    reddit_user_agent: str = "ZettelkastenBot/1.0"
-
-    github_token: str = ""
-    github_repo: str = ""
-    github_branch: str = "main"
-
-    @property
-    def github_enabled(self) -> bool:
-        return bool(self.github_token.strip() and self.github_repo.strip())
+    reddit_user_agent: str = "ZettelkastenWeb/1.0"
 
     @property
     def reddit_oauth_configured(self) -> bool:
@@ -76,19 +56,12 @@ class Settings(BaseSettings):
 
     reddit_comment_depth: int = 10
 
-    kg_directory: str = "./kg_output"
     data_dir: str = "./data"
 
-    webhook_mode: bool = False
-    webhook_url: str = ""
-    webhook_port: int = 8443
-    webhook_secret: str = ""
+    server_port: int = 10000
+    """Port the dev-mode uvicorn binds to. Production overrides via env PORT."""
 
     model_name: str = "gemini-2.5-flash"
-    # Default True so /api/summarize auto-fires ingest_node_chunks even on
-    # container builds that don't bundle ops/config.yaml (the iter-06 prod
-    # observation). The hook itself is exception-safe and never blocks the
-    # capture; opt out via env RAG_CHUNKS_ENABLED=false if needed.
     rag_chunks_enabled: bool = True
 
     log_level: str = "INFO"
@@ -122,41 +95,33 @@ class Settings(BaseSettings):
         return (init_settings, env_settings, dotenv_settings, yaml_settings)
 
 
-def validate_reddit_credentials(settings: Settings) -> None:
-    """Validate Reddit OAuth credentials for production-like startup.
+def _is_production() -> bool:
+    """Production is signalled by ENV=production. Anything else is dev-like."""
+    return os.environ.get("ENV", "").strip().lower() == "production"
 
-    Behavior matrix:
-      - ``webhook_secret`` set AND Reddit creds missing → ``RuntimeError``
-        (hard fail-fast: this signals a webhook-driven production deploy
-        where Reddit ingestion must use OAuth to avoid anti-bot walls).
-      - ``webhook_mode=True`` AND Reddit creds missing → one-shot warning
-        (legacy path; kept for backward compatibility with existing
-        non-webhook-secret deployments).
-      - Otherwise → no-op (polling/dev mode or creds present).
+
+def validate_reddit_credentials(settings: Settings) -> None:
+    """Validate Reddit OAuth credentials.
+
+    Behaviour:
+      - production AND creds missing → ``RuntimeError`` (hard fail-fast).
+      - non-production AND creds missing → one-shot warning.
+      - creds present → no-op.
 
     The warning fires at most once per process via a module-level latch.
-    To opt out of the hard-fail (e.g. a webhook deploy that intentionally
-    does not capture Reddit), set ``REDDIT_OPTIONAL=1`` in the environment.
     """
     global _reddit_warning_emitted
 
     if settings.reddit_oauth_configured:
         return
 
-    # Hard fail when a webhook_secret is configured (production signal) and
-    # the opt-out flag is not set. Always raise, even if the warning latch
-    # has already fired, because this is a correctness gate on startup.
-    import os
-    if settings.webhook_secret.strip() and os.environ.get("REDDIT_OPTIONAL", "").strip() not in {"1", "true", "True", "yes"}:
+    if _is_production():
         raise RuntimeError(
-            "Reddit OAuth credentials are required when WEBHOOK_SECRET is set. "
-            "Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET, or set "
-            "REDDIT_OPTIONAL=1 to opt out."
+            "Reddit OAuth credentials are required in production. "
+            "Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET, or unset ENV=production."
         )
 
     if _reddit_warning_emitted:
-        return
-    if not settings.webhook_mode:
         return
     logger.warning(
         "Reddit OAuth credentials missing (REDDIT_CLIENT_ID and/or "
