@@ -563,7 +563,7 @@ Per spec §1 (non-goal) + §8.2 (runbook): loop 7 uses local server but with pro
 ```bash
 export SUMMARIZE_ENV=prod-parity
 # SUPABASE_URL is public-safe; ANON_KEY comes from your secure store — export it manually.
-export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # export SUPABASE_ANON_KEY=<private — from .env or secret manager>
 
 # Restart the managed server so it picks up the env
@@ -614,7 +614,7 @@ Per spec §10.1: `|prod-parity composite − held-out composite| ≤ 5`. If delt
 
 ```bash
 # Query Zoro's nodes
-curl -s "https://wcgqmjcxlutrmbnijzyz.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&select=id,mini_title,source_type&order=created_at.desc&limit=5" \
+curl -s "https://icmnskseuoteyirljswd.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&select=id,mini_title,source_type&order=created_at.desc&limit=5" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY"
 ```

@@ -519,7 +519,7 @@ Either no → `status=extension_required`, skip to Task 8.
 ```bash
 kill %1 2>/dev/null
 export SUMMARIZE_ENV=prod-parity
-export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # export SUPABASE_ANON_KEY=<private — from .env or secret manager>
 python run.py &
 sleep 5
@@ -548,7 +548,7 @@ python ops/scripts/eval_loop.py --source github --iter 7 --phase iter --env prod
 - [ ] **Step 6: Verify Zoro KG + RAG end-to-end**
 
 ```bash
-curl -s "https://wcgqmjcxlutrmbnijzyz.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&source_type=eq.github&select=id,mini_title,created_at&order=created_at.desc&limit=5" \
+curl -s "https://icmnskseuoteyirljswd.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&source_type=eq.github&select=id,mini_title,created_at&order=created_at.desc&limit=5" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY"
 ```

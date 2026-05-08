@@ -741,7 +741,7 @@ evaluator:
 python run.py &
 sleep 5
 # Get Zoro bearer
-# export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+# export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # export SUPABASE_ANON_KEY=<private — from .env or secret manager>
 BEARER=$(curl -s -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
   -H "apikey: $SUPABASE_ANON_KEY" \

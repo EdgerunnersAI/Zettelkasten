@@ -642,7 +642,7 @@ If a live batch fails mid-way, re-run with the same `--user` + `--limit` — alr
 - [ ] **Step 2: Export env + run dry-run for Zoro (3 nodes per login_details.txt)**
 
 ```bash
-# export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+# export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # export SUPABASE_ANON_KEY=<private — from .env or secret manager>
 python ops/scripts/backfill_kg_v2.py --dry-run --user zoro --limit 3
 cat docs/summary_eval/_backfill/kg_v2/dryrun_*.json | python -m json.tool

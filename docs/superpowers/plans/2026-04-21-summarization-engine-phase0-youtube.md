@@ -4870,7 +4870,7 @@ With `SUMMARIZE_ENV=prod-parity` env and valid Supabase creds exported:
 
 ```bash
 export SUMMARIZE_ENV=prod-parity
-export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # SUPABASE_ANON_KEY must be exported from your secure store (do NOT commit)
 python run.py &
 sleep 5

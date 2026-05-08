@@ -74,7 +74,7 @@ Responsibilities:
 **supabase-js loading strategy**:
 ```html
 <!-- In <head> of index.html -->
-<link rel="preconnect" href="https://wcgqmjcxlutrmbnijzyz.supabase.co">
+<link rel="preconnect" href="https://icmnskseuoteyirljswd.supabase.co">
 <link rel="preconnect" href="https://accounts.google.com">
 <link rel="preload" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" as="script" crossorigin>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -83,7 +83,7 @@ Responsibilities:
 **Config injection**: Rather than hardcoding Supabase credentials in JS, a new `GET /api/auth/config` endpoint returns the public config:
 ```json
 {
-  "supabase_url": "https://wcgqmjcxlutrmbnijzyz.supabase.co",
+  "supabase_url": "https://icmnskseuoteyirljswd.supabase.co",
   "supabase_anon_key": "sb_publishable_..."
 }
 ```
@@ -267,7 +267,7 @@ The architecture is provider-agnostic by design.
 
 These steps must be done by the user in external dashboards:
 
-1. **Google Cloud Console**: Create OAuth client, set redirect URI to `https://wcgqmjcxlutrmbnijzyz.supabase.co/auth/v1/callback`
+1. **Google Cloud Console**: Create OAuth client, set redirect URI to `https://icmnskseuoteyirljswd.supabase.co/auth/v1/callback`
 2. **Supabase Dashboard**: Authentication > Providers > Enable Google, paste client ID/secret
 3. **Supabase Dashboard**: Authentication > URL Configuration > Add redirect URLs:
    - `https://<render-app-url>/auth/callback`

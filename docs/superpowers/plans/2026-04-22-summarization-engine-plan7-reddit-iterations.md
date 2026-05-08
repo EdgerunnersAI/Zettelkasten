@@ -475,7 +475,7 @@ Same Zoro auth pattern as Plan 6 Task 7.
 ```bash
 kill %1 2>/dev/null
 export SUMMARIZE_ENV=prod-parity
-export SUPABASE_URL=https://wcgqmjcxlutrmbnijzyz.supabase.co
+export SUPABASE_URL=https://icmnskseuoteyirljswd.supabase.co
 # export SUPABASE_ANON_KEY=<private — from .env or secret manager>
 python run.py &
 sleep 5
@@ -505,7 +505,7 @@ python ops/scripts/eval_loop.py --source reddit --iter 7 --phase iter --env prod
 - [ ] **Step 6: Verify Zoro KG write landed**
 
 ```bash
-curl -s "https://wcgqmjcxlutrmbnijzyz.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&source_type=eq.reddit&select=id,mini_title&order=created_at.desc&limit=3" \
+curl -s "https://icmnskseuoteyirljswd.supabase.co/rest/v1/kg_nodes?user_id=eq.a57e1f2f-7d89-4cd7-ae39-72c440ed4b4e&source_type=eq.reddit&select=id,mini_title&order=created_at.desc&limit=3" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY"
 ```
