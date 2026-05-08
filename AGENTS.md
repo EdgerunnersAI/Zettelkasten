@@ -15,14 +15,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Zettelkasten Capture Bot — a Telegram bot that captures URLs (Reddit, YouTube, GitHub, newsletters, generic web) and writes AI-summarised Obsidian notes to a local knowledge graph. Python 3, async, uses python-telegram-bot v21+.
+Zettelkasten Website — a FastAPI web app that captures URLs (Reddit, YouTube, GitHub, newsletters, generic web) and produces AI-summarised entries in a Supabase-backed knowledge graph. Python 3, async, deployed on DigitalOcean blue/green.
 
-**Status**: Production-ready. ~530 tests passing (CI). DigitalOcean blue/green deploy stack merged: 2026-04-10.
+**Status**: Production-ready. DigitalOcean blue/green deploy stack merged: 2026-04-10.
 **Repo**: https://github.com/chintanmehta21/Zettelkasten_KG
-**Obsidian KG**: `C:\Users\LENOVO\Documents\Syncthing\Obsidian\KG`
 **Verified sources**: YouTube, GitHub, Newsletter (Substack), Generic (HN/web)
 
-Two interfaces: Telegram bot (primary) and a FastAPI web UI (`website/`) with REST API at `/api/summarize` and an interactive 3D knowledge graph at `/knowledge-graph`.
+Single interface: a FastAPI web UI (`website/`) with REST API at `/api/summarize` and an interactive 3D knowledge graph at `/knowledge-graph`.
 
 ## Production Change Discipline
 
@@ -59,42 +58,116 @@ This is a live production web application with active users across frontend, bac
 - Proceed through ambiguity without acknowledging it.
 - Present assumptions as verified facts.
 
+## When to ask vs when to keep moving
+
+The "skip clarifying questions" rule from earlier user feedback was scoped too broadly. Corrected scope (2026-04-28):
+
+**Skip questions** when:
+- In dashboard-only mode (recurring progress-bar loops, autonomous execution loops).
+- Inside a locked execution loop where the plan is already agreed and the steps are mechanical.
+
+**Ask questions freely** when:
+- Planning a new iteration, design, refactor, or eval scope.
+- Brainstorming trade-offs or comparing approaches.
+- About to touch any knob in the "Critical Infra Decision Guardrails" section below.
+- Any change with production blast-radius, security impact, or that would revert a prior iteration's deliberate decision.
+- Anything ambiguous that could be interpreted more than one way.
+
+**Never (without explicit user approval in chat):**
+- Make a major / irreversible / infra decision because triage is taking time.
+- Push an "infra mitigation" while logs / evidence are still in flight.
+- Revert a protected knob from a prior iteration as a reflex response to a 5xx storm.
+- Treat your own hypothesis as fact without verification.
+
+User: "Skip clarifying questions" applies only inside execution-task loops in dashboard-only mode. Otherwise — ask. *Never* make major important decisions without explicit approval, and stop repeating the same mistakes.
+
+## Critical Infra Decision Guardrails (HARD RULES — never silently undo)
+
+**These are infrastructure decisions baked into prior iterations with explicit rationale. They MUST NOT be reverted, downgraded, or "blindly mitigated" without (a) reproducing the failure with logs in hand and (b) the user's explicit authorization in the chat.** A failing health check or a 5xx storm is NOT authorization — it is the trigger to root-cause, not to revert.
+
+Specifically forbidden as a reflex response to production errors:
+- Reducing `GUNICORN_WORKERS` below 2 on the production droplet. The whole point of the iter-03 BGE int8 quantization (Phase 1A, ~110 MB RAM saving via COW + `--preload`) was to keep 2 workers viable on the 2 GB droplet so the system handles concurrent users at scale. Halving worker count silently undoes that work.
+- Disabling `--preload` (workers each load their own model — re-explodes RAM).
+- Switching the int8 cascade back to fp32 by setting `FP32_VERIFY_ENABLED=true` for everything (Phase 1A.5 made it a top-3 verifier only).
+- Lowering `GUNICORN_TIMEOUT` below 180s (Phase 1B reasoned 180s minimum for Strong/Pro multi-hop synth).
+- Disabling the rerank semaphore / bounded queue (Phase 1B.2). The 503 backpressure path is the burst-correctness mechanism.
+- Removing the SSE heartbeat wrapper (Phase 1B.4). Cloudflare 502s on idle non-streaming responses are exactly what it prevents.
+- Reverting blue/green Caddy timeouts to defaults (the explicit `transport http { read_timeout 240s ... }` block is the upstream-timeout fix for slow synth).
+- Disabling the schema-drift gate (Phase 1C.5) or the `kg_users` allowlist gate (Phase 2D.2) without explicit operator approval per occurrence.
+- Switching colors on the Kasten surface to anything other than teal, or putting amber outside `/knowledge-graph`.
+
+When prod is failing and one of these knobs looks tempting:
+1. **STOP.** Pull droplet logs (`gh workflow run read_recent_logs.yml`), Caddy access log, container `dmesg`, `free -h`. Read first.
+2. State the hypothesis with evidence. Not "it might be OOM" — show the OOM line.
+3. Propose the targeted fix that DOES NOT touch the protected knobs. (Examples: fix the actual exception, add the swapfile, bump a single timeout, retry policy, fix a leak.)
+4. If the only viable fix touches a protected knob, **ask the user explicitly with the trade-off named** before pushing. e.g. "Logs show OOM at 1.8 GB during cold-load — temporarily setting GUNICORN_WORKERS=1 until we add the swapfile?" — then wait.
+
+**Penalty pattern for the assistant:** if you're tempted to push a "blind mitigation" because triage is taking time, that's the exact moment to slow down. Production change discipline (CLAUDE.md §1) overrides perceived urgency. The user has consistently chosen "wait for logs + correct fix" over "fast-but-wrong revert".
+
+## Research Discipline (read before every plan / brainstorm / design)
+
+**The rule:** Every plan, design, recommendation, or question set must be grounded in completed, verified research. Never reason from assumptions, punch-list summaries, or partial agent output when more research is in flight.
+
+**When you dispatch background subagents:**
+1. Wait for **every** dispatched agent to complete before making recommendations or asking decisive questions. A partial picture will silently shape the question set with wrong defaults — and the user will catch you, costing more time than waiting did.
+2. If you must communicate before all agents return, state explicitly which agents are still running and that you are NOT yet making recommendations.
+3. After each agent returns, fully digest its output and check it against any prior recommendation you made — flag and revise anything contradicted.
+4. Only after all agents return AND their outputs have been cross-checked, issue the question set or design.
+
+**When the user asks "rapid-fire" or "be fast":**
+- Speed up communication, not research. Batch questions, drop ceremony, skip preamble.
+- Do NOT speed up by skipping research, by reasoning from punch-list claims, or by guessing at file locations / current behavior.
+- Verify every code claim with `smart_search` / `Read` / `Grep` before stating it. Punch-list items often contain stale assumptions about file paths, threshold names, or query-class labels — treat them as hypotheses to verify, not facts.
+- "Punch list says X exists at file:line" → check the file. Roughly half the time, the claim is wrong or out of date.
+
+**Verification before recommendation:**
+- For every clarifying question with a recommended default, the recommendation must cite a verified file or fact, not a punch-list summary or a memory.
+- For every "fix at file:line" in a design, confirm the file and line exist now.
+- For every infra constraint (RAM, workers, timeouts), measurement or research must justify the number — never a guess.
+
+**When in doubt, dispatch a scout.** A 90-second architecture-scout agent is always cheaper than one wrong recommendation that the user has to correct, then a revised recommendation, then a re-revised plan.
+
 ## Commands
 
 ```bash
-# Run the bot (polling/dev mode)
+# Run the website (dev mode)
+ENV=dev python run.py
+
+# Run the website (production mode — gunicorn + uvicorn)
 python run.py
-# or
-python -m telegram_bot
 
 # Run all tests
 pytest
 
 # Run a single test file
-pytest tests/test_extractors.py -v
+pytest tests/unit/website/test_settings.py -v
 
 # Run unit tests only (skip network-dependent tests)
-pytest tests/ --ignore=tests/integration_tests
+pytest tests/ -m "not live"
 
 # Run live integration tests (requires real API creds in .env)
 pytest --live
 
 # Coverage
-pytest --cov=telegram_bot --cov-report=term-missing
+pytest --cov=website --cov-report=term-missing
 
 # Install runtime dependencies only
 pip install -r ops/requirements.txt
 
-# Install dev/test dependencies (includes pytest, pytest-asyncio, pytest-httpx)
+# Install dev/test dependencies
 pip install -r ops/requirements-dev.txt
-
-# Editable install (optional)
-pip install -e .
 ```
 
-## Deployment (DigitalOcean Droplet)
+## Deployment Infrastructure (Canonical)
 
-Production deploys are automated via GitHub Actions and a blue/green Docker Compose stack on a DigitalOcean droplet.
+**This is the ONLY production environment.** Earlier iterations of this app ran on Render.com; that platform is **legacy / no longer used**. Any doc, comment, or plan that references Render, `*.onrender.com`, the Render dashboard, or "Render Secret Files" is historical context unless explicitly stated otherwise.
+
+- **Provider:** DigitalOcean
+- **Droplet:** Premium Intel — 2 GB RAM, 1 vCPU, 70 GB NVMe SSD
+- **Networking:** DigitalOcean Reserved IP attached (stable public IP across droplet lifecycle events)
+- **Stack:** Docker Compose blue/green (app containers bind `127.0.0.1:10000` and `127.0.0.1:10001`) fronted by a Caddy 2 container that terminates TLS (Let's Encrypt) and reverse-proxies to whichever color is live
+- **CI/CD:** GitHub Actions builds the image to `ghcr.io/chintanmehta21/zettelkasten-kg-website:<git-sha>`, then SSHes into the droplet and runs `/opt/zettelkasten/deploy/deploy.sh <git-sha>` to flip colors with a graceful Caddy reload (zero dropped connections)
+- **DNS:** Cloudflare (delegated from GoDaddy), apex `zettelkasten.in` -> Reserved IP
 
 ### GitHub Actions
 
@@ -113,63 +186,39 @@ Compose files live in `ops/`:
 ### Secrets / Env Vars
 
 See `ops/.env.example` for the canonical list. Common ones:
-- Required: `TELEGRAM_BOT_TOKEN`, `ALLOWED_CHAT_ID`, `WEBHOOK_SECRET`, `GEMINI_API_KEYS` (preferred) or `GEMINI_API_KEY`
-- Optional: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (Supabase KG), `GITHUB_TOKEN`, `GITHUB_REPO` (push notes to GitHub)
-
-### Note Storage
-- **Local mode:** Notes written to `KG_DIRECTORY` (default `./kg_output`). In production droplet deploys this is backed by a host volume.
-- **Cloud mode:** When `GITHUB_TOKEN` and `GITHUB_REPO` are set, notes are pushed via GitHub Contents API (base64-encoded PUT). `settings.github_enabled` returns True when both are set. `GITHUB_BRANCH` defaults to `main`.
+- Required: `GEMINI_API_KEYS` (preferred) or `GEMINI_API_KEY`
+- Optional: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (Supabase KG), `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
 
 ## Configuration
 
-Settings are loaded by `telegram_bot/config/settings.py` (Pydantic BaseSettings) from three sources in priority order: env vars > `.env` file > `ops/config.yaml`. Secrets (TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, REDDIT_CLIENT_*) must be in env vars or `.env`, never in config.yaml. Copy `ops/.env.example` to `.env` to get started.
+Settings are loaded by `website/core/settings.py` (Pydantic BaseSettings) from three sources in priority order: env vars > `.env` file > `ops/config.yaml`. Secrets (GEMINI_API_KEY, REDDIT_CLIENT_*, SUPABASE_*) must be in env vars or `.env`, never in config.yaml.
 
 The `Settings` singleton is accessed everywhere via `get_settings()` (lru_cache). Tests that need settings without valid credentials should be careful — `get_settings()` calls `_validate_settings()` which does `SystemExit(1)` on missing required fields.
 
 ### Reddit credentials and RAG chunk density
 
-`REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are **required for OAuth-backed Reddit extraction** (used by the website `RedditIngestor` and by `ops/scripts/backfill_chunks.py --refetch-source` when it encounters `/r/` URLs). Without them the ingestor degrades to the public JSON endpoint + HTML scraping, which often returns thin content for Reddit's anti-bot walls and caps RAG chunk density at ~1 chunk per post. Set both in the production container's env or `/etc/secrets/api_env`. See `ops/.env.example` for the template.
+`REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are **required for OAuth-backed Reddit extraction** (used by the website `RedditIngestor` and by `ops/scripts/backfill_chunks.py --refetch-source` when it encounters `/r/` URLs). Without them the ingestor degrades to the public JSON endpoint + HTML scraping, which often returns thin content for Reddit's anti-bot walls and caps RAG chunk density at ~1 chunk per post. On the production droplet, set both in the container env (via `--env-file`) or in the secret file mounted at `/etc/secrets/api_env`. See `ops/.env.example` for the template.
 
 ## Architecture
 
 ### Pipeline (the core flow)
 
-`orchestrator.process_url` sequences the full capture: resolve redirects -> normalize URL -> detect source type -> dedup check -> extract content -> Gemini summarise -> build tags -> write Obsidian note -> mark seen.
-
-Key modules in `telegram_bot/pipeline/`:
-- `orchestrator.py` — top-level pipeline entry point
-- `summarizer.py` — Gemini API integration (GeminiSummarizer + tag building)
-- `writer.py` — writes Markdown notes to KG_DIRECTORY (local mode)
-- `github_writer.py` — pushes notes to GitHub repo via Contents API (cloud mode, base64-encoded PUT)
-- `duplicate.py` — JSON-file-based seen-URL deduplication store
+`website/core/pipeline.py` sequences the full capture: resolve redirects -> normalize URL -> detect source type -> extract content -> Gemini summarise -> build tags -> return structured result. The pipeline is stateless: no disk writes, no dedup updates.
 
 #### API Key Pool & Model Fallback
 
-A centralized `GeminiKeyPool` (`website/features/api_key_switching/`) manages up to 10 API keys with key-first traversal: `key1/gemini-2.5-flash` → `key2/gemini-2.5-flash` → ... → `key1/gemini-2.5-flash-lite` → `key2/gemini-2.5-flash-lite`. On a 429 rate-limit, it tries the next key (same model) before downgrading to the next model tier. Content-aware routing sends short/simple content to `flash-lite` first to preserve `flash` quota for complex content. Keys are loaded from an `api_env` file (one key per line) at project root or `/etc/secrets/api_env` (Render-compatible secret-file path), with fallback to `GEMINI_API_KEY` for backward compatibility. If ALL keys/models fail, the pipeline degrades gracefully — returns raw extracted content with `is_raw_fallback=True`. For YouTube, it can bypass transcript extraction and send the video URL directly to Gemini's video understanding API.
+A centralized `GeminiKeyPool` (`website/features/api_key_switching/`) manages up to 10 API keys with key-first traversal: `key1/gemini-2.5-flash` → `key2/gemini-2.5-flash` → ... → `key1/gemini-2.5-flash-lite` → `key2/gemini-2.5-flash-lite`. On a 429 rate-limit, it tries the next key (same model) before downgrading to the next model tier. Content-aware routing sends short/simple content to `flash-lite` first to preserve `flash` quota for complex content. Keys are loaded from an `api_env` file (one key per line) at project root or `/etc/secrets/api_env` (the secret-file path mounted into the droplet container; the path was originally adopted from Render conventions and carried over), with fallback to `GEMINI_API_KEY` for backward compatibility. If ALL keys/models fail, the pipeline degrades gracefully — returns raw extracted content with `is_raw_fallback=True`. For YouTube, it can bypass transcript extraction and send the video URL directly to Gemini's video understanding API.
 
-### Source Extractors (plugin pattern)
+### Source Extractors
 
-Extractors live in `telegram_bot/sources/`. **Auto-discovery**: `__init__.py` scans the package at import time, finds all `SourceExtractor` subclasses with a `source_type` attribute, and registers them in `_REGISTRY`. No manual wiring needed.
-
-To add a new source: (1) add enum value to `SourceType` in `models/capture.py`, (2) create extractor module in `sources/`, (3) add URL pattern to `sources/registry.py`, (4) add handler in `bot/handlers.py` + wire in `main.py`.
-
-`get_extractor(source_type, settings)` returns an instantiated extractor, injecting credentials for sources that need them (currently only Reddit).
-
-### Bot Layer
-
-`main.py` wires everything: builds the PTB Application, registers CommandHandlers and MessageHandlers with a chat-ID allow-list filter (`bot/guards.py`), then starts polling or webhook mode.
-
-- **Polling mode** (dev): PTB's built-in `run_polling()` with long-poll loop.
-- **Webhook mode** (prod): FastAPI + Uvicorn serve both the web UI and Telegram webhook on a single port (10000). The webhook route is inserted at position 0 in FastAPI routes to match before API/static routes. PTB Application lifecycle is managed via FastAPI's lifespan context manager. Validates `X-Telegram-Bot-Api-Secret-Token` header when `webhook_secret` is set.
-
-`bot/handlers.py` contains all Telegram command handlers. They extract the URL from the message and delegate to `orchestrator.process_url`.
+Each source (Reddit, YouTube, GitHub, Newsletter, generic web) is encapsulated in `website/features/summarization_engine/summarization/<source>/`. The summarization engine dispatches via the `SourceType` enum in the engine's models module.
 
 ### Web UI (`website/`)
 
-FastAPI app mounted alongside the bot in webhook mode. Two main pages: a URL summarizer at `/` and a 3D knowledge graph visualizer at `/knowledge-graph`. Mobile browsers auto-redirect to `/m/` (detected via user-agent regex in `website/app.py`).
+FastAPI app. Two main pages: a URL summarizer at `/` and a 3D knowledge graph visualizer at `/knowledge-graph`. Mobile browsers auto-redirect to `/m/` (detected via user-agent regex in `website/app.py`).
 
 - `website/api/routes.py` — `POST /api/summarize` with in-memory rate limiting (10 req/min per IP); `GET /api/graph` returns KG data (Supabase-first with 30s TTL cache, file-store fallback); `GET /api/health` (used by container / load balancer health checks)
-- `website/core/pipeline.py` — reuses the bot's extraction/summarization pipeline but is **stateless**: no disk writes, no dedup updates. Returns a structured dict with title, summary, tags, latency_ms, etc.
+- `website/core/pipeline.py` — extraction/summarization pipeline; **stateless**: no disk writes, no dedup updates. Returns a structured dict with title, summary, tags, latency_ms, etc.
 - `website/core/graph_store.py` — thread-safe in-memory store backed by `website/features/knowledge_graph/content/graph.json`. Auto-links new nodes to existing ones based on shared normalized tags. Node IDs use source-type prefixes (`yt-`, `gh-`, `rd-`, `ss-`, `md-`, `web-`) + slugified title.
 
 #### Supabase Knowledge Graph (`website/core/supabase_kg/`)
@@ -194,7 +243,7 @@ Security-conscious URL handling: `validate_url()` blocks private/reserved IPs (S
 
 For **any code file in this repo** (`*.py`, `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.go`, `*.rs`, `*.java`, `*.cs`, etc.), always prefer the claude-mem `smart-explore` skill over `Read` / `Grep` / `Glob`:
 
-1. **Discover** with `smart_search(query=..., path="./telegram_bot")` — replaces the Glob → Grep → Read cycle.
+1. **Discover** with `smart_search(query=..., path="./website")` — replaces the Glob → Grep → Read cycle.
 2. **Map a file** with `smart_outline(file_path=...)` — replaces reading a full file.
 3. **Zoom to one symbol** with `smart_unfold(file_path=..., symbol_name=...)` — replaces reading a range.
 
@@ -229,7 +278,6 @@ claude-mem's hook layer strips `<private>...</private>` tags **before** observat
 
 **Always wrap values of:**
 - `GEMINI_API_KEY`, `GEMINI_API_KEYS`
-- `TELEGRAM_BOT_TOKEN`, `WEBHOOK_SECRET`
 - `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_URL` (project ref is sensitive)
 - `GITHUB_TOKEN`
 - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`
