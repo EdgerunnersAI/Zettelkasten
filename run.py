@@ -34,7 +34,7 @@ def main() -> int:
         "-k", "uvicorn.workers.UvicornWorker",
         "-w", os.environ.get("GUNICORN_WORKERS", "2"),
         "--preload",
-        "--bind", f"0.0.0.0:{os.environ.get('PORT', os.environ.get('WEBHOOK_PORT', '10000'))}",
+        "--bind", f"0.0.0.0:{os.environ.get('PORT', '10000')}",
         # iter-10 doc reconciliation: production droplet sets GUNICORN_TIMEOUT=240
         # in /opt/zettelkasten/compose/.env (>=180s per CLAUDE.md guardrail). The
         # "90" default below is for un-configured dev; prod always overrides.
