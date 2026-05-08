@@ -1,6 +1,6 @@
 """Iter-03 mem-bounded §2.9: middleware MUST NOT shed exempt paths even when
 VmRSS is over the threshold. Exempt prefixes: /api/health, /api/admin/,
-/telegram/webhook, /favicon.ico, /favicon.svg.
+/favicon.ico, /favicon.svg.
 """
 from __future__ import annotations
 
@@ -47,10 +47,3 @@ def test_admin_proc_stats_path_passes_through_under_pressure(under_pressure_app)
     assert r.status_code != 503
 
 
-def test_telegram_webhook_path_passes_through_under_pressure(under_pressure_app):
-    client = TestClient(under_pressure_app)
-    # The webhook may not even exist in the FastAPI app in dev (Telegram bot
-    # registers it only in webhook mode), so we accept 404 / 405 — what we
-    # MUST NOT see is 503.
-    r = client.post("/telegram/webhook")
-    assert r.status_code != 503

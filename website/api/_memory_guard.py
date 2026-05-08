@@ -5,7 +5,7 @@ Reads /proc/self/status before dispatching every request. When VmRSS exceeds
 503 with Retry-After=5 instead of letting the kernel cgroup-OOM the worker
 mid-request (which would surface as a 502 from Caddy).
 
-Path exemptions: /api/health, /api/admin/*, /telegram/webhook, /favicon.*.
+Path exemptions: /api/health, /api/admin/*, /favicon.*.
 These probes/ops paths must always work, even under pressure.
 
 Set RAG_MEMORY_GUARD_THRESHOLD_PERCENT=0 to disable entirely (tests/dev).
@@ -29,7 +29,6 @@ _PROC_STATUS = Path("/proc/self/status")
 _EXEMPT_PREFIXES = (
     "/api/health",
     "/api/admin/",
-    "/telegram/webhook",
     "/favicon.ico",
     "/favicon.svg",
 )
