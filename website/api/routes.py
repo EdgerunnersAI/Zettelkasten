@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from website.api.auth import get_current_user, get_optional_user
+from website.core.db_version import get_db_schema_version
 from website.core.pipeline import summarize_url
 from website.features.summarization_engine.core.errors import ExtractionConfidenceError
 from website.core.graph_store import get_graph, delete_node as delete_graph_node
@@ -173,6 +174,11 @@ async def warm():
 @router.get("/auth/config")
 async def auth_config():
     """Return public Supabase config for client-side auth init."""
+    if get_db_schema_version() == "v2":
+        return {
+            "supabase_url": os.environ.get("SUPABASE_V2_URL", ""),
+            "supabase_anon_key": os.environ.get("SUPABASE_V2_ANON_KEY", ""),
+        }
     return {
         "supabase_url": os.environ.get("SUPABASE_URL", ""),
         "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY", ""),

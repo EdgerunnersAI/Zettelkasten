@@ -13,6 +13,7 @@ that path re-exports the public symbols so existing imports keep working.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -23,14 +24,20 @@ from typing import Any
 from uuid import UUID
 
 from website.core.graph_store import _SOURCE_PREFIX, add_node, get_graph
+from website.core.db_version import use_supabase_v2
 from website.core.settings import get_settings
 from website.core.supabase_kg import KGNodeCreate, KGRepository, is_supabase_configured
+from website.core.supabase_v2.models import CanonicalChunkCreate, CanonicalZettelCreate, WorkspaceZettelCreate
+from website.core.supabase_v2.repositories.content_repository import ContentRepository as V2ContentRepository
+from website.core.supabase_v2.repositories.core_repository import CoreRepository as V2CoreRepository
 from website.core.text_polish import polish, rewrite_tags, strip_caveats
 
 logger = logging.getLogger("website.core.persist")
 
 _supabase_repo: KGRepository | None = None
 _supabase_user_id: str | None = None
+_v2_core_repo: V2CoreRepository | None = None
+_v2_content_repo: V2ContentRepository | None = None
 
 _EXISTING_TYPES_CACHE: dict[str, tuple[float, list[str]]] = {}
 _EXISTING_TYPES_TTL = 60.0
@@ -104,6 +111,35 @@ def get_supabase_scope(user_id_override: str | None = None) -> tuple[KGRepositor
             return None
 
     return _supabase_repo, _supabase_user_id
+
+
+def get_supabase_v2_scope(user_sub: str | None = None) -> tuple[V2ContentRepository, UUID, UUID] | None:
+    """Return ``(content_repo, profile_id, workspace_id)`` for DB v2.
+
+    DB v2 is workspace-first and requires a Supabase Auth UUID. Anonymous or
+    legacy render-style IDs intentionally fall back to the existing file/v1
+    path until the auth migration is complete.
+    """
+    global _v2_core_repo, _v2_content_repo
+
+    if not use_supabase_v2() or not user_sub:
+        return None
+    try:
+        profile_id = UUID(str(user_sub))
+    except (TypeError, ValueError):
+        logger.info("DB v2 requires UUID auth subject; falling back for user_sub=%r", user_sub)
+        return None
+
+    try:
+        _v2_core_repo = _v2_core_repo or V2CoreRepository()
+        _v2_content_repo = _v2_content_repo or V2ContentRepository()
+        workspace_id = _v2_core_repo.get_default_workspace_id(profile_id)
+        if workspace_id is None:
+            return None
+        return _v2_content_repo, profile_id, workspace_id
+    except Exception as exc:
+        logger.warning("Supabase v2 scope lookup failed, falling back: %s", exc)
+        return None
 
 
 # Internal sentinel tokens that must never leak to persisted surfaces.
@@ -451,10 +487,25 @@ async def persist_summarized_result(
     source_url = str(payload["source_url"])
     file_duplicate = False
 
-    sb = get_supabase_scope(user_sub)
+    v2_scope = get_supabase_v2_scope(user_sub)
+    sb = None if v2_scope else get_supabase_scope(user_sub)
     file_duplicate = _file_graph_contains_url(source_url)
 
-    if sb:
+    if v2_scope:
+        repo_v2, profile_id, workspace_id = v2_scope
+        kg_user_id = str(profile_id)
+        try:
+            supabase_node_id, supabase_saved, supabase_duplicate = await _persist_supabase_v2_zettel(
+                payload=payload,
+                repo=repo_v2,
+                workspace_id=workspace_id,
+                captured_on=captured_on,
+                detailed_summary=detailed_summary,
+            )
+        except Exception as exc:
+            logger.warning("Failed to add zettel to Supabase v2: %s", exc)
+
+    if sb and not v2_scope:
         repo, kg_user_id = sb
         try:
             supabase_node_id, supabase_saved, supabase_duplicate = await _persist_supabase_node(
@@ -482,6 +533,56 @@ async def persist_summarized_result(
         supabase_duplicate=supabase_duplicate,
         kg_user_id=kg_user_id,
     )
+
+
+async def _persist_supabase_v2_zettel(
+    *,
+    payload: dict[str, Any],
+    repo: V2ContentRepository,
+    workspace_id: UUID,
+    captured_on: date,
+    detailed_summary: str,
+) -> tuple[str, bool, bool]:
+    normalized_url = str(payload["source_url"])
+    body_md = str(payload.get("raw_text") or detailed_summary or payload.get("summary") or "")
+    content_hash = hashlib.sha256(body_md.encode("utf-8")).digest()
+
+    zettel = CanonicalZettelCreate(
+        normalized_url=normalized_url,
+        content_hash=content_hash,
+        source_type=str(payload.get("source_type") or "web"),
+        title=polish(str(payload["title"])),
+        body_md=body_md,
+        publication_date=captured_on.isoformat(),
+        source_metadata={
+            "source_url": normalized_url,
+            "metadata": payload.get("metadata") or {},
+        },
+    )
+    workspace = WorkspaceZettelCreate(
+        workspace_id=workspace_id,
+        ai_summary=_encode_summary_payload(payload),
+        ai_summary_engine_version=str(payload.get("engine_version") or ""),
+        user_tags=list(rewrite_tags(payload.get("tags", []) or [])),
+        added_via="website",
+    )
+    chunk_text = detailed_summary or body_md
+    chunks = [
+        CanonicalChunkCreate(
+            chunk_idx=0,
+            content=chunk_text,
+            content_hash=hashlib.sha256(chunk_text.encode("utf-8")).digest(),
+            chunk_type="semantic",
+            token_count=max(1, len(chunk_text.split())),
+        )
+    ] if chunk_text else []
+    result = await asyncio.to_thread(
+        repo.upsert_canonical_zettel,
+        zettel,
+        workspace=workspace,
+        chunks=chunks,
+    )
+    return str(result.canonical_zettel_id), result.was_new, not result.was_new
 
 
 def _encode_summary_payload(payload: dict[str, Any]) -> str:

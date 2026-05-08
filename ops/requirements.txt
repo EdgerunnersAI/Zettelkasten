@@ -26,11 +26,12 @@ uvicorn>=0.34
 gunicorn>=23.0
 
 # Supabase (multi-user knowledge graph storage)
-supabase>=2.0
+supabase>=2.7.0,<3.0.0
 
 # Direct Postgres driver — used by ops/scripts/apply_migrations.py (D-1)
 # for advisory-lock-protected migration application during deploy.
 psycopg[binary]>=3.1
+asyncpg>=0.29
 
 # JWT validation (Supabase Auth token verification)
 PyJWT>=2.8.0

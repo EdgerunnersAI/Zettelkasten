@@ -27,6 +27,7 @@ from website.features.rag_pipeline.rerank.cascade import CascadeReranker
 from website.features.rag_pipeline.retrieval.graph_score import LocalizedPageRankScorer
 from website.features.rag_pipeline.retrieval.hybrid import HybridRetriever
 from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner
+from website.features.rag_pipeline.scoring.runtime import get_registry_adapter
 from website.features.kg_features import retrieval as kg_retrieval
 from website.core.persist import get_supabase_scope
 
@@ -89,7 +90,11 @@ def _build_runtime(user_sub: str | None) -> RAGRuntime:
         rewriter=QueryRewriter(),
         router=QueryRouter(),
         transformer=QueryTransformer(),
-        retriever=HybridRetriever(embedder=embedder, supabase=client),
+        retriever=HybridRetriever(
+            embedder=embedder,
+            supabase=client,
+            registry_adapter=get_registry_adapter(),
+        ),
         graph_scorer=LocalizedPageRankScorer(supabase=client),
         reranker=CascadeReranker(
             model_dir=os.environ.get("RAG_MODEL_DIR", "/app/models"),

@@ -68,6 +68,7 @@ except Exception:  # pragma: no cover
 DEFAULT_MIGRATIONS_DIR = (
     ROOT / "supabase" / "website" / "kg_public" / "migrations"
 )
+DEFAULT_V2_MIGRATIONS_DIR = ROOT / "supabase" / "website" / "_v2"
 
 # Bootstrap placeholders that an operator may have inserted into
 # ``_migrations_applied.checksum`` to mark a migration as "already
@@ -94,8 +95,8 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 # DSN assembly
 # ---------------------------------------------------------------------------
-def _build_dsn() -> str:
-    """Return the Postgres DSN from ``SUPABASE_DB_URL``.
+def _build_dsn(*, v2: bool = False) -> str:
+    """Return the Postgres DSN from an explicit database URL env var.
 
     Auto-deriving from ``SUPABASE_URL`` + ``SUPABASE_SERVICE_ROLE_KEY`` is
     NOT supported: the service-role JWT is not the postgres direct-connect
@@ -107,15 +108,15 @@ def _build_dsn() -> str:
     Format (IPv4 pooler):
         postgresql://postgres.<ref>:<DB_PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres
     """
-    direct = os.environ.get("SUPABASE_DB_URL")
+    env_name = "SUPABASE_V2_DATABASE_URL" if v2 else "SUPABASE_DB_URL"
+    direct = os.environ.get(env_name)
     if direct:
         return direct
 
     raise RuntimeError(
-        "SUPABASE_DB_URL must be set. Get the IPv4 pooler connection "
-        "string from Supabase Studio > Project Settings > Database > "
-        "Connection string (Transaction or Session pooler) and register "
-        "it as a GitHub Actions secret named SUPABASE_DB_URL. "
+        f"{env_name} must be set. Get the connection string from Supabase "
+        "Studio > Project Settings > Database > Connection string and "
+        f"register it as a secret named {env_name}. "
         "Note: SUPABASE_SERVICE_ROLE_KEY is NOT the postgres password."
     )
 
@@ -142,17 +143,20 @@ def _checksum(text: str) -> str:
 
 
 _MIGRATION_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(_\d{2})?_[a-z0-9_]+\.sql$")
+_V2_MIGRATION_NAME_RE = re.compile(r"^\d{2}_[a-z0-9_]+\.sql$")
 
 
-def _list_migrations(directory: Path) -> list[Path]:
+def _list_migrations(directory: Path, *, v2: bool = False) -> list[Path]:
     if not directory.is_dir():
         raise RuntimeError(f"Migrations directory not found: {directory}")
     files = sorted(p for p in directory.glob("*.sql") if not p.name.endswith(".down.sql"))
-    invalid = [p.name for p in files if not _MIGRATION_NAME_RE.match(p.name)]
+    name_re = _V2_MIGRATION_NAME_RE if v2 else _MIGRATION_NAME_RE
+    expected = "NN_slug.sql" if v2 else "YYYY-MM-DD[_NN]_<slug>.sql"
+    invalid = [p.name for p in files if not name_re.match(p.name)]
     if invalid:
         raise RuntimeError(
             f"Invalid migration filenames: {invalid}. "
-            f"Expected: YYYY-MM-DD[_NN]_<slug>.sql"
+            f"Expected: {expected}"
         )
     return files
 
@@ -160,12 +164,18 @@ def _list_migrations(directory: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
-def _ensure_table(conn) -> None:
+def _migration_table(v2: bool) -> str:
+    return "core._migrations_applied" if v2 else "_migrations_applied"
+
+
+def _ensure_table(conn, *, v2: bool = False) -> None:
     """Self-bootstrap ``_migrations_applied`` so a fresh DB just works."""
     with conn.cursor() as cur:
+        if v2:
+            cur.execute("CREATE SCHEMA IF NOT EXISTS core")
         cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS _migrations_applied (
+            f"""
+            CREATE TABLE IF NOT EXISTS {_migration_table(v2)} (
                 name TEXT PRIMARY KEY,
                 applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 checksum TEXT NOT NULL,
@@ -176,9 +186,9 @@ def _ensure_table(conn) -> None:
     conn.commit()
 
 
-def _applied_index(conn) -> dict[str, str]:
+def _applied_index(conn, *, v2: bool = False) -> dict[str, str]:
     with conn.cursor() as cur:
-        cur.execute("SELECT name, checksum FROM _migrations_applied")
+        cur.execute(f"SELECT name, checksum FROM {_migration_table(v2)}")
         return {row[0]: row[1] for row in cur.fetchall()}
 
 
@@ -200,7 +210,7 @@ def _release_lock(conn) -> None:
 # ---------------------------------------------------------------------------
 # Apply / rollback
 # ---------------------------------------------------------------------------
-def _apply_one(conn, path: Path, sql: str, checksum: str, hostname: str) -> float:
+def _apply_one(conn, path: Path, sql: str, checksum: str, hostname: str, *, v2: bool = False) -> float:
     """Run one migration file inside a single transaction. Returns elapsed ms.
 
     iter-03 §1C.4: also records deploy provenance (git SHA, deploy id,
@@ -215,7 +225,7 @@ def _apply_one(conn, path: Path, sql: str, checksum: str, hostname: str) -> floa
         with conn.cursor() as cur:
             cur.execute(sql)
             cur.execute(
-                "INSERT INTO _migrations_applied "
+                f"INSERT INTO {_migration_table(v2)} "
                 "(name, checksum, applied_by, deploy_git_sha, deploy_id, "
                 "deploy_actor, runner_hostname) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -236,7 +246,7 @@ def _apply_one(conn, path: Path, sql: str, checksum: str, hostname: str) -> floa
     return (time.perf_counter() - t0) * 1000.0
 
 
-def _run_rollback(conn, directory: Path, name: str, hostname: str) -> int:
+def _run_rollback(conn, directory: Path, name: str, hostname: str, *, v2: bool = False) -> int:
     down = directory / f"{name}.down.sql"
     if not down.exists():
         logger.error(
@@ -256,7 +266,7 @@ def _run_rollback(conn, directory: Path, name: str, hostname: str) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(sql)
-            cur.execute("DELETE FROM _migrations_applied WHERE name = %s", (name,))
+            cur.execute(f"DELETE FROM {_migration_table(v2)} WHERE name = %s", (name,))
         conn.commit()
     except Exception as exc:
         conn.rollback()
@@ -411,11 +421,24 @@ def _write_manifest(conn, manifest_path: Path) -> int:
 # ---------------------------------------------------------------------------
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--v2",
+        action="store_true",
+        help="Apply DB v2 migrations from supabase/website/_v2 using SUPABASE_V2_DATABASE_URL.",
+    )
+    p.add_argument(
+        "--target",
+        default=None,
+        help="Human-readable target label for logs only (for example v2-dev).",
+    )
     p.add_argument("--dry-run", action="store_true", help="Plan only; never write.")
     p.add_argument(
         "--migrations-dir",
-        default=str(DEFAULT_MIGRATIONS_DIR),
-        help=f"Directory of *.sql migrations (default: {DEFAULT_MIGRATIONS_DIR}).",
+        default=None,
+        help=(
+            f"Directory of *.sql migrations (default: {DEFAULT_MIGRATIONS_DIR}; "
+            f"with --v2: {DEFAULT_V2_MIGRATIONS_DIR})."
+        ),
     )
     p.add_argument(
         "--rollback",
@@ -433,7 +456,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--manifest-path",
-        default=str(DEFAULT_MANIFEST_PATH),
+        default=None,
         help=f"Path to expected_schema.json (default: {DEFAULT_MANIFEST_PATH}).",
     )
     p.add_argument(
@@ -462,9 +485,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    if args.migrations_dir is None:
+        args.migrations_dir = str(DEFAULT_V2_MIGRATIONS_DIR if args.v2 else DEFAULT_MIGRATIONS_DIR)
+    if args.manifest_path is None:
+        args.manifest_path = str(
+            ROOT / "supabase" / "website" / "_v2" / "expected_schema.json"
+            if args.v2
+            else DEFAULT_MANIFEST_PATH
+        )
 
     try:
-        dsn = _build_dsn()
+        dsn = _build_dsn(v2=args.v2)
     except RuntimeError as exc:
         logger.error(str(exc))
         return 2
@@ -514,7 +545,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     manifest_path = Path(args.manifest_path).resolve()
     try:
         _acquire_lock(conn)
-        _ensure_table(conn)
+        _ensure_table(conn, v2=args.v2)
 
         if args.bootstrap_manifest:
             return _write_manifest(conn, manifest_path)
@@ -531,7 +562,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             new_checksum = _checksum(sql_path.read_text(encoding="utf-8"))
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE _migrations_applied SET checksum = %s WHERE name = %s",
+                    f"UPDATE {_migration_table(args.v2)} SET checksum = %s WHERE name = %s",
                     (new_checksum, name),
                 )
             conn.commit()
@@ -543,10 +574,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.rollback:
-            return _run_rollback(conn, directory, args.rollback, hostname)
+            return _run_rollback(conn, directory, args.rollback, hostname, v2=args.v2)
 
-        applied = _applied_index(conn)
-        migrations = _list_migrations(directory)
+        applied = _applied_index(conn, v2=args.v2)
+        migrations = _list_migrations(directory, v2=args.v2)
         total_count = len(migrations)
 
         for path in migrations:
@@ -577,7 +608,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 continue
 
             try:
-                elapsed = _apply_one(conn, path, sql, checksum, hostname)
+                elapsed = _apply_one(conn, path, sql, checksum, hostname, v2=args.v2)
             except Exception as exc:
                 logger.error(
                     "[migration] FAILED %s — rolled back. Error: %s",

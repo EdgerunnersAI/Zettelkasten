@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from website.core.db_version import use_supabase_v2
 from website.core.supabase_kg.client import is_supabase_configured
+from website.core.supabase_v2.repositories.billing_repository import BillingRepository as V2BillingRepository
 from website.features.user_pricing.models import Meter
 
 logger = logging.getLogger(__name__)
@@ -42,9 +44,29 @@ def _now_iso() -> str:
 class PricingRepository:
     """Supabase-backed pricing repository with in-memory fallback."""
 
+    def _v2_profile_id(self, user_sub: str) -> UUID | None:
+        if not use_supabase_v2():
+            return None
+        try:
+            return UUID(user_sub)
+        except (TypeError, ValueError):
+            return None
+
     # ────────────────────────── entitlements ──────────────────────────
 
     def check_entitlement(self, *, user_sub: str, meter: Meter, action_id: str | None) -> bool:
+        v2_profile_id = self._v2_profile_id(user_sub)
+        if v2_profile_id is not None:
+            try:
+                return V2BillingRepository().check_entitlement(
+                    profile_id=v2_profile_id,
+                    feature=str(meter),
+                    unit="request",
+                )
+            except Exception as exc:
+                logger.warning("Pricing v2 entitlement check failed open for user=%s meter=%s: %s", user_sub, meter, exc)
+                return True
+
         if not is_supabase_configured():
             return True
 
@@ -65,6 +87,18 @@ class PricingRepository:
             return True
 
     def consume_entitlement(self, *, user_sub: str, meter: Meter, action_id: str | None) -> None:
+        v2_profile_id = self._v2_profile_id(user_sub)
+        if v2_profile_id is not None:
+            try:
+                V2BillingRepository().check_entitlement(
+                    profile_id=v2_profile_id,
+                    feature=str(meter),
+                    unit="request",
+                )
+            except Exception as exc:
+                logger.warning("Pricing v2 entitlement consume failed for user=%s meter=%s: %s", user_sub, meter, exc)
+            return
+
         if not is_supabase_configured():
             return
 

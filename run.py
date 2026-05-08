@@ -54,6 +54,7 @@ def main() -> int:
         # flight + 4x headroom = 64. Beyond that we'd rather fail-fast at
         # the listen() boundary so Caddy can hand back 503.
         "--backlog", os.environ.get("GUNICORN_BACKLOG", "64"),
+        "--config", os.environ.get("GUNICORN_CONFIG", "website/gunicorn_conf.py"),
         "website.main:app",
     ]
     return subprocess.call(cmd)

@@ -38,6 +38,7 @@ def test_service_runtime_builds_cascade_reranker(monkeypatch) -> None:
     monkeypatch.setattr(service, "QueryRewriter", lambda: "rewriter")
     monkeypatch.setattr(service, "QueryRouter", lambda: "router")
     monkeypatch.setattr(service, "QueryTransformer", lambda: "transformer")
+    monkeypatch.setattr(service, "get_key_pool", lambda: "key-pool")
     monkeypatch.setattr(service, "HybridRetriever", lambda **kwargs: SimpleNamespace(**kwargs))
     monkeypatch.setattr(service, "LocalizedPageRankScorer", lambda **kwargs: SimpleNamespace(**kwargs))
     monkeypatch.setattr(service, "CascadeReranker", FakeCascade)

@@ -1,0 +1,12 @@
+# Copy to .env.v2 after the Supabase v2-dev project exists.
+# Placeholder values only. Do not commit real credentials.
+
+SUPABASE_V2_URL=https://your-v2-project-ref.supabase.co
+SUPABASE_V2_ANON_KEY=replace-with-v2-anon-key
+SUPABASE_V2_SERVICE_ROLE_KEY=replace-with-v2-service-role-key
+
+# Direct Postgres connection on port 5432. Required for migrations and LISTEN.
+SUPABASE_V2_DATABASE_URL=postgresql://postgres:password@db.your-v2-project-ref.supabase.co:5432/postgres
+SUPABASE_V2_LISTEN_DATABASE_URL=postgresql://postgres:password@db.your-v2-project-ref.supabase.co:5432/postgres
+SUPABASE_V2_ENVIRONMENT=dev
+

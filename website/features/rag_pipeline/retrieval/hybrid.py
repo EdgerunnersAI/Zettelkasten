@@ -96,6 +96,7 @@ from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate, 
 # gated by vague_low_entity), or MULTI_HOP (loses hop-2 anchors).
 _SCORE_RANK_GATED_CLASSES = (QueryClass.THEMATIC, QueryClass.STEP_BACK)
 from website.core.supabase_kg.client import get_supabase_client
+from website.features.rag_pipeline.scoring.registry_adapter import RegistryAdapter
 
 _log = logging.getLogger(__name__)
 
@@ -123,6 +124,20 @@ _WEIGHTS_BY_CLASS: dict[QueryClass, tuple[float, float, float]] = {
     QueryClass.STEP_BACK: (0.50, 0.20, 0.30),
 }
 _DEFAULT_WEIGHTS: tuple[float, float, float] = (0.5, 0.3, 0.2)
+
+
+def _weights_for_class(
+    query_class: QueryClass,
+    registry_adapter: RegistryAdapter | None = None,
+) -> tuple[float, float, float]:
+    static_weights = _WEIGHTS_BY_CLASS.get(query_class, _DEFAULT_WEIGHTS)
+    if registry_adapter is None:
+        return static_weights
+
+    sem_w = registry_adapter.get_weight("semantic", static_weights[0])
+    fts_w = registry_adapter.get_weight("fts", static_weights[1])
+    graph_w = registry_adapter.get_weight("kg_graph", static_weights[2])
+    return sem_w, fts_w, graph_w
 
 # iter-03 retune: revert per-node chunk cap from 2 -> 3. iter-02 showed that
 # cap=2 starved the synthesis stage (faithfulness 1.0 -> 0.5, hallucination
@@ -458,6 +473,7 @@ class HybridRetriever:
         *,
         kasten_freq_store: KastenFrequencyStore | None = None,  # deprecated (iter-08 P4.2)
         chunk_share_store: ChunkShareStore | None = None,
+        registry_adapter: RegistryAdapter | None = None,
     ):
         self._supabase = supabase or get_supabase_client()
         self._embedder = embedder
@@ -466,6 +482,7 @@ class HybridRetriever:
         # still safe; the field is no longer consulted in retrieve().
         self._kasten_freq = kasten_freq_store or KastenFrequencyStore(self._supabase)
         self._chunk_share = chunk_share_store or ChunkShareStore(supabase=self._supabase)
+        self._registry_adapter = registry_adapter
 
     async def retrieve(
         self,
@@ -488,7 +505,7 @@ class HybridRetriever:
             self._embedder.embed_query_with_cache(query) for query in query_variants
         ])
         graph_depth = _DEPTH_BY_CLASS[query_class]
-        sem_w, fts_w, graph_w = _WEIGHTS_BY_CLASS.get(query_class, _DEFAULT_WEIGHTS)
+        sem_w, fts_w, graph_w = _weights_for_class(query_class, self._registry_adapter)
 
         async def _search(query_text: str, query_vec: list[float]) -> list[dict]:
             response = await rpc_call(self._supabase.rpc(
