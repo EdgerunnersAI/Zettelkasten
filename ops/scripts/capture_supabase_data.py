@@ -71,3 +71,72 @@ def copy_with_verify(src: Path, dst: Path) -> dict:
         "sha256": dst_hash,
         "captured_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def parse_frontmatter(body: str) -> dict:
+    """Tiny YAML subset parser — handles `key: value` and `key: [a, b]` only.
+
+    Sufficient for Obsidian frontmatter shape produced by this app's writer.
+    Returns {} when no frontmatter block is present.
+    """
+    match = _FRONTMATTER_RE.match(body)
+    if not match:
+        return {}
+    data: dict = {}
+    for line in match.group(1).splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            inner = value[1:-1]
+            data[key] = [item.strip() for item in inner.split(",") if item.strip()]
+        else:
+            data[key] = value
+    return data
+
+
+def build_obsidian_index(corpus_dir: Path) -> list[dict]:
+    """Walk corpus, return one entry per .md file with title/url/tags/mtime/sha256.
+
+    Skips `.obsidian/`, `.trash/`, attachments, and any non-.md file.
+    """
+    if not corpus_dir.is_dir():
+        return []
+    entries: list[dict] = []
+    for path in corpus_dir.rglob("*.md"):
+        if any(part.startswith(".") for part in path.relative_to(corpus_dir).parts):
+            continue
+        try:
+            body = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        fm = parse_frontmatter(body)
+        title = (
+            str(fm.get("title") or "").strip()
+            or _first_h1(body)
+            or path.stem
+        )
+        entries.append({
+            "path": str(path),
+            "title": title,
+            "url": str(fm.get("url") or "").strip(),
+            "tags": list(fm.get("tags") or []),
+            "mtime": datetime.fromtimestamp(
+                path.stat().st_mtime, tz=timezone.utc
+            ).isoformat(),
+            "sha256": compute_sha256(path),
+            "size": path.stat().st_size,
+        })
+    return entries
+
+
+def _first_h1(body: str) -> str:
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""

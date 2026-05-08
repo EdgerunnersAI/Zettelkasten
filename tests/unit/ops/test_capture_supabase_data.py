@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from ops.scripts.capture_supabase_data import compute_sha256, scan_for_secrets, copy_with_verify
+from ops.scripts.capture_supabase_data import (
+    compute_sha256,
+    scan_for_secrets,
+    copy_with_verify,
+    build_obsidian_index,
+    parse_frontmatter,
+)
 
 
 def test_compute_sha256_matches_hashlib(tmp_path: Path) -> None:
@@ -85,3 +91,31 @@ def test_copy_with_verify_creates_parent_dirs(tmp_path: Path) -> None:
     src.write_bytes(b"deep")
     copy_with_verify(src, dst)
     assert dst.exists()
+
+
+def test_parse_frontmatter_extracts_yaml_block() -> None:
+    body = "---\ntitle: Hello\nurl: https://example.com\ntags: [a, b]\n---\n# Hello\n\nbody"
+    fm = parse_frontmatter(body)
+    assert fm["title"] == "Hello"
+    assert fm["url"] == "https://example.com"
+    assert fm["tags"] == ["a", "b"]
+
+
+def test_parse_frontmatter_returns_empty_when_absent() -> None:
+    assert parse_frontmatter("# Just a heading\n\nNo frontmatter") == {}
+
+
+def test_build_obsidian_index_walks_recursively(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text("---\ntitle: A\nurl: https://a.com\n---\n# A")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.md").write_text("---\ntitle: B\nurl: https://b.com\ntags: [x]\n---\n# B")
+    (tmp_path / ".obsidian").mkdir()
+    (tmp_path / ".obsidian" / "skip.md").write_text("hidden")
+    (tmp_path / "image.png").write_bytes(b"\x89PNG")
+
+    entries = build_obsidian_index(tmp_path)
+    titles = sorted(e["title"] for e in entries)
+    assert titles == ["A", "B"]
+    # `.obsidian/` and binaries excluded
+    assert all(not e["path"].endswith("skip.md") for e in entries)
+    assert all(e["path"].endswith(".md") for e in entries)
