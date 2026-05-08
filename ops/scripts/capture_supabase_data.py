@@ -140,3 +140,31 @@ def _first_h1(body: str) -> str:
         if line.startswith("# "):
             return line[2:].strip()
     return ""
+
+
+def build_manifest(entries: list[dict], *, generator: str) -> dict:
+    """Aggregate per-file capture entries into the top-level manifest dict."""
+    return {
+        "generator": generator,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "file_count": len(entries),
+        "total_bytes": sum(int(e.get("size", 0)) for e in entries),
+        "files": entries,
+    }
+
+
+def sweep_corpus_for_secrets(corpus_dir: Path) -> list[dict]:
+    """Walk corpus, flag any *.md file whose contents match a known secret pattern."""
+    hits: list[dict] = []
+    if not corpus_dir.is_dir():
+        return hits
+    for path in corpus_dir.rglob("*.md"):
+        if any(part.startswith(".") for part in path.relative_to(corpus_dir).parts):
+            continue
+        try:
+            patterns = scan_for_secrets(path.read_text(encoding="utf-8"))
+        except UnicodeDecodeError:
+            continue
+        if patterns:
+            hits.append({"path": str(path), "patterns": patterns})
+    return hits

@@ -12,6 +12,8 @@ from ops.scripts.capture_supabase_data import (
     copy_with_verify,
     build_obsidian_index,
     parse_frontmatter,
+    build_manifest,
+    sweep_corpus_for_secrets,
 )
 
 
@@ -119,3 +121,28 @@ def test_build_obsidian_index_walks_recursively(tmp_path: Path) -> None:
     # `.obsidian/` and binaries excluded
     assert all(not e["path"].endswith("skip.md") for e in entries)
     assert all(e["path"].endswith(".md") for e in entries)
+
+
+def test_build_manifest_aggregates_entries() -> None:
+    entries = [
+        {"src": "a", "dst": "b", "size": 10, "sha256": "h1", "captured_at": "t"},
+        {"src": "c", "dst": "d", "size": 20, "sha256": "h2", "captured_at": "t"},
+    ]
+    manifest = build_manifest(entries, generator="capture_supabase_data.py")
+    assert manifest["file_count"] == 2
+    assert manifest["total_bytes"] == 30
+    assert manifest["files"] == entries
+    assert manifest["generator"] == "capture_supabase_data.py"
+    assert "generated_at" in manifest
+
+
+def test_sweep_corpus_for_secrets_returns_offending_files(tmp_path: Path) -> None:
+    clean = tmp_path / "clean.md"
+    dirty = tmp_path / "dirty.md"
+    clean.write_text("nothing to see")
+    dirty.write_text("here is a key: AIzaSy" + "A" * 35)
+
+    hits = sweep_corpus_for_secrets(tmp_path)
+    assert len(hits) == 1
+    assert hits[0]["path"] == str(dirty)
+    assert "AIzaSy" in hits[0]["patterns"]
