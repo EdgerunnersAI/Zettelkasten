@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700" font-family="ui-monospace, Menlo, monospace" font-size="13">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .border { fill: none; stroke: #30363d; stroke-width: 1; }
+      .title { fill: #c9d1d9; font-size: 15px; font-weight: 700; }
+      .timer { fill: #8b949e; font-size: 13px; }
+      .label { fill: #c9d1d9; }
+      .dim { fill: #8b949e; }
+      .done { fill: #3fb950; }
+      .progress { fill: #d29922; }
+      .pending { fill: #484f58; }
+      .bar-frame { fill: #21262d; stroke: #30363d; stroke-width: 1; }
+      .bar-fill { fill: #3fb950; }
+      .bar-fill-active { fill: #d29922; }
+      .header-rule { stroke: #30363d; stroke-width: 1; }
+      .section-title { fill: #58a6ff; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }
+      .commit-sha { fill: #79c0ff; }
+      .ok { fill: #3fb950; }
+      .warn { fill: #d29922; }
+      .err { fill: #f85149; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="900" height="700" rx="6"/>
+  <rect class="border" x="0.5" y="0.5" width="899" height="699" rx="6"/>
+
+  <!-- Header -->
+  <text class="title" x="20" y="30">DB REFACTOR v2 — EXECUTION DASHBOARD</text>
+  <text class="timer" x="780" y="30" text-anchor="end">T+02:14:33</text>
+  <line class="header-rule" x1="20" y1="42" x2="880" y2="42"/>
+
+  <!-- PHASE PROGRESS -->
+  <text class="section-title" x="20" y="68">PHASE PROGRESS</text>
+
+  <g transform="translate(20, 88)">
+    <text class="label" x="0" y="14">Phase 0  Pre-flight</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <rect class="bar-fill" x="281" y="4" width="158" height="12" rx="1"/>
+    <text class="dim" x="450" y="14">9/9</text>
+    <text class="ok" x="490" y="14">✓</text>
+  </g>
+  <g transform="translate(20, 108)">
+    <text class="label" x="0" y="14">Phase 1  Schema DDL (idempotent dev)</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <rect class="bar-fill-active" x="281" y="4" width="93" height="12" rx="1"/>
+    <text class="dim" x="450" y="14">7/12</text>
+    <text class="warn" x="490" y="14">●</text>
+  </g>
+  <g transform="translate(20, 128)">
+    <text class="label" x="0" y="14">Phase 2  Python repository layer</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/11</text>
+  </g>
+  <g transform="translate(20, 148)">
+    <text class="label" x="0" y="14">Phase 3  Scorer registry adapter (MANDATORY)</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/4</text>
+  </g>
+  <g transform="translate(20, 168)">
+    <text class="label" x="0" y="14">Phase 4  API + retrieval updates</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/6</text>
+  </g>
+  <g transform="translate(20, 188)">
+    <text class="label" x="0" y="14">Phase 5  Backfill scripts (gated)</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/10</text>
+  </g>
+  <g transform="translate(20, 208)">
+    <text class="label" x="0" y="14">Phase 6  Test coverage</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/8</text>
+  </g>
+  <g transform="translate(20, 228)">
+    <text class="label" x="0" y="14">Phase 7  Cutover runbooks</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/3</text>
+  </g>
+  <g transform="translate(20, 248)">
+    <text class="label" x="0" y="14">Phase 8  Cutover execution</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/2</text>
+  </g>
+  <g transform="translate(20, 268)">
+    <text class="label" x="0" y="14">Phase 9  Post-cutover cleanup</text>
+    <rect class="bar-frame" x="280" y="3" width="160" height="14" rx="2"/>
+    <text class="dim" x="450" y="14">0/3</text>
+  </g>
+
+  <line class="header-rule" x1="20" y1="298" x2="880" y2="298"/>
+
+  <!-- CURRENT TASK -->
+  <text class="section-title" x="20" y="320">CURRENT TASK</text>
+  <text class="warn" x="20" y="342">►</text>
+  <text class="label" x="38" y="342">Task 1.7: Apply 06_billing_schema.sql (rekeyed pricing tables)</text>
+  <text class="warn" x="20" y="360">►</text>
+  <text class="label" x="38" y="360">Step 4: psql apply against v2-dev</text>
+  <text class="warn" x="20" y="378">►</text>
+  <text class="dim" x="38" y="378">Started T+02:11:45 ago</text>
+
+  <line class="header-rule" x1="20" y1="398" x2="880" y2="398"/>
+
+  <!-- LAST 3 COMMITS -->
+  <text class="section-title" x="20" y="420">LAST 3 COMMITS (master)</text>
+  <text class="commit-sha" x="20" y="442">7d77323</text>
+  <text class="label" x="100" y="442">docs: db refactor implementation plan</text>
+  <text class="commit-sha" x="20" y="460">1218997</text>
+  <text class="label" x="100" y="460">docs: db refactor design spec</text>
+  <text class="commit-sha" x="20" y="478">d6a101f</text>
+  <text class="label" x="100" y="478">feat: iter-12 decision gate plus rollback addendum</text>
+
+  <line class="header-rule" x1="20" y1="498" x2="880" y2="498"/>
+
+  <!-- AUDIT-FIX VERIFICATION -->
+  <text class="section-title" x="20" y="520">AUDIT-FIX VERIFICATION (12 BLOCKER + 29 MAJOR)</text>
+  <g transform="translate(20, 540)">
+    <text class="ok" x="0" y="0">✓</text><text class="label" x="20" y="0">B.1  jwt_workspace_ids cast</text><text class="dim" x="280" y="0">[test_jwt_workspace_ids]</text>
+    <text class="ok" x="0" y="18">✓</text><text class="label" x="20" y="18">B.2  kg_nodes UNIQUE via gen-col</text><text class="dim" x="280" y="18">[DDL applied 1.4]</text>
+    <text class="ok" x="0" y="36">✓</text><text class="label" x="20" y="36">B.3  expand_subgraph auth check</text><text class="dim" x="280" y="36">[DDL applied 1.4]</text>
+    <text class="ok" x="0" y="54">✓</text><text class="label" x="20" y="54">B.4  soft-delete trigger split</text><text class="dim" x="280" y="54">[DDL applied 1.3]</text>
+    <text class="warn" x="0" y="72">●</text><text class="label" x="20" y="72">B.5  search_chunks RPC</text><text class="dim" x="280" y="72">[test pending 6.0]</text>
+  </g>
+
+  <g transform="translate(450, 540)">
+    <text class="ok" x="0" y="0">✓</text><text class="label" x="20" y="0">B.6  membership PK</text><text class="dim" x="200" y="0">[1.3]</text>
+    <text class="warn" x="0" y="18">●</text><text class="label" x="20" y="18">B.7  HNSW post-backfill</text><text class="dim" x="200" y="18">[in repo]</text>
+    <text class="ok" x="0" y="36">✓</text><text class="label" x="20" y="36">C.1  .schema().table() form</text><text class="dim" x="200" y="36">[2.4]</text>
+    <text class="warn" x="0" y="54">●</text><text class="label" x="20" y="54">C.2  consume_quota RPC</text><text class="dim" x="200" y="54">[test 2.10]</text>
+    <text class="warn" x="0" y="72">●</text><text class="label" x="20" y="72">C.3  LISTEN port 5432</text><text class="dim" x="200" y="72">[Phase 3]</text>
+  </g>
+
+  <text class="dim" x="20" y="664">────────────────────────────────────────────────────────────────────</text>
+  <text class="dim" x="20" y="684">NEXT APPROVAL GATE: after Phase 1 (12/12) → DDL diff review</text>
+</svg>
