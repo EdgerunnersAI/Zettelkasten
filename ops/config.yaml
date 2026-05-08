@@ -21,14 +21,10 @@ reddit_user_agent: "ZettelkastenWeb/1.0"
 reddit_comment_depth: 10
 
 # ── Storage paths ─────────────────────────────────────────────────────────────
-kg_directory: "./kg_output"
 data_dir: "./data"
 
-# ── Webhook / server ──────────────────────────────────────────────────────────
-webhook_mode: false
-webhook_url: ""
-webhook_port: 10000
-webhook_secret: ""
+# ── Server ────────────────────────────────────────────────────────────────────
+server_port: 10000
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log_level: "INFO"
