@@ -33,7 +33,7 @@ DRAIN_SECONDS="${DEPLOY_DRAIN_SECONDS:-45}"
 # iter-03 §1C.4: extract ONLY the DEPLOY_* audit metadata from the container
 # .env file (which the GH Actions workflow writes via the already-NOPASSWD-
 # allowed sudo /usr/bin/tee path). Avoids full-sourcing the file so the rest
-# of the .env (TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, SUPABASE_*, etc.) stays
+# of the .env (GEMINI_API_KEY, SUPABASE_*, etc.) stays
 # scoped to the docker --env-file path and never leaks into deploy.sh's
 # shell. Missing values fall through to the existing ${VAR:-default} guards
 # below — manual operator deploys from a droplet shell still work.
