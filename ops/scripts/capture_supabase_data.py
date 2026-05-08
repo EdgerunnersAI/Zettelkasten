@@ -130,7 +130,7 @@ def build_obsidian_index(corpus_dir: Path) -> list[dict]:
         entries.append({
             "path": str(path),
             "title": title,
-            "url": str(fm.get("url") or "").strip(),
+            "url": str(fm.get("url") or fm.get("source_url") or "").strip(),
             "tags": list(fm.get("tags") or []),
             "mtime": datetime.fromtimestamp(
                 path.stat().st_mtime, tz=timezone.utc

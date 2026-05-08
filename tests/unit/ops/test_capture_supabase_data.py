@@ -121,6 +121,19 @@ def test_parse_frontmatter_returns_empty_when_absent() -> None:
     assert parse_frontmatter("# Just a heading\n\nNo frontmatter") == {}
 
 
+def test_build_obsidian_index_falls_back_to_source_url(tmp_path: Path) -> None:
+    """The bot's writer emits `source_url:` (not `url:`) — the index must read either."""
+    (tmp_path / "n.md").write_text(
+        "---\n"
+        'title: "x"\n'
+        'source_url: "https://example.com/a"\n'
+        "---\n# x"
+    )
+    entries = build_obsidian_index(tmp_path)
+    assert len(entries) == 1
+    assert entries[0]["url"] == "https://example.com/a"
+
+
 def test_build_obsidian_index_walks_recursively(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text("---\ntitle: A\nurl: https://a.com\n---\n# A")
     (tmp_path / "sub").mkdir()

@@ -5,4 +5,6 @@
 
 ## URL-host histogram
 
-- no-url: 5
+- github: 2
+- web: 1
+- youtube: 2
