@@ -26,11 +26,11 @@ from pathlib import Path
 _CHUNK = 1024 * 1024  # 1 MiB streaming read
 
 _SECRET_PATTERNS: dict[str, re.Pattern[str]] = {
-    "sb_sec_": re.compile(r"sb_sec_[A-Za-z0-9_-]{2,}"),
-    "AIzaSy": re.compile(r"AIzaSy[A-Za-z0-9_-]{5,}"),
-    "ghp_": re.compile(r"ghp_[A-Za-z0-9]{5,}"),
+    "sb_sec_": re.compile(r"sb_sec_[A-Za-z0-9_-]{32,}"),
+    "AIzaSy": re.compile(r"AIzaSy[A-Za-z0-9_-]{30,}"),
+    "ghp_": re.compile(r"ghp_[A-Za-z0-9]{30,}"),
     "xoxb-": re.compile(r"xoxb-[0-9]+-[0-9]+-[A-Za-z0-9]+"),
-    "eyJhbGc": re.compile(r"eyJhbGciOiJIUzI1NiI[A-Za-z0-9_.\-]{5,}"),
+    "eyJhbGc": re.compile(r"eyJhbGciOiJIUzI1NiI[A-Za-z0-9_./\-]+\.[A-Za-z0-9_./\-]+\.[A-Za-z0-9_./\-]+"),
 }
 
 

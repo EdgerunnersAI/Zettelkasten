@@ -30,17 +30,30 @@ def test_compute_sha256_streams_large_files(tmp_path: Path) -> None:
 
 def test_scan_for_secrets_detects_known_prefixes() -> None:
     body = (
-        "Random note content. token=sb_sec_AAAA, key=AIzaSyB-xxxxxxxxxxxxxxxx, "
-        "github=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaa, slack=xoxb-1-2-aaaa, "
-        "supabase=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.payload"
+        "Random note content. "
+        "token=sb_sec_" + "A" * 40 + ", "
+        "key=AIzaSyB" + "x" * 35 + ", "
+        "github=ghp_" + "a" * 36 + ", "
+        "slack=xoxb-1234567890-1234567890-aaaaaaaaaaaaaaaa, "
+        "supabase=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGVzdHRlc3R0ZXN0"
     )
     hits = scan_for_secrets(body)
     assert "sb_sec_" in hits
     assert "AIzaSy" in hits
     assert "ghp_" in hits
     assert "xoxb-" in hits
+    assert "eyJhbGc" in hits
 
 
 def test_scan_for_secrets_clean_text_returns_empty() -> None:
     body = "An ordinary obsidian note about productivity. No secrets here."
+    assert scan_for_secrets(body) == []
+
+
+def test_scan_for_secrets_does_not_match_short_prefixes_in_prose() -> None:
+    """Common prose containing secret-prefix-like substrings must not flag."""
+    body = (
+        "The AIzaSynaptic approach to ML. The ghp_protocol overview. "
+        "My organization is sb_sec_oriented. JWT-style content."
+    )
     assert scan_for_secrets(body) == []
