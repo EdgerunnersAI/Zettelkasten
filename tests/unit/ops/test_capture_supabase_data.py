@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ops.scripts.capture_supabase_data import compute_sha256, scan_for_secrets
+from ops.scripts.capture_supabase_data import compute_sha256, scan_for_secrets, copy_with_verify
 
 
 def test_compute_sha256_matches_hashlib(tmp_path: Path) -> None:
@@ -57,3 +57,31 @@ def test_scan_for_secrets_does_not_match_short_prefixes_in_prose() -> None:
         "My organization is sb_sec_oriented. JWT-style content."
     )
     assert scan_for_secrets(body) == []
+
+
+def test_copy_with_verify_copies_and_verifies(tmp_path: Path) -> None:
+    src = tmp_path / "src.txt"
+    dst = tmp_path / "out" / "dst.txt"
+    src.write_bytes(b"hello\n")
+
+    entry = copy_with_verify(src, dst)
+    assert dst.read_bytes() == b"hello\n"
+    assert entry["src"] == str(src)
+    assert entry["dst"] == str(dst)
+    assert entry["size"] == 6
+    assert entry["sha256"] == hashlib.sha256(b"hello\n").hexdigest()
+
+
+def test_copy_with_verify_raises_on_missing_source(tmp_path: Path) -> None:
+    src = tmp_path / "nope.txt"
+    dst = tmp_path / "dst.txt"
+    with pytest.raises(FileNotFoundError):
+        copy_with_verify(src, dst)
+
+
+def test_copy_with_verify_creates_parent_dirs(tmp_path: Path) -> None:
+    src = tmp_path / "s.txt"
+    dst = tmp_path / "a" / "b" / "c" / "d.txt"
+    src.write_bytes(b"deep")
+    copy_with_verify(src, dst)
+    assert dst.exists()

@@ -49,3 +49,25 @@ def compute_sha256(path: Path) -> str:
 def scan_for_secrets(text: str) -> list[str]:
     """Return the list of secret-pattern *names* that match anywhere in text."""
     return [name for name, pat in _SECRET_PATTERNS.items() if pat.search(text)]
+
+
+def copy_with_verify(src: Path, dst: Path) -> dict:
+    """Copy src -> dst, verify sha256 round-trips. Returns manifest entry.
+
+    Raises FileNotFoundError if src missing; RuntimeError on hash mismatch.
+    """
+    if not src.is_file():
+        raise FileNotFoundError(f"source not found: {src}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src_hash = compute_sha256(src)
+    shutil.copy2(src, dst)
+    dst_hash = compute_sha256(dst)
+    if src_hash != dst_hash:
+        raise RuntimeError(f"sha256 mismatch after copy: {src} -> {dst}")
+    return {
+        "src": str(src),
+        "dst": str(dst),
+        "size": dst.stat().st_size,
+        "sha256": dst_hash,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
