@@ -37,13 +37,14 @@ def test_compute_sha256_streams_large_files(tmp_path: Path) -> None:
 
 
 def test_scan_for_secrets_detects_known_prefixes() -> None:
+    # Synthetic fixtures: shape-match the regexes but obviously not real secrets.
     body = (
         "Random note content. "
-        "token=sb_sec_" + "A" * 40 + ", "
-        "key=AIzaSyB" + "x" * 35 + ", "
-        "github=ghp_" + "a" * 36 + ", "
-        "slack=xoxb-1234567890-1234567890-aaaaaaaaaaaaaaaa, "
-        "supabase=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGVzdHRlc3R0ZXN0"
+        "token=sb_sec_FAKETESTFAKETESTFAKETESTFAKETESTFAKE_FAKE, "
+        "key=AIzaSyFAKETESTFAKETESTFAKETESTFAKETEST, "
+        "github=ghp_FAKETESTFAKETESTFAKETESTFAKETESTFAKE, "
+        "slack=xoxb-0-0-FAKETESTFAKETESTFAKE, "
+        "supabase=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.FAKEFAKEFAKEFAKEFAKE.FAKEFAKEFAKEFAKE"
     )
     hits = scan_for_secrets(body)
     assert "sb_sec_" in hits
