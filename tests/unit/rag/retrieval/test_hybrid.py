@@ -7,6 +7,15 @@ from website.features.rag_pipeline.errors import EmptyScopeError
 from website.features.rag_pipeline.retrieval.hybrid import HybridRetriever, _cap_per_node
 from website.features.rag_pipeline.types import ChunkKind, QueryClass, RetrievalCandidate, ScopeFilter, SourceType
 
+# Phase 2.4 (commits 2.4.4 - 2.4.6): this module mocks the retired v1 RPCs
+# ``rag_hybrid_search`` (graph_depth/effective_nodes/per-source weights param
+# shape) and ``rag_resolve_effective_nodes`` (user_id+sandbox_id+node_ids
+# scope) — both of which were replaced by kasten-scoped v2 RPCs with
+# different parameter and return shapes (canonical_chunk_id rows, per-source
+# ranks instead of single rrf_score). End-to-end coverage now lives in
+# ``tests/integration/v2/test_hybrid_pipeline_e2e.py``.
+pytestmark = pytest.mark.skip(reason="v1 RPC mocks retired in Phase 2.4.4-2.4.6; coverage moved to integration v2 e2e tests")
+
 
 class _RPCResult:
     def __init__(self, client, name, payload):
