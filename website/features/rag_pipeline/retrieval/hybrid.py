@@ -95,8 +95,7 @@ from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate, 
 # NOT applied to LOOKUP (legitimate proper-noun magnets), VAGUE (already
 # gated by vague_low_entity), or MULTI_HOP (loses hop-2 anchors).
 _SCORE_RANK_GATED_CLASSES = (QueryClass.THEMATIC, QueryClass.STEP_BACK)
-from website.core.supabase_kg.client import get_supabase_client
-from website.core.supabase_v2.client import get_v2_client, is_v2_configured
+from website.core.supabase_v2.client import get_v2_client
 from website.features.rag_pipeline.scoring.registry_adapter import RegistryAdapter
 
 _log = logging.getLogger(__name__)
@@ -486,14 +485,9 @@ class HybridRetriever:
     ):
         # Phase 2.4.6: default client swap. Every RPC the retriever calls
         # (kg.*, content.*_kasten, rag.*_v2) lives in the v2 project; the
-        # legacy supabase_kg client targets the v1 project and is retained
-        # only as a fallback for environments where v2 is not yet provisioned.
-        if supabase is not None:
-            self._supabase = supabase
-        elif is_v2_configured():
-            self._supabase = get_v2_client()
-        else:
-            self._supabase = get_supabase_client()
+        # legacy supabase_kg fallback was removed (Phase 2 exit invariant).
+        # Tests that need a stub still pass ``supabase=`` explicitly.
+        self._supabase = supabase if supabase is not None else get_v2_client()
         self._embedder = embedder
         # iter-08 P4.2: kasten_freq prior bypassed (RES-2 floor=50 never crossed).
         # Kept on instance as deprecated attr so orchestrator's getattr lookup is
