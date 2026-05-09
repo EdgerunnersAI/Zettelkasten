@@ -27,6 +27,26 @@ class CoreRepository:
             return None
         return UUID(str(response.data[0]["workspace_id"]))
 
+    def get_profile(self, profile_id: UUID) -> dict | None:
+        """Fetch the ``core.profiles`` row for the given profile UUID.
+
+        Returns ``None`` if no row exists (PostgREST returns an empty/None
+        response under ``maybe_single``). Selects only the columns the
+        ``GET /api/me`` handler needs so we don't drag larger profile fields
+        across the wire on every authenticated request.
+        """
+        resp = (
+            self._client.schema("core")
+            .table("profiles")
+            .select("id, email, display_name, avatar_url, created_at")
+            .eq("id", str(profile_id))
+            .maybe_single()
+            .execute()
+        )
+        if resp is None:
+            return None
+        return resp.data if resp.data else None
+
     def ensure_profile(self, *, profile_id: UUID, email: str | None = None, display_name: str | None = None) -> None:
         self._client.schema("core").table("profiles").upsert(
             {

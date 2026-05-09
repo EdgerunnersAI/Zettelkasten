@@ -191,11 +191,42 @@ async def auth_config():
 
 @router.get("/me")
 async def me(user: Annotated[dict, Depends(get_current_user)]):
-    """Return the authenticated user's profile."""
+    """Return the authenticated user's profile.
+
+    Phase 4.2 dual-path: when DB v2 is on AND the JWT subject is a UUID with a
+    valid v2 scope, read profile fields from ``core.profiles`` via
+    :class:`CoreRepository`. Fall back to JWT metadata fields the same way v1
+    does. The v1 (``kg_users``-backed) path is preserved unchanged for users
+    without a v2 scope so callers on either schema see identical wire shapes:
+    ``{id, email, name, avatar_url}``.
+    """
     metadata = user.get("user_metadata", {})
     avatar_url = metadata.get("avatar_url", "")
 
-    # Prefer avatar from kg_users table (set via PUT /api/me/avatar)
+    # v2 path: read profile from core.profiles via CoreRepository.
+    if use_supabase_v2():
+        scope = get_supabase_v2_scope_for_read(user["sub"])
+        if scope is not None:
+            from uuid import UUID
+            from website.core.supabase_v2.client import get_v2_client
+            from website.core.supabase_v2.repositories.core_repository import CoreRepository
+
+            _content_repo, profile_id, _workspace_ids = scope
+            try:
+                profile = CoreRepository(get_v2_client()).get_profile(profile_id)
+            except Exception as exc:  # noqa: BLE001 — graceful fallback on v2 hiccup
+                logger.warning("v2 /api/me profile lookup failed for %s: %s", profile_id, exc)
+                profile = None
+
+            if profile:
+                return {
+                    "id": user["sub"],
+                    "email": profile.get("email") or user.get("email", "") or "",
+                    "name": profile.get("display_name") or metadata.get("full_name", "") or "",
+                    "avatar_url": profile.get("avatar_url") or avatar_url or "",
+                }
+
+    # v1 path: prefer avatar from kg_users table (set via PUT /api/me/avatar)
     sb = _get_supabase(user_id_override=user["sub"])
     if sb:
         repo, _ = sb
