@@ -1,40 +1,39 @@
-"""Supabase knowledge graph writer.
+"""Supabase v2 knowledge graph writer.
 
-Writes the engine v2 summary into ``kg_nodes.summary`` as a JSON blob matching
-the single contract consumed by the frontend and ``website.core.persist``:
+Writes the engine v2 summary into ``content.workspace_zettels.ai_summary``
+(text) plus the canonical row in ``content.canonical_zettels``.
 
-    {
-      "mini_title": "...",
-      "brief_summary": "...",
-      "detailed_summary": [<section>, ...],  // list-of-dicts OR markdown string
-      "closing_remarks": "..."
-    }
+Phase 3.1 of the v2 purge: this writer was rebased off the legacy
+``kg_nodes.summary`` jsonb column onto the v2 canonical+overlay model:
 
-Historically this writer split data across ``summary`` (brief-only string) and
-``summary_v2`` (full dict). Production Supabase never had a ``summary_v2``
-column, so structured ``detailed_summary`` was silently dropped on insert and
-the frontend — which reads only ``summary`` — rendered brief-only zettels. The
-full structured payload now lives in ``summary`` as canonical JSON, and the
-structured mirror is additionally retained in ``metadata.summary_v2`` so any
-future consumer that wants the typed shape can read it without a schema
-migration.
+    1. Upsert the canonical row in ``content.canonical_zettels`` keyed by
+       ``(normalized_url, content_hash)`` via the race-safe RPC wrapper.
+    2. Upsert the workspace overlay in ``content.workspace_zettels`` with
+       ``ai_summary`` (text, the canonical-JSON envelope) and
+       ``ai_summary_engine_version``.
 
-iter-12 Task 28 R5: entity canonicalization added to write path. On first
-write, ``canonicalize_node`` asks Gemini flash-lite for LLM-generated aliases
-and stores them on kg_nodes.aliases together with a summary_hash so the call is
-skipped on future writes with unchanged content. LLM failure is non-blocking:
-aliases default to [] and ingest continues normally.
+The summary text is the same canonical JSON envelope shape that the
+frontend has always consumed; only its column-of-record changes.
+
+The public class name + ``write(result, *, user_id)`` signature is
+preserved byte-for-byte. ``user_id`` is interpreted as the v1 profile_id
+(auth.users.id) and is mapped to the user's default workspace_id at
+write time. Workspace_id is NOT NULL on ``content.workspace_zettels``.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-import re
 from typing import Any
 from uuid import UUID
 
-from website.core.supabase_kg.models import KGNodeCreate
-from website.core.supabase_kg.repository import KGRepository
+from website.core.supabase_v2.models import (
+    CanonicalZettelCreate,
+    WorkspaceZettelCreate,
+)
+from website.core.supabase_v2.repositories.content_repository import ContentRepository
+from website.core.supabase_v2.repositories.core_repository import CoreRepository
 from website.core.text_polish import polish, polish_envelope, rewrite_tags
 from website.features.summarization_engine.core.errors import WriterError
 from website.features.summarization_engine.core.models import SummaryResult
@@ -43,11 +42,17 @@ from website.features.summarization_engine.writers.base import BaseWriter
 _log = logging.getLogger(__name__)
 
 
+class _UnknownWorkspaceError(RuntimeError):
+    """Raised when a profile has no default workspace — fail loud rather
+    than silently insert with NULL workspace_id (which the v2 NOT NULL
+    constraint would reject anyway)."""
+
+
 def _encode_summary_blob(result: SummaryResult) -> str:
     """Serialize the full structured summary into the canonical JSON envelope.
 
     Applies the deterministic polish + caveat-strip pass at the WRITE
-    boundary so every persisted Supabase row is born clean. Idempotent.
+    boundary so every persisted row is born clean. Idempotent.
     """
     dump = result.model_dump(mode="json")
     payload = {
@@ -60,89 +65,93 @@ def _encode_summary_blob(result: SummaryResult) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _content_hash_bytes(*, url: str, summary_blob: str) -> bytes:
+    """Stable canonical content_hash for dedup. Combines normalized_url
+    and the summary envelope so re-summaries with new content produce a
+    new canonical row."""
+    digest = hashlib.sha256()
+    digest.update(url.encode("utf-8"))
+    digest.update(b"\x00")
+    digest.update(summary_blob.encode("utf-8"))
+    return digest.digest()
+
+
 class SupabaseWriter(BaseWriter):
-    def __init__(self, repository: KGRepository | None = None, key_pool: Any = None):
-        self._repository = repository or KGRepository()
-        self._key_pool = key_pool  # None → canonicalization skipped gracefully
+    def __init__(
+        self,
+        repository: ContentRepository | None = None,
+        key_pool: Any = None,
+        *,
+        core_repo: CoreRepository | None = None,
+    ):
+        self._repository = repository or ContentRepository()
+        self._core = core_repo or CoreRepository()
+        self._key_pool = key_pool  # reserved for future entity canonicalisation
+        self._workspace_cache: dict[UUID, UUID] = {}
+
+    def _resolve_workspace_id(self, user_id: UUID) -> UUID:
+        cached = self._workspace_cache.get(user_id)
+        if cached is not None:
+            return cached
+        workspace_id = self._core.get_default_workspace_id(user_id)
+        if workspace_id is None:
+            raise _UnknownWorkspaceError(
+                f"profile {user_id} has no default workspace; cannot write canonical zettel"
+            )
+        self._workspace_cache[user_id] = workspace_id
+        return workspace_id
 
     async def write(self, result: SummaryResult, *, user_id: UUID) -> dict[str, Any]:
-        node_id = _node_id(result)
-        if self._repository.node_exists(user_id, result.metadata.url):
-            return {"status": "skipped", "reason": "duplicate_url", "node_id": node_id}
-        structured_mirror = result.model_dump(mode="json")
-        summary_blob = _encode_summary_blob(result)
-
-        # iter-12 R5: entity canonicalization — non-blocking, gated on key_pool
-        aliases: list[str] = []
-        s_hash: str | None = None
-        if self._key_pool is not None:
-            aliases, s_hash = await _compute_aliases(
-                title=result.mini_title or "",
-                summary=summary_blob,
-                key_pool=self._key_pool,
-            )
-
-        node = KGNodeCreate(
-            id=node_id,
-            name=polish(result.mini_title or ""),
-            source_type=result.metadata.source_type.value,
-            summary=summary_blob,
-            tags=list(rewrite_tags(result.tags or [])),
-            url=result.metadata.url,
-            extraction_confidence=result.metadata.extraction_confidence,
-            engine_version=result.metadata.engine_version,
-            metadata={
-                "engine_version": result.metadata.engine_version,
-                "summary_v2": structured_mirror,
-            },
-            aliases=aliases,
-            summary_hash=s_hash,
-        )
         try:
-            created = self._repository.add_node(user_id, node)
+            workspace_id = self._resolve_workspace_id(user_id)
+            summary_blob = _encode_summary_blob(result)
+            url = result.metadata.url
+
+            zettel = CanonicalZettelCreate(
+                normalized_url=url,
+                content_hash=_content_hash_bytes(url=url, summary_blob=summary_blob),
+                source_type=result.metadata.source_type.value,
+                title=polish(result.mini_title or "") or None,
+                body_md=summary_blob,
+                source_metadata={"engine_version": result.metadata.engine_version},
+            )
+            overlay = WorkspaceZettelCreate(
+                workspace_id=workspace_id,
+                ai_summary=summary_blob,
+                ai_summary_engine_version=result.metadata.engine_version,
+                user_tags=list(rewrite_tags(result.tags or [])),
+                added_via="website",
+            )
+            outcome = self._repository.upsert_canonical_zettel(
+                zettel,
+                workspace=overlay,
+            )
+        except _UnknownWorkspaceError:
+            raise
         except Exception as exc:
-            raise WriterError(f"Failed to write Supabase node: {exc}", writer="supabase") from exc
-        return {"status": "created", "node_id": created.id}
+            raise WriterError(
+                f"Failed to write Supabase v2 canonical zettel: {exc}",
+                writer="supabase",
+            ) from exc
 
-
-async def _compute_aliases(
-    *,
-    title: str,
-    summary: str,
-    key_pool: Any,
-) -> tuple[list[str], str]:
-    """Call entity_canonicalizer and return (aliases, summary_hash).
-
-    Non-blocking: on any failure returns ([], "") so the caller writes an empty
-    aliases array. The summary_hash is always computed so future calls can skip
-    re-generation when the summary hasn't changed.
-    """
-    from website.features.rag_pipeline.ingest.entity_canonicalizer import (
-        canonicalize_node,
-        summary_hash as compute_hash,
-    )
-
-    s_hash = compute_hash(summary)
-    try:
-        canon = await canonicalize_node(title=title, summary=summary, key_pool=key_pool)
-        return canon.get("aliases") or [], s_hash
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("_compute_aliases failed title=%r: %s", title, exc)
-        return [], s_hash
-
-
-def _node_id(result: SummaryResult) -> str:
-    prefix = {
-        "youtube": "yt",
-        "reddit": "rd",
-        "github": "gh",
-        "hackernews": "hn",
-        "newsletter": "nl",
-        "arxiv": "ax",
-        "linkedin": "li",
-        "podcast": "pc",
-        "twitter": "tw",
-        "web": "web",
-    }.get(result.metadata.source_type.value, "web")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", result.mini_title).strip("-").lower()[:80]
-    return f"{prefix}-{slug or 'summary'}"
+        canonical_id = str(outcome.canonical_zettel_id)
+        if not outcome.was_new:
+            return {
+                "status": "skipped",
+                "reason": "duplicate_url",
+                "node_id": canonical_id,
+                "workspace_zettel_id": (
+                    str(outcome.workspace_zettel_id)
+                    if outcome.workspace_zettel_id
+                    else None
+                ),
+            }
+        return {
+            "status": "created",
+            "node_id": canonical_id,
+            "workspace_zettel_id": (
+                str(outcome.workspace_zettel_id)
+                if outcome.workspace_zettel_id
+                else None
+            ),
+        }

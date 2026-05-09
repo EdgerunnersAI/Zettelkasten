@@ -46,6 +46,13 @@ class _Schema:
 
     def rpc(self, name, params):
         self.calls.append(("rpc", self.schema, name, params))
+        # Phase 1.C `content.upsert_canonical_zettel` returns (id, was_new).
+        # Other v2 RPCs (e.g. billing.consume_quota) historically returned a
+        # boolean; preserve that shape for non-canonical RPCs.
+        if name == "upsert_canonical_zettel":
+            return _Execute(
+                [{"id": "00000000-0000-0000-0000-000000000101", "was_new": True}]
+            )
         return _Execute(True)
 
 
@@ -75,8 +82,12 @@ def test_content_repository_uses_schema_table_form() -> None:
     )
 
     assert result.canonical_zettel_id == UUID("00000000-0000-0000-0000-000000000101")
+    assert result.was_new is True
     assert ("schema", "content") in fake.calls
-    assert ("table", "content", "canonical_zettels") in fake.calls
+    # Phase 3.1: canonical upsert flows through the race-safe Phase 1.C RPC,
+    # not a plain `.table("canonical_zettels").upsert(...)`.
+    rpc_calls = [c for c in fake.calls if c[0] == "rpc"]
+    assert any(c[1] == "content" and c[2] == "upsert_canonical_zettel" for c in rpc_calls)
 
 
 def test_content_repository_links_workspace_chunks_for_search() -> None:

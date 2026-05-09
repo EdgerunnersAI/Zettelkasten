@@ -31,18 +31,28 @@ class ContentRepository:
         workspace: WorkspaceZettelCreate | None = None,
         chunks: list[CanonicalChunkCreate] | None = None,
     ) -> CanonicalUpsertResult:
-        payload = zettel.model_dump(exclude_none=True)
-        payload["content_hash"] = _bytes_to_hex(zettel.content_hash)
-
+        # Phase 1.C race-safe RPC: returns (id, was_new) where was_new is
+        # derived from `(xmax = 0)` so concurrent inserters get a reliable
+        # winner-vs-loser signal under contention. Plain client-side upsert
+        # cannot detect this.
         response = (
             self._client.schema("content")
-            .table("canonical_zettels")
-            .upsert(payload, on_conflict="normalized_url,content_hash")
+            .rpc(
+                "upsert_canonical_zettel",
+                {
+                    "p_normalized_url": zettel.normalized_url,
+                    "p_content_hash": _bytes_to_hex(zettel.content_hash),
+                    "p_source_type": zettel.source_type,
+                    "p_title": zettel.title,
+                    "p_body_md": zettel.body_md,
+                    "p_publication_date": zettel.publication_date,
+                    "p_source_metadata": zettel.source_metadata or {},
+                },
+            )
             .execute()
         )
         row = _first(response.data)
         canonical_id = UUID(str(row["id"]))
-
         was_new = bool(row.get("was_new", False))
         chunk_ids = self.upsert_chunks(canonical_id, chunks or [])
 
