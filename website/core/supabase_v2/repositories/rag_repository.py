@@ -76,6 +76,36 @@ class RAGRepository:
             for row in rows
         }
 
+    def search_signal_weights(
+        self,
+        *,
+        workspace_id: UUID | str,
+        target_chunk_ids: list[UUID | str],
+        query_class: str,
+    ) -> list[dict]:
+        """Per-(source, target) decay-weighted retrieval signal weights.
+
+        Wraps `rag.search_signal_weights(p_workspace_id, p_target_chunk_ids,
+        p_query_class)` (Phase 1.A v2 RPC) which returns rows of
+        {source_canonical_chunk_id, target_canonical_chunk_id, weight} filtered
+        to the requested workspace + query_class + target chunk IDs.
+
+        The RPC is SECURITY DEFINER and authorises against the caller via
+        `core.jwt_workspace_ids()` / service-role. Caller is expected to handle
+        / catch RPC errors — the repository deliberately does not swallow them
+        so failure modes stay visible at the call site (graph_score wraps in a
+        broad except to preserve the v1 "MV missing → 0 bonus" identity).
+        """
+        response = self._client.schema("rag").rpc(
+            "search_signal_weights",
+            {
+                "p_workspace_id": str(workspace_id),
+                "p_target_chunk_ids": [str(cc) for cc in target_chunk_ids],
+                "p_query_class": str(query_class),
+            },
+        ).execute()
+        return response.data or []
+
 
 def _first(data):
     if not data:

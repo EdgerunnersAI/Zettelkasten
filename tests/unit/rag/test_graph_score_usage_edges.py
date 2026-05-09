@@ -1,4 +1,10 @@
-"""Tests for usage-edge weight bonus in LocalizedPageRankScorer (T24)."""
+"""Tests for usage-edge weight bonus in LocalizedPageRankScorer (T24).
+
+LEGACY v1: these tests mock the retired `public.kg_usage_edges_agg` MV read.
+Phase 2.3 of the website-features-v2 purge replaced that read with the v2 RPC
+`rag.search_signal_weights` — the v2 surface lives in
+``tests/unit/rag_pipeline/test_graph_score_v2.py``.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +13,15 @@ from uuid import uuid4
 
 import pytest
 
-from website.features.rag_pipeline.retrieval.graph_score import LocalizedPageRankScorer
-from website.features.rag_pipeline.types import ChunkKind, QueryClass, RetrievalCandidate, SourceType
+pytestmark = pytest.mark.skip(
+    reason=(
+        "v1 graph_score usage-edge surface retired in Phase 2.3; "
+        "replaced by tests/unit/rag_pipeline/test_graph_score_v2.py"
+    )
+)
+
+from website.features.rag_pipeline.retrieval.graph_score import LocalizedPageRankScorer  # noqa: E402
+from website.features.rag_pipeline.types import ChunkKind, QueryClass, RetrievalCandidate, SourceType  # noqa: E402
 
 
 def _candidate(node_id: str) -> RetrievalCandidate:

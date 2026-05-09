@@ -10,7 +10,8 @@ from uuid import UUID
 import networkx as nx
 
 from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate
-from website.core.supabase_kg.client import get_supabase_client
+from website.core.supabase_v2.client import get_v2_client
+from website.core.supabase_v2.repositories.rag_repository import RAGRepository
 from website.features.rag_pipeline.retrieval._async_helpers import rpc_call
 
 
@@ -18,32 +19,36 @@ _USAGE_EDGES_ENABLED = os.environ.get("RAG_USAGE_EDGES_ENABLED", "true").lower()
 
 
 def _usage_weight_bonus(
-    supabase: Any,
+    rag_repo: RAGRepository,
     *,
     user_id: UUID,
     target_node_id: str,
     query_class: QueryClass | str,
 ) -> float:
-    """Read decayed usage-edge weights for (user, target, query_class) and map to a bounded bonus.
+    """Read decayed retrieval-signal weights for (workspace, target, query_class) and map to a bounded bonus.
+
+    Phase 2.3 v2 purge: reads from `rag.retrieval_signal_weights` via the
+    `rag.search_signal_weights` RPC (replaces the retired legacy v1
+    materialised view). The decay-weight scoring math is byte-for-byte
+    unchanged: rows' weights are summed and passed through the same sigmoid
+    bound. ``user_id`` binds to ``workspace_id`` under v2 (rag pipeline
+    uniformly treats the rag-pipeline ``user_id`` as the workspace UUID — the
+    JWT workspace_ids gate enforces RLS on the RPC).
 
     Returns a sigmoid-bounded value in [-0.05, +0.05] (≈0 when weight==0,
     approaching +0.05 as weight grows). Returns 0.0 on any failure so a missing
-    materialized view (cold staging) or transient DB error never breaks the
+    underlying table (cold staging) or transient DB error never breaks the
     request path.
     """
     if not _USAGE_EDGES_ENABLED:
         return 0.0
     try:
         qc_value = query_class.value if hasattr(query_class, "value") else str(query_class)
-        res = (
-            supabase.table("kg_usage_edges_agg")
-            .select("weight")
-            .eq("user_id", str(user_id))
-            .eq("target_node_id", target_node_id)
-            .eq("query_class", qc_value)
-            .execute()
+        rows = rag_repo.search_signal_weights(
+            workspace_id=user_id,
+            target_chunk_ids=[target_node_id],
+            query_class=qc_value,
         )
-        rows = getattr(res, "data", None) or []
         weight = sum(float(r.get("weight") or 0.0) for r in rows)
         # Sigmoid-bounded bonus in (-0.05, +0.05); 0 when weight==0.
         return 0.10 / (1.0 + math.exp(-weight / 5.0)) - 0.05
@@ -55,8 +60,14 @@ class LocalizedPageRankScorer:
     """Compute a small induced-subgraph PageRank score for candidates."""
 
     def __init__(self, damping: float = 0.85, supabase: Any | None = None):
-        self._supabase = supabase or get_supabase_client()
+        # v2 purge: default supabase client comes from the v2 client factory.
+        # Tests / runtime callers can still inject a mock supabase-py-shaped
+        # client to override.
+        self._supabase = supabase or get_v2_client()
         self._damping = damping
+        # RAGRepository wraps the v2 search_signal_weights RPC; reuse the
+        # same client so a single Supabase project handles both calls.
+        self._rag_repo = RAGRepository(self._supabase)
 
     async def score(
         self,
@@ -105,7 +116,7 @@ class LocalizedPageRankScorer:
         for candidate in candidates:
             if candidate.node_id not in bonus_cache:
                 bonus_cache[candidate.node_id] = _usage_weight_bonus(
-                    self._supabase,
+                    self._rag_repo,
                     user_id=user_id,
                     target_node_id=candidate.node_id,
                     query_class=query_class,
