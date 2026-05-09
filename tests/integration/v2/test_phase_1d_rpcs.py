@@ -462,3 +462,225 @@ async def test_hybrid_search_authz_denial(mint_user, asyncpg_pool):
         ).execute()
     assert _is_unauthorized(exc_info.value), \
         f"expected unauthorized, got {exc_info.value!r}"
+
+
+# ===========================================================================
+# 3. rag.resolve_effective_nodes_v2 (21_resolve_effective_nodes_rpc.sql)
+# ===========================================================================
+
+
+async def _seed_kasten_with_zettels(
+    pool: asyncpg.Pool,
+    *,
+    workspace_id: uuid.UUID,
+    zettels: list[tuple[list[str], str]],  # (user_tags, source_type) per zettel
+) -> tuple[uuid.UUID, list[uuid.UUID]]:
+    """Seed a kasten + n zettels in the workspace; return (kasten_id, [wz_id...])."""
+    kasten_id = await _create_kasten(pool, workspace_id=workspace_id)
+    wz_ids: list[uuid.UUID] = []
+    for i, (tags, src) in enumerate(zettels):
+        _, wz_id, _ = await _seed_canonical_zettel_with_chunks(
+            pool,
+            workspace_id=workspace_id,
+            n_chunks=1,
+            embedding_seed=i * 0.1,
+            user_tags=tags,
+            source_type=src,
+        )
+        wz_ids.append(wz_id)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO rag.kasten_zettels (kasten_id, workspace_zettel_id, added_via)
+                VALUES ($1, $2, 'manual')
+                """,
+                kasten_id, wz_id,
+            )
+    return kasten_id, wz_ids
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_tag_mode_any(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id, wz_ids = await _seed_kasten_with_zettels(
+        asyncpg_pool, workspace_id=ws_id,
+        zettels=[
+            (["python", "rag"], "github"),
+            (["python", "ml"], "web"),
+            (["js"], "web"),
+        ],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("rag").rpc(
+        "resolve_effective_nodes_v2",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_tags": ["python"],
+            "p_tag_mode": "any",
+        },
+    ).execute()
+    rows = resp.data or []
+    returned = {uuid.UUID(r["workspace_zettel_id"]) for r in rows}
+    # First two have 'python', third does not.
+    assert returned == {wz_ids[0], wz_ids[1]}, (
+        f"expected first two zettels, got {returned!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_tag_mode_all(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id, wz_ids = await _seed_kasten_with_zettels(
+        asyncpg_pool, workspace_id=ws_id,
+        zettels=[
+            (["python", "rag"], "github"),
+            (["python", "ml"], "web"),
+            (["python", "rag", "ml"], "web"),
+        ],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("rag").rpc(
+        "resolve_effective_nodes_v2",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_tags": ["python", "rag"],
+            "p_tag_mode": "all",
+        },
+    ).execute()
+    rows = resp.data or []
+    returned = {uuid.UUID(r["workspace_zettel_id"]) for r in rows}
+    # Only first and third have BOTH 'python' AND 'rag'.
+    assert returned == {wz_ids[0], wz_ids[2]}, (
+        f"expected first and third zettels, got {returned!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_tag_mode_none(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id, wz_ids = await _seed_kasten_with_zettels(
+        asyncpg_pool, workspace_id=ws_id,
+        zettels=[
+            (["python"], "github"),
+            (["js"], "web"),
+            (["rust"], "web"),
+        ],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("rag").rpc(
+        "resolve_effective_nodes_v2",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_tags": ["python"],
+            "p_tag_mode": "none",
+        },
+    ).execute()
+    rows = resp.data or []
+    returned = {uuid.UUID(r["workspace_zettel_id"]) for r in rows}
+    assert returned == {wz_ids[1], wz_ids[2]}, (
+        f"expected js and rust zettels, got {returned!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_source_type_filter(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id, wz_ids = await _seed_kasten_with_zettels(
+        asyncpg_pool, workspace_id=ws_id,
+        zettels=[
+            (["x"], "github"),
+            (["y"], "web"),
+            (["z"], "youtube"),
+        ],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("rag").rpc(
+        "resolve_effective_nodes_v2",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_source_types": ["web", "youtube"],
+        },
+    ).execute()
+    rows = resp.data or []
+    returned = {uuid.UUID(r["workspace_zettel_id"]) for r in rows}
+    assert returned == {wz_ids[1], wz_ids[2]}
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_combined_filters(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id, wz_ids = await _seed_kasten_with_zettels(
+        asyncpg_pool, workspace_id=ws_id,
+        zettels=[
+            (["python"], "github"),
+            (["python"], "web"),
+            (["js"], "web"),
+        ],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("rag").rpc(
+        "resolve_effective_nodes_v2",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_tags": ["python"],
+            "p_tag_mode": "any",
+            "p_source_types": ["web"],
+        },
+    ).execute()
+    rows = resp.data or []
+    returned = {uuid.UUID(r["workspace_zettel_id"]) for r in rows}
+    assert returned == {wz_ids[1]}, (
+        f"expected only python+web zettel, got {returned!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_invalid_tag_mode(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+
+    client = get_v2_user_client(user.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("rag").rpc(
+            "resolve_effective_nodes_v2",
+            {
+                "p_kasten_id": str(kasten_id),
+                "p_tags": ["python"],
+                "p_tag_mode": "garbage",
+            },
+        ).execute()
+    msg = str(exc_info.value).lower()
+    code = getattr(exc_info.value, "code", None)
+    assert "invalid tag_mode" in msg or code == "22023" or "22023" in msg, (
+        f"expected invalid_tag_mode (22023), got {exc_info.value!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_nodes_authz_denial(mint_user, asyncpg_pool):
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+
+    client = get_v2_user_client(intruder.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("rag").rpc(
+            "resolve_effective_nodes_v2",
+            {
+                "p_kasten_id": str(kasten_id),
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"

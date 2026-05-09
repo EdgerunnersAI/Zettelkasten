@@ -33,6 +33,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "17_content_rpcs.sql",
         "19_enriched_search_rpc.sql",
         "20_hybrid_search_rpc.sql",
+        "21_resolve_effective_nodes_rpc.sql",
     ]
 
 
