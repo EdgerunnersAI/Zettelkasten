@@ -31,6 +31,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "13_v2_kasten_rpcs.sql",
         "16_nexus_tokens.sql",
         "17_content_rpcs.sql",
+        "19_enriched_search_rpc.sql",
     ]
 
 

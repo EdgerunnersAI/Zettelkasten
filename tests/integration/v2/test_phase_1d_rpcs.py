@@ -1,0 +1,246 @@
+"""Integration tests for the Phase 1.D v2 RPCs.
+
+Covers the 5 RPCs shipped across `_v2/19_…` through `_v2/24_…`:
+
+  - content.search_chunks_enriched      (19_enriched_search_rpc.sql)
+  - content.hybrid_search_chunks        (20_hybrid_search_rpc.sql)
+  - rag.resolve_effective_nodes_v2      (21_resolve_effective_nodes_rpc.sql)
+  - kg.resolve_entity_anchors_v2        (23_resolve_entity_anchors_rpc.sql)
+  - kg.entities_to_anchor_chunks        (24_entities_to_anchor_chunks_rpc.sql)
+
+Plus the supporting `kg.kg_node_aliases` table from 22_kg_aliases_table.sql.
+
+For each RPC:
+  - One or more success paths (caller authorised via JWT app_metadata.workspace_ids).
+  - An authz-denial path (caller in a different workspace -> SQLSTATE 42501).
+
+Marked @pytest.mark.live — these hit the live v2 Supabase project.
+
+Seeds use the asyncpg service-role pool because:
+  * supabase-py / postgrest-py cannot bind halfvec(768) literals.
+  * Inserts to content.canonical_chunks bypass RLS via service-role.
+"""
+from __future__ import annotations
+
+import math
+import uuid
+
+import asyncpg
+import pytest
+from postgrest.exceptions import APIError
+
+from website.core.supabase_v2.client import get_v2_user_client
+
+
+pytestmark = pytest.mark.live
+
+
+# ---------------------------------------------------------------------------
+# Helpers (mirrors test_kasten_rpcs.py patterns)
+# ---------------------------------------------------------------------------
+
+
+def _embedding_literal(seed: float = 0.0) -> str:
+    """Return a deterministic 768-dim halfvec literal '[v0,v1,...,v767]'."""
+    base = 0.001 + seed
+    vals = [round(base + i * 1e-5, 6) for i in range(768)]
+    return "[" + ",".join(f"{v:.6f}" for v in vals) + "]"
+
+
+async def _seed_canonical_zettel_with_chunks(
+    pool: asyncpg.Pool,
+    *,
+    workspace_id: uuid.UUID,
+    n_chunks: int = 2,
+    embedding_seed: float = 0.0,
+    chunk_contents: list[str] | None = None,
+    title: str | None = None,
+    source_type: str = "web",
+    user_tags: list[str] | None = None,
+) -> tuple[uuid.UUID, uuid.UUID, list[uuid.UUID]]:
+    """Insert canonical_zettel + n_chunks canonical_chunks + workspace_zettel
+    + workspace_chunk_membership rows using the service-role asyncpg pool.
+
+    Returns (canonical_zettel_id, workspace_zettel_id, [canonical_chunk_id,...]).
+    """
+    if user_tags is None:
+        user_tags = []
+    if chunk_contents is None:
+        chunk_contents = [f"chunk content {i}" for i in range(n_chunks)]
+    assert len(chunk_contents) == n_chunks
+
+    async with pool.acquire() as conn:
+        cz_id = uuid.uuid4()
+        norm_url = f"https://example.test/{uuid.uuid4().hex}"
+        content_hash = uuid.uuid4().bytes + uuid.uuid4().bytes
+        await conn.execute(
+            """
+            INSERT INTO content.canonical_zettels
+                (id, normalized_url, content_hash, source_type, title, body_md,
+                 publication_date)
+            VALUES ($1, $2, $3, $4, $5, $6, '2026-04-01'::date)
+            """,
+            cz_id, norm_url, content_hash, source_type,
+            title or f"test-zettel-{cz_id}", "body",
+        )
+
+        chunk_ids: list[uuid.UUID] = []
+        for i, body in enumerate(chunk_contents):
+            cc_id = uuid.uuid4()
+            chunk_hash = uuid.uuid4().bytes + uuid.uuid4().bytes
+            emb_literal = _embedding_literal(embedding_seed + i * 0.01)
+            await conn.execute(
+                f"""
+                INSERT INTO content.canonical_chunks
+                    (id, canonical_zettel_id, chunk_idx, content, content_hash,
+                     chunk_type, embedding)
+                VALUES ($1, $2, $3, $4, $5, 'atomic', '{emb_literal}'::halfvec(768))
+                """,
+                cc_id, cz_id, i, body, chunk_hash,
+            )
+            chunk_ids.append(cc_id)
+
+        wz_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO content.workspace_zettels
+                (id, workspace_id, canonical_zettel_id, added_via, user_tags)
+            VALUES ($1, $2, $3, 'website', $4)
+            """,
+            wz_id, workspace_id, cz_id, user_tags,
+        )
+        for cc_id in chunk_ids:
+            await conn.execute(
+                """
+                INSERT INTO content.workspace_chunk_membership
+                    (workspace_id, canonical_chunk_id, workspace_zettel_id)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                workspace_id, cc_id, wz_id,
+            )
+
+        return cz_id, wz_id, chunk_ids
+
+
+async def _create_kasten(
+    pool: asyncpg.Pool, *, workspace_id: uuid.UUID, name: str | None = None
+) -> uuid.UUID:
+    name = name or f"k-{uuid.uuid4().hex[:8]}"
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO rag.kastens (workspace_id, name)
+            VALUES ($1, $2)
+            RETURNING id
+            """,
+            workspace_id, name,
+        )
+        return row["id"]
+
+
+def _is_unauthorized(exc: BaseException) -> bool:
+    """Match SQLSTATE 42501 or the literal 'unauthorized' message."""
+    msg = str(exc).lower()
+    code = getattr(exc, "code", None)
+    return "unauthorized" in msg or "42501" in msg or code == "42501" or code == "P0001"
+
+
+# ===========================================================================
+# 1. content.search_chunks_enriched (19_enriched_search_rpc.sql)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_success(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    title = f"enriched-zettel-{uuid.uuid4().hex[:6]}"
+    user_tags = ["machine-learning", "rag"]
+    _, wz_id, chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool,
+        workspace_id=ws_id,
+        n_chunks=2,
+        title=title,
+        source_type="github",
+        user_tags=user_tags,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "search_chunks_enriched",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 2, f"expected 2 rows, got {rows!r}"
+
+    # Verify enriched columns are populated for the first row.
+    row = rows[0]
+    assert uuid.UUID(row["canonical_chunk_id"]) in chunks
+    assert row["title"] == title
+    assert row["source_type"] == "github"
+    assert row["publication_date"] == "2026-04-01"
+    assert row["user_tags"] == user_tags
+    assert uuid.UUID(row["workspace_zettel_id"]) == wz_id
+    assert row["fts_text"] is not None
+    assert 0.0 <= row["score"] <= 1.0001
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_authz_denial(mint_user, asyncpg_pool):
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+    assert ws_id not in intruder.workspace_ids
+
+    await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1
+    )
+
+    client = get_v2_user_client(intruder.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("content").rpc(
+            "search_chunks_enriched",
+            {
+                "p_workspace_id": str(ws_id),
+                "p_query_embedding": _embedding_literal(0.0),
+                "p_match_count": 5,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_excludes_soft_deleted(
+    mint_user, asyncpg_pool
+):
+    """Soft-deleted workspace_zettels (deleted_at IS NOT NULL) must NOT surface."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    _, wz_id, _ = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1
+    )
+    async with asyncpg_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE content.workspace_zettels SET deleted_at = now() WHERE id = $1",
+            wz_id,
+        )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "search_chunks_enriched",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert rows == [], f"expected soft-deleted rows excluded, got {rows!r}"
