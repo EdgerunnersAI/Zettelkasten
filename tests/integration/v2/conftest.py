@@ -21,9 +21,16 @@ from tests.v2.fixtures.users import delete_test_user
 from website.core.supabase_v2.client import get_v2_database_url
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def asyncpg_pool() -> AsyncIterator[asyncpg.Pool]:
     """Direct port-5432 asyncpg pool for v2 integration tests.
+
+    Function-scoped so the pool is bound to the same event loop as the test
+    that uses it (pytest-asyncio runs each async test in its own loop in
+    ``asyncio_mode = auto``; a session-scoped pool would raise
+    ``got Future <…> attached to a different loop`` on the second test).
+    Per-test pool create+close cost is ~50 ms — acceptable for the integration
+    suite size.
 
     Refuses to start if the URL points at pgbouncer (port 6543) — see
     plan amendment about LISTEN port enforcement. Strict port parse (not a
