@@ -1,8 +1,18 @@
 from pathlib import Path
 
-from website.experimental_features.PageIndex_Rag.candidate_selector import select_candidates
-from website.experimental_features.PageIndex_Rag.data_access import _content_from_row, scope_from_fixture
-from website.experimental_features.PageIndex_Rag.types import PageIndexDocument, ZettelRecord
+import pytest
+
+# Phase 3.6: PageIndex_Rag.data_access was retired pending v2 redesign.
+# Skip these tests at collection time so the retirement doesn't break CI.
+pytest.skip(
+    "PageIndex_Rag.data_access retired in Phase 3.6; "
+    "tests will be re-enabled when the module is rewritten against the v2 schema",
+    allow_module_level=True,
+)
+
+from website.experimental_features.PageIndex_Rag.candidate_selector import select_candidates  # noqa: E402
+from website.experimental_features.PageIndex_Rag.data_access import _content_from_row, scope_from_fixture  # noqa: E402
+from website.experimental_features.PageIndex_Rag.types import PageIndexDocument, ZettelRecord  # noqa: E402
 
 
 def test_scope_from_knowledge_management_fixture():
