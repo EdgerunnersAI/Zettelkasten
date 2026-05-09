@@ -698,8 +698,14 @@ class HybridRetriever:
                 except Exception as _be:
                     _log.debug("bandit_sample_failed: %s", _be)
                     _bandit_floor = _ANCHOR_SEED_FLOOR_RRF
+                # Phase 2.4.3: rag.fetch_anchor_seeds_v2 takes canonical_chunk_ids
+                # (uuid[]), not bigint kg_node_ids. Use the bridge result from
+                # anchor_chunk_mentions; fall back to seed-anchor chunks when
+                # neighbours-bridge missed (rare). Anti-pattern guard: never
+                # pass bigint anchor_nodes directly to a uuid[]-typed RPC.
+                seed_chunk_ids = list({m["canonical_chunk_id"] for m in anchor_chunk_mentions})
                 raw_seeds = await fetch_anchor_seeds(
-                    anchor_nodes, sandbox_id, embeddings[0], self._supabase
+                    seed_chunk_ids, sandbox_id, embeddings[0], self._supabase
                 )
                 anchor_seeds = sorted(
                     raw_seeds,
