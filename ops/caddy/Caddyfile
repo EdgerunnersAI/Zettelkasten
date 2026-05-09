@@ -43,8 +43,23 @@ zettelkasten.in {
     @api_graph path /api/graph
     header @api_graph Cache-Control "public, max-age=30"
 
-    # Application reverse proxy — upstream is hot-swappable
-    import /etc/caddy/upstream.snippet
+    # Health check always passes through to upstream (bypasses maintenance gate)
+    handle /api/health {
+        import /etc/caddy/upstream.snippet
+    }
+
+    # Maintenance flag file → 503 (close connection so clients don't retry against a stale upstream)
+    @maintenance file /etc/caddy/maintenance.flag
+    handle @maintenance {
+        respond "Service is under maintenance. We'll be back shortly." 503 {
+            close
+        }
+    }
+
+    # Normal traffic — application reverse proxy (upstream is hot-swappable)
+    handle {
+        import /etc/caddy/upstream.snippet
+    }
 
     # Access log (JSON, separate file for logrotate)
     log {
