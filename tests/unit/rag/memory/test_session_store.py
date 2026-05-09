@@ -7,6 +7,10 @@ import pytest
 from website.features.rag_pipeline.memory.session_store import ChatSessionStore
 from website.features.rag_pipeline.types import AnswerTurn, Citation, QueryClass, SourceType
 
+pytestmark = pytest.mark.skip(
+    reason="v1 session_store retired in Phase 2.7; replaced by tests/unit/rag_pipeline/test_session_store_v2.py"
+)
+
 
 class _TableQuery:
     def __init__(self, client, table_name):
