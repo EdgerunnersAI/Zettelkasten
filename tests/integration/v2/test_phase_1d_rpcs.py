@@ -244,3 +244,221 @@ async def test_search_chunks_enriched_excludes_soft_deleted(
     ).execute()
     rows = resp.data or []
     assert rows == [], f"expected soft-deleted rows excluded, got {rows!r}"
+
+
+# ===========================================================================
+# 2. content.hybrid_search_chunks (20_hybrid_search_rpc.sql)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_dense_only(mint_user, asyncpg_pool):
+    """Query text matches no chunk via FTS — only the semantic CTE contributes.
+
+    All chunks have embeddings; rrf_score should equal 1/(k + semantic_rank).
+    """
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    # Seed 2 chunks with bland content; the query text will use a token that
+    # cannot match any of them (FTS empty).
+    _, _, chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool,
+        workspace_id=ws_id,
+        n_chunks=2,
+        chunk_contents=["alpha bravo charlie", "delta echo foxtrot"],
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_query_text": "zzqzzqzzq_no_match_token",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 2, f"expected 2 dense-only rows, got {rows!r}"
+    for row in rows:
+        # FTS rank should be NULL because no FTS match.
+        assert row["fts_rank"] is None
+        assert row["semantic_rank"] in (1, 2)
+        # rrf_score == 1/(60 + sem_rank)
+        expected = 1.0 / (60 + row["semantic_rank"])
+        assert math.isclose(row["rrf_score"], expected, rel_tol=1e-9), (
+            f"rrf mismatch: got {row['rrf_score']}, expected {expected}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_fts_only(mint_user, asyncpg_pool):
+    """Chunks have NULL embeddings — only FTS CTE contributes.
+
+    Insert chunks via service-role asyncpg directly (bypassing the helper)
+    because the helper sets a real embedding; this case demands NULL.
+    """
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    async with asyncpg_pool.acquire() as conn:
+        cz_id = uuid.uuid4()
+        norm_url = f"https://example.test/{uuid.uuid4().hex}"
+        ch = uuid.uuid4().bytes + uuid.uuid4().bytes
+        await conn.execute(
+            """
+            INSERT INTO content.canonical_zettels
+                (id, normalized_url, content_hash, source_type, title, body_md)
+            VALUES ($1, $2, $3, 'web', 'fts-only', 'body')
+            """,
+            cz_id, norm_url, ch,
+        )
+        cc_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO content.canonical_chunks
+                (id, canonical_zettel_id, chunk_idx, content, content_hash,
+                 chunk_type, embedding)
+            VALUES ($1, $2, 0,
+                    'transformer attention mechanism is fascinating',
+                    $3, 'atomic', NULL)
+            """,
+            cc_id, cz_id, uuid.uuid4().bytes + uuid.uuid4().bytes,
+        )
+        wz_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO content.workspace_zettels
+                (id, workspace_id, canonical_zettel_id, added_via)
+            VALUES ($1, $2, $3, 'website')
+            """,
+            wz_id, ws_id, cz_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO content.workspace_chunk_membership
+                (workspace_id, canonical_chunk_id, workspace_zettel_id)
+            VALUES ($1, $2, $3)
+            """,
+            ws_id, cc_id, wz_id,
+        )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_query_text": "transformer attention",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 1, f"expected 1 fts-only row, got {rows!r}"
+    row = rows[0]
+    assert row["fts_rank"] == 1
+    assert row["semantic_rank"] is None
+    expected = 1.0 / (60 + 1)
+    assert math.isclose(row["rrf_score"], expected, rel_tol=1e-9), (
+        f"rrf mismatch: got {row['rrf_score']}, expected {expected}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_rrf_math(mint_user, asyncpg_pool):
+    """Verify RRF math: a chunk that is FTS-rank-1 and semantic-rank-N
+    must score 1/(60+1) + 1/(60+N) under default weights.
+
+    Strategy:
+      - Seed 5 chunks with embeddings 0.0, 0.01, ..., 0.04 (helper iterates
+        with embedding_seed + i*0.01).
+      - Only the LAST chunk (i=4) has a unique FTS token "antidisestablishmentarianism".
+      - Query embedding = embedding_literal(0.0) -> closest to chunk 0; the
+        last chunk (i=4) is therefore semantic rank 5.
+      - Only chunk 4 matches FTS -> FTS rank 1.
+      - Expected rrf_score for chunk 4 = 1/(60+1) + 1/(60+5).
+    """
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    contents = [
+        "lorem ipsum dolor sit amet",
+        "consectetur adipiscing elit",
+        "sed do eiusmod tempor incididunt",
+        "ut labore et dolore magna",
+        # Only this chunk has the unique token; embedding_seed+0.04 puts it
+        # furthest from the query embedding (seed 0.0).
+        "antidisestablishmentarianism is a long word",
+    ]
+    _, _, chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool,
+        workspace_id=ws_id,
+        n_chunks=5,
+        chunk_contents=contents,
+    )
+    target_chunk_id = chunks[4]
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_query_text": "antidisestablishmentarianism",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 10,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) >= 1
+    by_id = {uuid.UUID(r["canonical_chunk_id"]): r for r in rows}
+    target_row = by_id.get(target_chunk_id)
+    assert target_row is not None, (
+        f"target chunk {target_chunk_id} missing from {rows!r}"
+    )
+    assert target_row["fts_rank"] == 1, (
+        f"expected FTS rank 1 (only matching chunk), got {target_row['fts_rank']}"
+    )
+    assert target_row["semantic_rank"] == 5, (
+        f"expected semantic rank 5 (furthest of 5), got {target_row['semantic_rank']}"
+    )
+    expected = (1.0 / (60 + 1)) + (1.0 / (60 + 5))
+    assert math.isclose(target_row["rrf_score"], expected, rel_tol=1e-9), (
+        f"rrf mismatch: got {target_row['rrf_score']}, expected {expected}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_authz_denial(mint_user, asyncpg_pool):
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+
+    await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1
+    )
+
+    client = get_v2_user_client(intruder.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("content").rpc(
+            "hybrid_search_chunks",
+            {
+                "p_workspace_id": str(ws_id),
+                "p_query_text": "anything",
+                "p_query_embedding": _embedding_literal(0.0),
+                "p_match_count": 5,
+                "p_rrf_k": 60,
+                "p_full_text_weight": 1.0,
+                "p_semantic_weight": 1.0,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
