@@ -96,6 +96,7 @@ from website.features.rag_pipeline.types import QueryClass, RetrievalCandidate, 
 # gated by vague_low_entity), or MULTI_HOP (loses hop-2 anchors).
 _SCORE_RANK_GATED_CLASSES = (QueryClass.THEMATIC, QueryClass.STEP_BACK)
 from website.core.supabase_kg.client import get_supabase_client
+from website.core.supabase_v2.client import get_v2_client, is_v2_configured
 from website.features.rag_pipeline.scoring.registry_adapter import RegistryAdapter
 
 _log = logging.getLogger(__name__)
@@ -483,7 +484,16 @@ class HybridRetriever:
         chunk_share_store: ChunkShareStore | None = None,
         registry_adapter: RegistryAdapter | None = None,
     ):
-        self._supabase = supabase or get_supabase_client()
+        # Phase 2.4.6: default client swap. Every RPC the retriever calls
+        # (kg.*, content.*_kasten, rag.*_v2) lives in the v2 project; the
+        # legacy supabase_kg client targets the v1 project and is retained
+        # only as a fallback for environments where v2 is not yet provisioned.
+        if supabase is not None:
+            self._supabase = supabase
+        elif is_v2_configured():
+            self._supabase = get_v2_client()
+        else:
+            self._supabase = get_supabase_client()
         self._embedder = embedder
         # iter-08 P4.2: kasten_freq prior bypassed (RES-2 floor=50 never crossed).
         # Kept on instance as deprecated attr so orchestrator's getattr lookup is
@@ -891,22 +901,35 @@ class HybridRetriever:
         sandbox_id: UUID | None,
         scope_filter: ScopeFilter,
     ) -> list[str] | None:
+        # Phase 2.4.6: kasten-scoped scope resolution via
+        # ``rag.resolve_effective_nodes_v2``. Returns
+        # ``[(workspace_zettel_id, canonical_zettel_id), ...]``; we surface
+        # canonical_zettel_id as the effective-node id since downstream code
+        # (anchor-seed RPC, _ensure_member_coverage) treats this as a
+        # zettel-id list. The legacy ``rag_resolve_effective_nodes`` accepted
+        # node_ids as a free-form filter; the v2 RPC retired that knob (use
+        # the kasten members), so a non-empty scope_filter.node_ids degrades
+        # gracefully to the unfiltered kasten member list.
+        del user_id  # v2 RPC authorises via kasten ownership + JWT.
         if sandbox_id is None and not any(
             [scope_filter.node_ids, scope_filter.tags, scope_filter.source_types]
         ):
             return None
-        response = await rpc_call(self._supabase.rpc(
-            "rag_resolve_effective_nodes",
+        if sandbox_id is None:
+            # No kasten in scope but ScopeFilter present — v2 RPC requires
+            # a kasten_id, so we cannot resolve. Surface "unfiltered" semantics
+            # by returning None (caller treats None as no scope restriction).
+            return None
+        response = await rpc_call(self._supabase.schema("rag").rpc(
+            "resolve_effective_nodes_v2",
             {
-                "p_user_id": str(user_id),
-                "p_sandbox_id": str(sandbox_id) if sandbox_id else None,
-                "p_node_ids": scope_filter.node_ids,
+                "p_kasten_id": str(sandbox_id),
                 "p_tags": scope_filter.tags,
-                "p_tag_mode": scope_filter.tag_mode,
+                "p_tag_mode": scope_filter.tag_mode if scope_filter.tags else "any",
                 "p_source_types": [item.value for item in scope_filter.source_types] if scope_filter.source_types else None,
             },
         ))
-        return [row["node_id"] for row in (response.data or [])]
+        return [str(row["canonical_zettel_id"]) for row in (response.data or []) if row.get("canonical_zettel_id")]
 
     def _dedup_and_fuse(
         self,
