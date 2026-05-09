@@ -11,6 +11,8 @@ from uuid import UUID
 
 import pytest
 
+pytestmark = pytest.mark.skip(reason="v1 upsert_chunks surface (kg_node_chunks) retired in Phase 2.5; replaced by tests/unit/rag_pipeline/test_ingest_upsert_v2.py")
+
 from website.features.rag_pipeline.ingest.chunker import Chunk
 from website.features.rag_pipeline.ingest.upsert import upsert_chunks
 from website.features.rag_pipeline.types import ChunkType
