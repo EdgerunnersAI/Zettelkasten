@@ -28,6 +28,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "10_hnsw_indexes.sql",
         "11_post_install.sql",
         "12_revert_unauthorized_pricing.sql",
+        "13_v2_kasten_rpcs.sql",
     ]
 
 
