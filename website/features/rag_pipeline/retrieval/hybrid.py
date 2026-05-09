@@ -513,23 +513,60 @@ class HybridRetriever:
         graph_depth = _DEPTH_BY_CLASS[query_class]
         sem_w, fts_w, graph_w = _weights_for_class(query_class, self._registry_adapter)
 
+        # Phase 2.4.5: per-variant kasten-scoped hybrid search returns
+        # per-source ranks (fts_rank, semantic_rank) so the 3-source weighted
+        # RRF — sem/fts/graph — can be fused in Python (Cormack 2009 RRF on
+        # ranks, NEVER on raw scores). The graph signal is derived from
+        # anchor_chunk_mentions (entities_to_anchor_chunks) and joined per
+        # canonical_chunk_id during fusion below.
+        del graph_depth  # v1 graph-depth knob; v2 graph signal is mention-based.
+
         async def _search(query_text: str, query_vec: list[float]) -> list[dict]:
-            response = await rpc_call(self._supabase.rpc(
-                "rag_hybrid_search",
+            if sandbox_id is None:
+                return []
+            response = await rpc_call(self._supabase.schema("content").rpc(
+                "hybrid_search_chunks_kasten",
                 {
-                    "p_user_id": str(user_id),
+                    "p_kasten_id": str(sandbox_id),
                     "p_query_text": query_text,
                     "p_query_embedding": query_vec,
-                    "p_effective_nodes": effective_nodes,
-                    "p_limit": limit,
-                    "p_semantic_weight": sem_w,
-                    "p_fulltext_weight": fts_w,
-                    "p_graph_weight": graph_w,
+                    "p_match_count": limit,
                     "p_rrf_k": 60,
-                    "p_graph_depth": graph_depth,
+                    # Pass per-source weights through to the SQL fused score so
+                    # the legacy ``rrf_score`` column stays meaningful, but the
+                    # downstream Python RRF re-fuses with the graph dimension
+                    # using fts_rank/semantic_rank decomposed from this RPC.
+                    "p_full_text_weight": fts_w,
+                    "p_semantic_weight": sem_w,
                 },
             ))
-            return response.data or []
+            rows = response.data or []
+            # Adapt v2 row -> legacy dict shape consumed by _row_to_candidate
+            # and the fusion path. Preserve fts_rank / semantic_rank / raw
+            # scores so the Python RRF below can decompose them.
+            adapted: list[dict] = []
+            for row in rows:
+                adapted.append({
+                    "kind": "chunk",
+                    "node_id": str(row["canonical_chunk_id"]),
+                    "chunk_id": row.get("canonical_chunk_id"),
+                    "chunk_idx": row.get("chunk_idx"),
+                    "name": row.get("title") or "",
+                    "title": row.get("title") or "",
+                    "source_type": row.get("source_type") or "web",
+                    "url": "",
+                    "content": row.get("content") or "",
+                    "tags": list(row.get("user_tags") or []),
+                    "metadata": {},
+                    "rrf_score": float(row.get("rrf_score") or 0.0),
+                    "raw_dense_score": row.get("raw_dense_score"),
+                    "raw_fts_score": row.get("raw_fts_score"),
+                    "fts_rank": row.get("fts_rank"),
+                    "semantic_rank": row.get("semantic_rank"),
+                    "canonical_chunk_id": row.get("canonical_chunk_id"),
+                    "canonical_zettel_id": row.get("canonical_zettel_id"),
+                })
+            return adapted
 
         # iter-08 P4.2: per-Kasten chunk-count fetch parallel with hybrid RPCs.
         # Replaces dead kasten_freq prior (RES-2 floor=50 never crossed).
@@ -773,6 +810,11 @@ class HybridRetriever:
             anchor_nodes=anchor_chunks_for_score_rank if anchor_chunks_for_score_rank else None,
             anchor_seeds=anchor_seeds,
             anchor_seed_floor=_bandit_floor,
+            # Phase 2.4.5: per-source weighted RRF inputs.
+            anchor_chunk_mentions=anchor_chunk_mentions,
+            sem_weight=sem_w,
+            fts_weight=fts_w,
+            graph_weight=graph_w,
         )
 
         # iter-12 T31 R4: record bandit reward post-fuse.
@@ -872,30 +914,117 @@ class HybridRetriever:
         anchor_seeds: list[dict] | None = None,
         # iter-12 T31 R4: bandit-sampled floor; falls back to static constant.
         anchor_seed_floor: float | None = None,
+        # Phase 2.4.5: per-source weighted RRF inputs (sem/fts/graph) plus
+        # graph-rank source data from the entities_to_anchor_chunks bridge.
+        anchor_chunk_mentions: list[dict] | None = None,
+        sem_weight: float = 0.5,
+        fts_weight: float = 0.3,
+        graph_weight: float = 0.2,
     ) -> list[RetrievalCandidate]:
+        # Phase 2.4.5-int: chunk-level dedup. The legacy v1 (kind, node_id,
+        # chunk_id) tuple is collapsed to canonical_chunk_id since v2 ChunkCandidate
+        # node_id IS the canonical_chunk_id. The zettel-level _MAX_CHUNKS_PER_NODE_BY_CLASS
+        # cap is removed from this function — replaced by the post-fusion
+        # _apply_zettel_rollup helper (Phase 2.4.5-int2).
         by_key = {}
         variant_hits = {}
+        # Phase 2.4.5: build per-source rank maps (chunk_id -> best rank seen).
+        # Lower rank = better; semantic_rank=1 is the closest semantic neighbour.
+        sem_rank_map: dict[str, int] = {}
+        fts_rank_map: dict[str, int] = {}
         for variant_results in multi_variant:
             seen_in_variant = set()
             for row in variant_results:
                 if not row.get("node_id"):
-                    # Defensive: rag_hybrid_search occasionally returns aggregate
-                    # rows with null node_id (e.g. when summary-mode rolls up a
-                    # group). These can't be cited, so drop them at the edge.
+                    # Defensive: aggregate rows with null node_id can't be cited.
                     continue
-                key = (row["kind"], row["node_id"], row.get("chunk_id"))
+                # Chunk-level dedup key — collapse legacy (kind, node_id,
+                # chunk_id) tuple to canonical_chunk_id (== node_id for v2).
+                key = row["node_id"]
                 seen_in_variant.add(key)
+                # Update per-source rank maps (best rank wins across variants).
+                _sem_r = row.get("semantic_rank")
+                if _sem_r is not None:
+                    prev = sem_rank_map.get(key)
+                    if prev is None or int(_sem_r) < prev:
+                        sem_rank_map[key] = int(_sem_r)
+                _fts_r = row.get("fts_rank")
+                if _fts_r is not None:
+                    prev = fts_rank_map.get(key)
+                    if prev is None or int(_fts_r) < prev:
+                        fts_rank_map[key] = int(_fts_r)
                 if key not in by_key:
                     cand = _row_to_candidate(row)
-                    # iter-10 P3: snapshot the BASE rrf BEFORE any boost so the
-                    # magnet gate can compare base percentile vs post-boost rank.
-                    cand.metadata["_base_rrf_score"] = cand.rrf_score
+                    # Propagate raw component scores onto candidate metadata so
+                    # downstream code (rerank diagnostics, eval harness) can
+                    # consult them without re-running RPCs.
+                    if row.get("raw_dense_score") is not None:
+                        cand.metadata["raw_dense_score"] = float(row["raw_dense_score"])
+                    if row.get("raw_fts_score") is not None:
+                        cand.metadata["raw_fts_score"] = float(row["raw_fts_score"])
                     by_key[key] = cand
                     variant_hits[key] = 0
                 else:
                     by_key[key].rrf_score = max(by_key[key].rrf_score, float(row.get("rrf_score") or 0.0))
+                    # Keep best raw scores across duplicate hits.
+                    rd = row.get("raw_dense_score")
+                    if rd is not None:
+                        prev = by_key[key].metadata.get("raw_dense_score")
+                        if prev is None or float(rd) > float(prev):
+                            by_key[key].metadata["raw_dense_score"] = float(rd)
+                    rf = row.get("raw_fts_score")
+                    if rf is not None:
+                        prev = by_key[key].metadata.get("raw_fts_score")
+                        if prev is None or float(rf) > float(prev):
+                            by_key[key].metadata["raw_fts_score"] = float(rf)
             for key in seen_in_variant:
                 variant_hits[key] += 1
+
+        # Phase 2.4.5: build chunk-level graph rank from anchor_chunk_mentions.
+        # Operator ruling #1 — rank chunks by sum(mention_count) DESC then by
+        # count(distinct kg_node_id) DESC as deterministic tiebreak. Chunks with
+        # the strongest entity-mention signal get rank 1.
+        graph_rank_map: dict[str, int] = {}
+        if anchor_chunk_mentions:
+            agg: dict[str, dict[str, int | set]] = {}
+            for m in anchor_chunk_mentions:
+                cid = m.get("canonical_chunk_id")
+                if not cid:
+                    continue
+                slot = agg.setdefault(cid, {"sum": 0, "nodes": set()})
+                slot["sum"] = int(slot["sum"]) + int(m.get("mention_count") or 1)
+                slot["nodes"].add(int(m.get("kg_node_id") or 0))
+            ordered = sorted(
+                agg.items(),
+                key=lambda kv: (-int(kv[1]["sum"]), -len(kv[1]["nodes"])),
+            )
+            for i, (cid, _slot) in enumerate(ordered, start=1):
+                graph_rank_map[str(cid)] = i
+
+        # Phase 2.4.5: Python-side 3-source weighted RRF (Cormack 2009 — fuse
+        # ranks, NEVER raw scores). Per-source contribution is 0 when the
+        # chunk does not appear in that source's ranked list. Per-class weights
+        # come from _WEIGHTS_BY_CLASS (passed in by the caller).
+        _RRF_K = 60.0
+        if by_key:
+            for key, cand in by_key.items():
+                sem_r = sem_rank_map.get(key)
+                fts_r = fts_rank_map.get(key)
+                graph_r = graph_rank_map.get(key)
+                rrf = 0.0
+                if sem_r is not None:
+                    rrf += sem_weight * (1.0 / (_RRF_K + float(sem_r)))
+                if fts_r is not None:
+                    rrf += fts_weight * (1.0 / (_RRF_K + float(fts_r)))
+                if graph_r is not None:
+                    rrf += graph_weight * (1.0 / (_RRF_K + float(graph_r)))
+                # Replace the SQL-side single-weight rrf_score with the proper
+                # 3-source weighted RRF. Fall back to the SQL fused score when
+                # all per-source ranks are missing (defensive — should not
+                # occur under normal flow).
+                if rrf > 0.0:
+                    cand.rrf_score = rrf
+                cand.metadata["_base_rrf_score"] = cand.rrf_score
 
         # iter-09 RES-7 / Q10: inject anchor-seed candidates. When a seed's
         # node is already in the pool, bump its rrf_score floor; when missing,
@@ -904,23 +1033,35 @@ class HybridRetriever:
         _effective_floor = anchor_seed_floor if anchor_seed_floor is not None else _ANCHOR_SEED_FLOOR_RRF
         if anchor_seeds:
             for seed in anchor_seeds:
-                nid = seed.get("node_id")
-                if not nid:
+                # Phase 2.4.5: rag.fetch_anchor_seeds_v2 returns
+                # ``canonical_chunk_id`` (the seed's chunk-id), not zettel-id.
+                # Match by chunk-id under the new chunk-level dedup key.
+                cid = seed.get("canonical_chunk_id") or seed.get("node_id")
+                if not cid:
                     continue
+                cid = str(cid)
                 seed_score = float(seed.get("score") or 0.0)
                 floored = max(seed_score, _effective_floor)
-                # Match an existing chunk row for this node; else synthesize.
-                matching_keys = [k for k in by_key if k[1] == nid]
-                if matching_keys:
-                    for k in matching_keys:
-                        by_key[k].rrf_score = max(by_key[k].rrf_score, floored)
+                if cid in by_key:
+                    by_key[cid].rrf_score = max(by_key[cid].rrf_score, floored)
                 else:
-                    seed_row = dict(seed)
-                    seed_row["rrf_score"] = floored
+                    seed_row = {
+                        "kind": "chunk",
+                        "node_id": cid,
+                        "chunk_id": seed.get("canonical_chunk_id"),
+                        "chunk_idx": seed.get("chunk_idx"),
+                        "name": seed.get("title") or "",
+                        "title": seed.get("title") or "",
+                        "source_type": seed.get("source_type") or "web",
+                        "url": "",
+                        "content": seed.get("content") or "",
+                        "tags": [],
+                        "metadata": {},
+                        "rrf_score": floored,
+                    }
                     candidate = _row_to_candidate(seed_row)
-                    new_key = (candidate.kind.value, candidate.node_id, candidate.chunk_id)
-                    by_key[new_key] = candidate
-                    variant_hits[new_key] = 0
+                    by_key[cid] = candidate
+                    variant_hits[cid] = 0
 
         normalized_variants = [
             _normalize_for_match(v) for v in (query_variants or []) if v and v.strip()
