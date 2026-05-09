@@ -755,3 +755,173 @@ async def test_kg_node_aliases_rls_workspace_scope(mint_user, asyncpg_pool):
     assert (resp.data or []) == [], (
         f"intruder should see no aliases, got {resp.data!r}"
     )
+
+
+# ===========================================================================
+# 5. kg.resolve_entity_anchors_v2 (23_resolve_entity_anchors_rpc.sql)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_canonical_match(mint_user, asyncpg_pool):
+    """Term that fuzzy-matches the canonical_name returns the node."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id,
+        canonical_name="Transformer Architecture",
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_terms": ["transformer architecture"],
+            "p_min_similarity": 0.30,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert any(r["kg_node_id"] == node_id for r in rows), \
+        f"expected canonical match, got {rows!r}"
+    matched = next(r for r in rows if r["kg_node_id"] == node_id)
+    assert matched["matched_kind"] == "canonical"
+    assert matched["similarity"] >= 0.30
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_alias_match(mint_user, asyncpg_pool):
+    """Term matching only an alias (not canonical) still resolves the node."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id,
+        canonical_name="Bidirectional Encoder Representations from Transformers",
+        aliases=[("BERT", "abbreviation")],
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_terms": ["bert"],
+            "p_min_similarity": 0.30,
+        },
+    ).execute()
+    rows = resp.data or []
+    matched = [r for r in rows if r["kg_node_id"] == node_id]
+    assert matched, f"expected alias match for BERT, got {rows!r}"
+    assert matched[0]["matched_kind"] in ("abbreviation", "canonical"), \
+        f"unexpected kind: {matched[0]!r}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_below_threshold_excluded(mint_user, asyncpg_pool):
+    """A term unrelated to any canonical/alias is filtered by p_min_similarity."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id,
+        canonical_name="Transformer Architecture",
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_terms": ["zzzzzqqqqq"],
+            "p_min_similarity": 0.50,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert rows == [], f"expected no matches under threshold, got {rows!r}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_dedupe_per_node(mint_user, asyncpg_pool):
+    """When canonical AND alias both match the same node, only one row returned."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id,
+        canonical_name="Graph Neural Network",
+        aliases=[("graph neural network", "synonym"), ("gnn", "abbreviation")],
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_terms": ["graph neural network"],
+            "p_min_similarity": 0.30,
+        },
+    ).execute()
+    rows = [r for r in (resp.data or []) if r["kg_node_id"] == node_id]
+    assert len(rows) == 1, f"expected exactly one row per node, got {rows!r}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_empty_terms_returns_empty(mint_user, asyncpg_pool):
+    """p_terms = [] short-circuits to an empty result without scanning."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id, canonical_name="Anything",
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_terms": [],
+            "p_min_similarity": 0.30,
+        },
+    ).execute()
+    assert (resp.data or []) == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_authz_denial(mint_user, asyncpg_pool):
+    """A caller not in p_workspace_id gets SQLSTATE 42501."""
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+    await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id, canonical_name="Secret Topic",
+    )
+    intruder_client = get_v2_user_client(intruder.jwt)
+    with pytest.raises(APIError) as exc_info:
+        intruder_client.schema("kg").rpc(
+            "resolve_entity_anchors_v2",
+            {
+                "p_workspace_id": str(ws_id),
+                "p_terms": ["secret topic"],
+                "p_min_similarity": 0.30,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_entity_anchors_workspace_isolation(mint_user, asyncpg_pool):
+    """Even when authorised on workspace A, only A's nodes match (not B's)."""
+    user = mint_user(workspace_count=2)
+    ws_a, ws_b = user.workspace_ids[0], user.workspace_ids[1]
+    node_a = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_a, canonical_name="Topic Alpha",
+    )
+    node_b = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_b, canonical_name="Topic Alpha",
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "resolve_entity_anchors_v2",
+        {
+            "p_workspace_id": str(ws_a),
+            "p_terms": ["topic alpha"],
+            "p_min_similarity": 0.30,
+        },
+    ).execute()
+    ids = {r["kg_node_id"] for r in (resp.data or [])}
+    assert node_a in ids, f"workspace A node missing: {ids!r}"
+    assert node_b not in ids, f"workspace B node leaked: {ids!r}"
