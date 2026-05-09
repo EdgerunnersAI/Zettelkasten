@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from supabase import Client
@@ -175,6 +176,63 @@ class ContentRepository:
             .execute()
         )
         return list(response.data or [])
+
+    def soft_delete_workspace_zettel(self, workspace_zettel_id: UUID) -> bool:
+        """Set ``deleted_at = now()`` on the workspace overlay row.
+
+        Returns ``True`` if a row was soft-deleted, ``False`` if no matching
+        non-deleted row exists. The reaper trigger
+        (``trg_workspace_zettel_after_softdelete``) handles canonical-shred
+        enqueue at last-reference per audit fix A.3 — we never hard-delete
+        from the API path.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        response = (
+            self._client.schema("content")
+            .table("workspace_zettels")
+            .update({"deleted_at": now_iso, "updated_at": now_iso})
+            .eq("id", str(workspace_zettel_id))
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        return bool(response.data)
+
+    def update_workspace_zettel(
+        self,
+        workspace_zettel_id: UUID,
+        *,
+        user_tags: list[str] | None = None,
+        user_note: str | None = None,
+        pinned: bool | None = None,
+    ) -> bool:
+        """Partial update of user-editable workspace overlay fields.
+
+        Only the three explicit kwargs are user-editable here. ``ai_summary``
+        is engine-owned and intentionally NOT writable through this method —
+        callers wanting to record user-authored prose should pass it as
+        ``user_note``. Returns ``True`` when a row was updated, ``False``
+        otherwise (no matching id, or already soft-deleted).
+        """
+        payload: dict = {}
+        if user_tags is not None:
+            payload["user_tags"] = list(user_tags)
+        if user_note is not None:
+            payload["user_note"] = user_note
+        if pinned is not None:
+            payload["pinned"] = bool(pinned)
+        if not payload:
+            return False
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        response = (
+            self._client.schema("content")
+            .table("workspace_zettels")
+            .update(payload)
+            .eq("id", str(workspace_zettel_id))
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        return bool(response.data)
 
     def search_chunks(
         self,

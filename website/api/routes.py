@@ -21,6 +21,7 @@ from website.core.graph_models import KGGraph
 from website.core.persist import (
     extract_summary_parts,
     get_supabase_scope as _get_supabase,
+    get_supabase_v2_scope,
     get_supabase_v2_scope_for_read,
     persist_summarized_result,
 )
@@ -459,21 +460,71 @@ async def rebuild_links(user: Annotated[dict | None, Depends(get_optional_user)]
         raise HTTPException(status_code=500, detail=f"Failed to rebuild links: {exc}")
 
 
+def _is_supabase_uuid(value: str | None) -> bool:
+    """Return True when ``value`` parses as a canonical UUID.
+
+    Used by the v2 dual-path branches to gate v2 routing on a UUID-shaped
+    auth subject / path parameter. v2 IDs are UUIDs (workspace_zettel_id);
+    v1 node_ids are slug-prefixed strings (``yt-...``, ``web-...``) and
+    intentionally fail this check so they fall through to the v1 path.
+    """
+    if not value:
+        return False
+    try:
+        from uuid import UUID
+
+        UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 @router.delete("/zettels/{node_id}")
 async def delete_zettel(
     node_id: str,
     user: Annotated[dict, Depends(get_current_user)],
 ):
-    """Delete a zettel from the authenticated user's graph."""
+    """Delete a zettel from the authenticated user's graph.
+
+    Phase 4.3 dual-path: when DB v2 is on AND the auth subject is a UUID AND
+    the path parameter parses as a UUID (treated as ``workspace_zettel_id``),
+    soft-delete via :class:`ContentRepository` so the reaper trigger handles
+    canonical shred at last reference. Otherwise the v1 path is preserved
+    unchanged: try Supabase v1 ``KGRepository.delete_node`` then fall back to
+    the file-store. Hard delete is intentionally NEVER performed in this
+    handler — see audit fix A.3.
+    """
     global _graph_cache, _graph_cache_ts, _graph_cache_global, _graph_cache_global_ts
+    from uuid import UUID
+
+    # v2 dual-path: UUID subject + UUID-shaped path param + valid v2 scope.
+    if (
+        use_supabase_v2()
+        and user is not None
+        and _is_supabase_uuid(user.get("sub"))
+        and _is_supabase_uuid(node_id)
+    ):
+        scope = get_supabase_v2_scope(user["sub"])
+        if scope is not None:
+            content_repo, _profile_id, _workspace_id = scope
+            try:
+                ok = content_repo.soft_delete_workspace_zettel(UUID(node_id))
+            except Exception as exc:
+                logger.warning("v2 soft-delete failed for %s: %s", node_id, exc)
+                ok = False
+            if not ok:
+                raise HTTPException(status_code=404, detail="Zettel not found")
+            _graph_cache = None
+            _graph_cache_ts = 0
+            _graph_cache_global = None
+            _graph_cache_global_ts = 0
+            return {"status": "ok", "workspace_zettel_id": node_id}
 
     deleted = False
     sb = _get_supabase(user_id_override=user["sub"])
     if sb:
         repo, user_id = sb
         try:
-            from uuid import UUID
-
             deleted = repo.delete_node(UUID(user_id), node_id)
         except Exception as exc:
             logger.warning("Supabase node delete failed, falling back to file store: %s", exc)
@@ -491,6 +542,75 @@ async def delete_zettel(
     _graph_cache_global_ts = 0
 
     return {"status": "ok", "node_id": node_id}
+
+
+class ZettelUpdateRequest(BaseModel):
+    """User-editable fields on a workspace overlay (v2 only).
+
+    ``user_tags``, ``user_note``, and ``pinned`` are user-owned. ``ai_summary``
+    is engine-owned; if a client sends ``ai_summary`` (legacy frontend), the
+    text is rerouted to ``user_note`` so it lands in a user-editable surface
+    instead of clobbering the AI-generated summary.
+    """
+
+    user_tags: list[str] | None = None
+    user_note: str | None = None
+    pinned: bool | None = None
+    ai_summary: str | None = None  # rerouted to user_note in handler
+
+
+@router.patch("/zettels/{node_id}")
+async def update_zettel(
+    node_id: str,
+    body: ZettelUpdateRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Update user-editable fields on a workspace zettel overlay (v2 path).
+
+    Phase 4.3 dual-path: requires DB v2 + UUID auth subject + UUID path param.
+    The v1 path has no PATCH endpoint — for non-v2 callers this returns 404.
+    ``ai_summary`` in the payload is intentionally redirected into
+    ``user_note`` (engine-owned vs user-owned separation).
+    """
+    global _graph_cache, _graph_cache_ts, _graph_cache_global, _graph_cache_global_ts
+    from uuid import UUID
+
+    if not (
+        use_supabase_v2()
+        and _is_supabase_uuid(user.get("sub"))
+        and _is_supabase_uuid(node_id)
+    ):
+        raise HTTPException(status_code=404, detail="Zettel update requires v2 path")
+
+    scope = get_supabase_v2_scope(user["sub"])
+    if scope is None:
+        raise HTTPException(status_code=404, detail="No v2 workspace scope")
+    content_repo, _profile_id, _workspace_id = scope
+
+    # ai_summary -> user_note redirect (engine-owned vs user-owned).
+    user_note = body.user_note
+    if body.ai_summary is not None and user_note is None:
+        user_note = body.ai_summary
+
+    try:
+        ok = content_repo.update_workspace_zettel(
+            UUID(node_id),
+            user_tags=body.user_tags,
+            user_note=user_note,
+            pinned=body.pinned,
+        )
+    except Exception as exc:
+        logger.warning("v2 update_workspace_zettel failed for %s: %s", node_id, exc)
+        raise HTTPException(status_code=500, detail="Update failed") from exc
+
+    if not ok:
+        raise HTTPException(status_code=404, detail="Zettel not found")
+
+    _graph_cache = None
+    _graph_cache_ts = 0
+    _graph_cache_global = None
+    _graph_cache_global_ts = 0
+    return {"status": "ok", "workspace_zettel_id": node_id}
 
 
 class GraphQueryRequest(BaseModel):
