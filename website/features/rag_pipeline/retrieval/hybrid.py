@@ -495,6 +495,12 @@ class HybridRetriever:
         limit: int = 30,
         query_metadata: QueryMetadata | None = None,
     ) -> list[RetrievalCandidate]:
+        # Phase 2.4.1: kg.* v2 RPCs are workspace-scoped, content.*_kasten and
+        # rag.*_v2 RPCs are kasten-scoped. The retriever takes ``sandbox_id`` as
+        # the kasten id; we resolve the owning workspace_id once here so KG
+        # anchor resolution + subgraph expansion can be tenant-scoped.
+        workspace_id = await self._resolve_workspace_id(sandbox_id)
+
         effective_nodes = await self._resolve_nodes(user_id, sandbox_id, scope_filter)
         if effective_nodes is not None and len(effective_nodes) == 0:
             raise EmptyScopeError("Scope resolved to zero Zettels")
@@ -596,12 +602,15 @@ class HybridRetriever:
         # iter-08 Phase 6 / G3: resolve KG anchors from query metadata and
         # expand 1-hop. Boost is applied inside _dedup_and_fuse AFTER chunk-
         # share damping so neighbours keep the full +0.05 regardless of size.
-        anchor_neighbours: set[str] = set()
-        anchor_nodes: list[str] = []
+        # Phase 2.4.1: anchor_nodes / anchor_neighbours now hold typed bigint
+        # kg_node_ids (was string node_ids in v1). Phase 2.4.2 bridges these
+        # to canonical_chunk_ids via ``kg.entities_to_anchor_chunks``.
+        anchor_neighbours: set[int] = set()
+        anchor_nodes: list[int] = []
         if (
             _ANCHOR_BOOST_ENABLED
             and query_metadata is not None
-            and sandbox_id is not None
+            and workspace_id is not None
             and (
                 getattr(query_metadata, "authors", None)
                 or getattr(query_metadata, "entities", None)
@@ -617,10 +626,10 @@ class HybridRetriever:
                     + (getattr(query_metadata, "entities", None) or [])
                 )
                 anchor_nodes = list(await resolve_anchor_nodes(
-                    entities, sandbox_id, self._supabase
+                    entities, workspace_id, self._supabase
                 ))
                 anchor_neighbours = await get_one_hop_neighbours(
-                    anchor_nodes, sandbox_id, self._supabase
+                    set(anchor_nodes), workspace_id, self._supabase
                 )
             except Exception as exc:  # noqa: BLE001 — best-effort
                 _log.debug("anchor_boost fetch failed: %s", exc)
@@ -739,6 +748,29 @@ class HybridRetriever:
                 _log.debug("bandit_record_error: %s", _re)
 
         return fused
+
+    async def _resolve_workspace_id(self, sandbox_id: UUID | None) -> UUID | None:
+        """Look up the workspace_id that owns ``sandbox_id`` (kasten).
+
+        Phase 2.4.1: kg.* v2 RPCs require ``p_workspace_id``; the retriever
+        only has ``sandbox_id`` (kasten UUID). One ``rag.kastens`` lookup per
+        retrieve() call resolves the owning workspace. Returns ``None`` when
+        no kasten is in scope (open-scope queries) or the lookup fails — the
+        downstream KG paths are best-effort and short-circuit on None.
+        """
+        if sandbox_id is None:
+            return None
+        try:
+            response = await rpc_call(
+                self._supabase.schema("rag").table("kastens").select("workspace_id").eq("id", str(sandbox_id)).limit(1)
+            )
+            rows = response.data or []
+            if not rows:
+                return None
+            return UUID(str(rows[0]["workspace_id"]))
+        except Exception as exc:  # noqa: BLE001 — best-effort, never blocks retrieval
+            _log.debug("resolve_workspace_id failed for kasten=%s: %s", sandbox_id, exc)
+            return None
 
     async def _resolve_nodes(
         self,

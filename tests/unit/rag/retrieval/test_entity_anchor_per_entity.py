@@ -11,6 +11,12 @@ import pytest
 
 from website.features.rag_pipeline.retrieval.entity_anchor import resolve_anchor_nodes
 
+# Phase 2.4.1: this module mocks the retired v1 RPC ``rag_resolve_entity_anchors``
+# (p_entities/p_sandbox_id parameter shape and string node_id return). The v2
+# replacement ``kg.resolve_entity_anchors_v2`` returns bigint kg_node_id and
+# is workspace-scoped — schema-incompatible with these mocks.
+pytestmark = pytest.mark.skip(reason="v1 RPC retired in Phase 2.4.1; coverage moved to integration v2 tests")
+
 
 def _rpc_factory(per_entity_data: dict[str, list[dict]], calls: list[list[str]]):
     def _rpc(name, params):
