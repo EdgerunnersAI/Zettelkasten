@@ -1079,3 +1079,404 @@ async def test_entities_to_anchor_chunks_authz_denial(mint_user, asyncpg_pool):
         ).execute()
     assert _is_unauthorized(exc_info.value), \
         f"expected unauthorized, got {exc_info.value!r}"
+
+
+# ===========================================================================
+# 7. content.search_chunks_enriched_kasten (25_search_chunks_enriched_kasten.sql)
+# ===========================================================================
+
+
+async def _attach_zettel_to_kasten(
+    pool: asyncpg.Pool,
+    *,
+    kasten_id: uuid.UUID,
+    workspace_zettel_id: uuid.UUID,
+) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO rag.kasten_zettels (kasten_id, workspace_zettel_id, added_via)
+            VALUES ($1, $2, 'manual')
+            ON CONFLICT DO NOTHING
+            """,
+            kasten_id, workspace_zettel_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_kasten_success(mint_user, asyncpg_pool):
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    title = f"k-enriched-{uuid.uuid4().hex[:6]}"
+    user_tags = ["graphrag", "kasten"]
+    _, wz_id, chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool,
+        workspace_id=ws_id,
+        n_chunks=2,
+        title=title,
+        source_type="github",
+        user_tags=user_tags,
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "search_chunks_enriched_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 2, f"expected 2 rows from kasten, got {rows!r}"
+    row = rows[0]
+    assert uuid.UUID(row["canonical_chunk_id"]) in chunks
+    assert row["title"] == title
+    assert row["source_type"] == "github"
+    assert row["publication_date"] == "2026-04-01"
+    assert row["user_tags"] == user_tags
+    assert uuid.UUID(row["workspace_zettel_id"]) == wz_id
+    assert row["fts_text"] is not None
+    assert 0.0 <= row["score"] <= 1.0001
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_kasten_authz_denial(mint_user, asyncpg_pool):
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+    assert ws_id not in intruder.workspace_ids
+
+    _, wz_id, _ = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1,
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(intruder.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("content").rpc(
+            "search_chunks_enriched_kasten",
+            {
+                "p_kasten_id": str(kasten_id),
+                "p_query_embedding": _embedding_literal(0.0),
+                "p_match_count": 5,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_kasten_cross_kasten_leak_guard(
+    mint_user, asyncpg_pool,
+):
+    """A zettel in workspace W but NOT in kasten K must NOT surface for kasten K."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    # Seed two zettels in the same workspace.
+    _, wz_in, in_chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1, title="in-kasten",
+    )
+    _, wz_out, out_chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1, title="out-of-kasten",
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    # Only attach wz_in.
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_in,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "search_chunks_enriched_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 50,
+        },
+    ).execute()
+    returned_chunk_ids = {uuid.UUID(r["canonical_chunk_id"]) for r in (resp.data or [])}
+    assert in_chunks[0] in returned_chunk_ids, \
+        f"expected in-kasten chunk to surface; got {returned_chunk_ids!r}"
+    assert out_chunks[0] not in returned_chunk_ids, \
+        f"out-of-kasten chunk leaked into result: {returned_chunk_ids!r}"
+
+
+@pytest.mark.asyncio
+async def test_search_chunks_enriched_kasten_invalid_kasten_id(mint_user):
+    """A random kasten_id that does not exist must yield SQLSTATE 42501."""
+    user = mint_user(workspace_count=1)
+    bogus_kasten_id = uuid.uuid4()
+
+    client = get_v2_user_client(user.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("content").rpc(
+            "search_chunks_enriched_kasten",
+            {
+                "p_kasten_id": str(bogus_kasten_id),
+                "p_query_embedding": _embedding_literal(0.0),
+                "p_match_count": 5,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized for unknown kasten, got {exc_info.value!r}"
+
+
+# ===========================================================================
+# 8. content.hybrid_search_chunks_kasten (26_hybrid_search_chunks_kasten.sql)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_kasten_dense_only(mint_user, asyncpg_pool):
+    """No FTS match -> dense-only result; raw_fts_score must be None,
+    raw_dense_score must be populated."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    _, wz_id, _ = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=2,
+        chunk_contents=["alpha bravo charlie", "delta echo foxtrot"],
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_text": "zzqzzqzzq_no_match_token",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 2, f"expected 2 dense-only rows, got {rows!r}"
+    for row in rows:
+        assert row["fts_rank"] is None
+        assert row["semantic_rank"] in (1, 2)
+        assert row["raw_fts_score"] is None
+        assert row["raw_dense_score"] is not None
+        assert 0.0 <= row["raw_dense_score"] <= 1.0001
+        expected = 1.0 / (60 + row["semantic_rank"])
+        assert math.isclose(row["rrf_score"], expected, rel_tol=1e-9)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_kasten_fts_only(mint_user, asyncpg_pool):
+    """NULL embedding -> FTS-only; raw_dense_score None, raw_fts_score populated."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    async with asyncpg_pool.acquire() as conn:
+        cz_id = uuid.uuid4()
+        norm_url = f"https://example.test/{uuid.uuid4().hex}"
+        ch = uuid.uuid4().bytes + uuid.uuid4().bytes
+        await conn.execute(
+            """
+            INSERT INTO content.canonical_zettels
+                (id, normalized_url, content_hash, source_type, title, body_md)
+            VALUES ($1, $2, $3, 'web', 'fts-only-kasten', 'body')
+            """,
+            cz_id, norm_url, ch,
+        )
+        cc_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO content.canonical_chunks
+                (id, canonical_zettel_id, chunk_idx, content, content_hash,
+                 chunk_type, embedding)
+            VALUES ($1, $2, 0,
+                    'transformer attention mechanism is fascinating',
+                    $3, 'atomic', NULL)
+            """,
+            cc_id, cz_id, uuid.uuid4().bytes + uuid.uuid4().bytes,
+        )
+        wz_id = uuid.uuid4()
+        await conn.execute(
+            """
+            INSERT INTO content.workspace_zettels
+                (id, workspace_id, canonical_zettel_id, added_via)
+            VALUES ($1, $2, $3, 'website')
+            """,
+            wz_id, ws_id, cz_id,
+        )
+        await conn.execute(
+            """
+            INSERT INTO content.workspace_chunk_membership
+                (workspace_id, canonical_chunk_id, workspace_zettel_id)
+            VALUES ($1, $2, $3)
+            """,
+            ws_id, cc_id, wz_id,
+        )
+
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_text": "transformer attention",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 5,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    assert len(rows) == 1, f"expected 1 fts-only row, got {rows!r}"
+    row = rows[0]
+    assert row["fts_rank"] == 1
+    assert row["semantic_rank"] is None
+    assert row["raw_dense_score"] is None
+    assert row["raw_fts_score"] is not None
+    expected = 1.0 / (60 + 1)
+    assert math.isclose(row["rrf_score"], expected, rel_tol=1e-9)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_kasten_rrf_math_with_raw_scores(
+    mint_user, asyncpg_pool,
+):
+    """A chunk that is FTS-rank-1 and semantic-rank-5 must score
+    1/(60+1) + 1/(60+5) under default weights, with raw_*_score populated."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    contents = [
+        "lorem ipsum dolor sit amet",
+        "consectetur adipiscing elit",
+        "sed do eiusmod tempor incididunt",
+        "ut labore et dolore magna",
+        "antidisestablishmentarianism is a long word",
+    ]
+    _, wz_id, chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=5, chunk_contents=contents,
+    )
+    target_chunk_id = chunks[4]
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_text": "antidisestablishmentarianism",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 10,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    rows = resp.data or []
+    by_id = {uuid.UUID(r["canonical_chunk_id"]): r for r in rows}
+    target = by_id.get(target_chunk_id)
+    assert target is not None, f"target chunk missing from {rows!r}"
+    assert target["fts_rank"] == 1
+    assert target["semantic_rank"] == 5
+    expected = (1.0 / (60 + 1)) + (1.0 / (60 + 5))
+    assert math.isclose(target["rrf_score"], expected, rel_tol=1e-9), (
+        f"rrf math mismatch: got {target['rrf_score']}, expected {expected}"
+    )
+    # Both raw component scores populated when both sides hit.
+    assert target["raw_fts_score"] is not None
+    assert target["raw_dense_score"] is not None
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_kasten_authz_denial(mint_user, asyncpg_pool):
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+
+    _, wz_id, _ = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1,
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_id,
+    )
+
+    client = get_v2_user_client(intruder.jwt)
+    with pytest.raises((APIError, Exception)) as exc_info:
+        client.schema("content").rpc(
+            "hybrid_search_chunks_kasten",
+            {
+                "p_kasten_id": str(kasten_id),
+                "p_query_text": "anything",
+                "p_query_embedding": _embedding_literal(0.0),
+                "p_match_count": 5,
+                "p_rrf_k": 60,
+                "p_full_text_weight": 1.0,
+                "p_semantic_weight": 1.0,
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_kasten_cross_kasten_leak_guard(
+    mint_user, asyncpg_pool,
+):
+    """A zettel in the workspace but NOT in kasten K must NOT surface."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+
+    # In-kasten: chunk content matches both FTS token and embedding.
+    _, wz_in, in_chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1,
+        chunk_contents=["antidisestablishmentarianism is a long word"],
+    )
+    # Out-of-kasten: same FTS token, would match if scope leaked.
+    _, wz_out, out_chunks = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1,
+        chunk_contents=["antidisestablishmentarianism is also here"],
+        embedding_seed=0.5,
+    )
+    kasten_id = await _create_kasten(asyncpg_pool, workspace_id=ws_id)
+    await _attach_zettel_to_kasten(
+        asyncpg_pool, kasten_id=kasten_id, workspace_zettel_id=wz_in,
+    )
+
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("content").rpc(
+        "hybrid_search_chunks_kasten",
+        {
+            "p_kasten_id": str(kasten_id),
+            "p_query_text": "antidisestablishmentarianism",
+            "p_query_embedding": _embedding_literal(0.0),
+            "p_match_count": 50,
+            "p_rrf_k": 60,
+            "p_full_text_weight": 1.0,
+            "p_semantic_weight": 1.0,
+        },
+    ).execute()
+    returned = {uuid.UUID(r["canonical_chunk_id"]) for r in (resp.data or [])}
+    assert in_chunks[0] in returned, \
+        f"expected in-kasten match; got {returned!r}"
+    assert out_chunks[0] not in returned, \
+        f"out-of-kasten chunk leaked: {returned!r}"
