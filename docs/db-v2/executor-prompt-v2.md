@@ -80,13 +80,14 @@ When you hit an approval gate, you may emit ONE short message naming the gate an
 
 | Gate | Where |
 |---|---|
-| Phase 0 → Phase 1 | After Phase 0 completes; surface row-count baseline + the bullet-proof-audit findings you've addressed |
-| Phase 1 → Phase 2 | After all new RPCs land and `expected_schema.json` is green |
-| Phase 2 → Phase 3 | After all rag_pipeline files refactored AND v1 path still green |
-| Phase 4 → Phase 5 | Before backfill runs against real data |
-| Phase 5 → Phase 6 | Before any DROP. Per-table operator approval required. |
-| Phase 7 → Phase 8 | Before cutover. Operator must confirm the runbook is executable. |
-| Phase 8 → Phase 9 | Before legacy table drops (14-day soak gate enforced by SQL DO block). |
+| Phase 0 → Phase 1 | Surface row-count baseline + audit-fix findings + Phase-0 commit list before any Phase-1 SQL lands |
+| Phase 1 → Phase 2 | After all new v2 RPCs land in `_v2/13_v2_kasten_rpcs.sql` (+ Round-2 R2.2/R2.3/R2.8 indexes), `expected_schema.json` is green, REST surface verified via curl |
+| Phase 2 → Phase 3 | After all 7 `rag_pipeline` Bucket-B files refactored AND v1 path still green AND no `from website.core.supabase_kg` import remains in `website/features/rag_pipeline/` |
+| Phase 3 → Phase 4 | After remaining Bucket-B files refactored (summarization writer, user_pricing import swap, web_monitor docstrings, nexus, PageIndex_Rag retire) AND v1 path still green |
+| Phase 4 → Phase 5 | After read-path API handlers (`/api/graph`, `/api/me`, `/api/zettels/...`, sandbox routes) dual-path correctly AND cross-tenant denial test green; before backfill runs against real data |
+| Phase 5 → Phase 6 | After backfill scripts run end-to-end against live data AND `verify_backfill.py` green AND backfill log committed; **per-table operator approval required before any DROP** (Phase 6 is destructive) |
+| Phase 6 → Phase 7 | After `_v2/15_drop_legacy_tables.sql` lands cleanly (pg_depend pre-flight passed, RESTRICT not CASCADE, 14-day soak guard fired) AND post-cutover trip-wires green |
+| Phase 7 → Phase 8 | After CI drift gate active + REVOKE legacy RPC EXECUTE shipped + `tests/integration_tests/test_rag_sandbox_rpc.py` re-enabled + monitoring trip-wires from `docs/db-v2/post-cutover-monitoring.md` implemented |
 | Anytime | Out-of-plan situation, ambiguous spec, missing repository method, schema mismatch, anything pricing-adjacent. |
 
 ## How to verify your work each step
