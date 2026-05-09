@@ -33,53 +33,7 @@ jobs:
           PGPASSWORD: ci
         run: |
           psql -h localhost -U postgres -d kg_ci -v ON_ERROR_STOP=1 <<'SQL'
-          SET check_function_bodies = off;
-
-          DO $$
-          BEGIN
-            CREATE ROLE anon;
-          EXCEPTION
-            WHEN duplicate_object THEN NULL;
-          END $$;
-
-          DO $$
-          BEGIN
-            CREATE ROLE authenticated;
-          EXCEPTION
-            WHEN duplicate_object THEN NULL;
-          END $$;
-
-          DO $$
-          BEGIN
-            CREATE ROLE service_role;
-          EXCEPTION
-            WHEN duplicate_object THEN NULL;
-          END $$;
-
-          CREATE SCHEMA IF NOT EXISTS auth;
-          CREATE OR REPLACE FUNCTION auth.uid()
-          RETURNS uuid
-          LANGUAGE sql
-          STABLE
-          AS $$
-            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
-          $$;
-
-          CREATE OR REPLACE FUNCTION auth.role()
-          RETURNS text
-          LANGUAGE sql
-          STABLE
-          AS $$
-            SELECT NULLIF(current_setting('request.jwt.claim.role', true), '')
-          $$;
-
-          CREATE EXTENSION IF NOT EXISTS vector;
-
-          \i supabase/website/kg_public/schema.sql
-          \i supabase/website/kg_features/001_intelligence.sql
-          \i supabase/website/rag_chatbot/002_chunks_table.sql
-          \i supabase/website/rag_chatbot/003_sandboxes.sql
-          \i supabase/website/rag_chatbot/004_chat_sessions.sql
+          \i supabase/website/kg_public/ci_baseline.sql
           SQL
       - name: Apply all kg_public migrations from scratch
         env:
