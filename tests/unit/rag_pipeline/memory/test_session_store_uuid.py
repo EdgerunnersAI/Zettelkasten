@@ -28,6 +28,10 @@ from website.features.rag_pipeline.types import (
     SourceType,
 )
 
+pytestmark = pytest.mark.skip(
+    reason="v1 session_store retired in Phase 2.7; replaced by tests/unit/rag_pipeline/test_session_store_v2.py"
+)
+
 
 def _make_turn_with_uuid_chunks() -> AnswerTurn:
     return AnswerTurn(
