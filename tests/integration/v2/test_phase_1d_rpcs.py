@@ -925,3 +925,157 @@ async def test_resolve_entity_anchors_workspace_isolation(mint_user, asyncpg_poo
     ids = {r["kg_node_id"] for r in (resp.data or [])}
     assert node_a in ids, f"workspace A node missing: {ids!r}"
     assert node_b not in ids, f"workspace B node leaked: {ids!r}"
+
+
+# ===========================================================================
+# 6. kg.entities_to_anchor_chunks (24_entities_to_anchor_chunks_rpc.sql)
+# ===========================================================================
+
+
+async def _seed_chunk_node_mentions(
+    pool: asyncpg.Pool,
+    *,
+    canonical_chunk_id: uuid.UUID,
+    kg_node_id: int,
+    mention_types: list[str],
+) -> None:
+    """Insert one row per mention_type into kg.chunk_node_mentions (PK includes type)."""
+    async with pool.acquire() as conn:
+        for mt in mention_types:
+            await conn.execute(
+                """
+                INSERT INTO kg.chunk_node_mentions
+                    (canonical_chunk_id, kg_node_id, mention_type)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                canonical_chunk_id, kg_node_id, mt,
+            )
+
+
+@pytest.mark.asyncio
+async def test_entities_to_anchor_chunks_basic(mint_user, asyncpg_pool):
+    """Returns the chunk(s) that mention the requested kg_node_ids."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    _, _, chunk_ids = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=2,
+        chunk_contents=["alpha doc", "beta doc"],
+    )
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id, canonical_name="Topic Foo",
+    )
+    await _seed_chunk_node_mentions(
+        asyncpg_pool, canonical_chunk_id=chunk_ids[0], kg_node_id=node_id,
+        mention_types=["extracted"],
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "entities_to_anchor_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_kg_node_ids": [node_id],
+        },
+    ).execute()
+    rows = resp.data or []
+    matched = [r for r in rows if r["kg_node_id"] == node_id]
+    assert len(matched) == 1, f"expected exactly one chunk match, got {rows!r}"
+    assert matched[0]["canonical_chunk_id"] == str(chunk_ids[0])
+    assert matched[0]["mention_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_entities_to_anchor_chunks_mention_count_aggregates(mint_user, asyncpg_pool):
+    """Multiple mention_types on the same (chunk, node) collapse to mention_count."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    _, _, chunk_ids = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_id, n_chunks=1, chunk_contents=["doc"],
+    )
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id, canonical_name="Topic Multi",
+    )
+    await _seed_chunk_node_mentions(
+        asyncpg_pool, canonical_chunk_id=chunk_ids[0], kg_node_id=node_id,
+        mention_types=["extracted", "tagged", "derived"],
+    )
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "entities_to_anchor_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_kg_node_ids": [node_id],
+        },
+    ).execute()
+    rows = [r for r in (resp.data or []) if r["kg_node_id"] == node_id]
+    assert len(rows) == 1, f"should still be one row per (chunk, node), got {rows!r}"
+    assert rows[0]["mention_count"] == 3, \
+        f"expected 3 mention_types collapsed to count=3, got {rows[0]!r}"
+
+
+@pytest.mark.asyncio
+async def test_entities_to_anchor_chunks_empty_node_ids(mint_user, asyncpg_pool):
+    """p_kg_node_ids = [] short-circuits to empty result."""
+    user = mint_user(workspace_count=1)
+    ws_id = user.workspace_ids[0]
+    client = get_v2_user_client(user.jwt)
+    resp = client.schema("kg").rpc(
+        "entities_to_anchor_chunks",
+        {
+            "p_workspace_id": str(ws_id),
+            "p_kg_node_ids": [],
+        },
+    ).execute()
+    assert (resp.data or []) == []
+
+
+@pytest.mark.asyncio
+async def test_entities_to_anchor_chunks_workspace_isolation(mint_user, asyncpg_pool):
+    """A node from another workspace yields no chunks even if you pass its id."""
+    user = mint_user(workspace_count=2)
+    ws_a, ws_b = user.workspace_ids[0], user.workspace_ids[1]
+    # Chunk + mention live in workspace B
+    _, _, chunk_ids_b = await _seed_canonical_zettel_with_chunks(
+        asyncpg_pool, workspace_id=ws_b, n_chunks=1, chunk_contents=["secret"],
+    )
+    node_b = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_b, canonical_name="Secret Node",
+    )
+    await _seed_chunk_node_mentions(
+        asyncpg_pool, canonical_chunk_id=chunk_ids_b[0], kg_node_id=node_b,
+        mention_types=["extracted"],
+    )
+    client = get_v2_user_client(user.jwt)
+    # Caller authorised on workspace A but passing workspace B's node id
+    resp = client.schema("kg").rpc(
+        "entities_to_anchor_chunks",
+        {
+            "p_workspace_id": str(ws_a),
+            "p_kg_node_ids": [node_b],
+        },
+    ).execute()
+    rows = resp.data or []
+    assert rows == [], \
+        f"workspace-B node should not surface for workspace-A query, got {rows!r}"
+
+
+@pytest.mark.asyncio
+async def test_entities_to_anchor_chunks_authz_denial(mint_user, asyncpg_pool):
+    """Caller not in p_workspace_id gets SQLSTATE 42501."""
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id, canonical_name="Owner Only",
+    )
+    intruder_client = get_v2_user_client(intruder.jwt)
+    with pytest.raises(APIError) as exc_info:
+        intruder_client.schema("kg").rpc(
+            "entities_to_anchor_chunks",
+            {
+                "p_workspace_id": str(ws_id),
+                "p_kg_node_ids": [node_id],
+            },
+        ).execute()
+    assert _is_unauthorized(exc_info.value), \
+        f"expected unauthorized, got {exc_info.value!r}"
