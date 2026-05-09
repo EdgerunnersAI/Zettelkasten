@@ -443,3 +443,78 @@ class TestScoreKindLiteralEnforcement:
                 score_kind=kind_value,  # type: ignore[arg-type]
             )
             assert c.score_kind == kind_value
+
+
+# ---------------------------------------------------------------------------
+# 11. raw_dense_score + raw_fts_score (Phase 2.4.0-patch)
+# ---------------------------------------------------------------------------
+class TestRawComponentScores:
+    def test_raw_dense_score_defaults_to_none(self):
+        c = ChunkCandidate(
+            canonical_chunk_id=uuid.uuid4(),
+            canonical_zettel_id=uuid.uuid4(),
+            score=0.5,
+            rrf_score=0.5,
+            score_kind="dense",
+        )
+        assert c.raw_dense_score is None
+
+    def test_raw_fts_score_defaults_to_none(self):
+        c = ChunkCandidate(
+            canonical_chunk_id=uuid.uuid4(),
+            canonical_zettel_id=uuid.uuid4(),
+            score=0.5,
+            rrf_score=0.5,
+            score_kind="fts",
+        )
+        assert c.raw_fts_score is None
+
+    def test_chunk_from_v2_row_propagates_raw_scores(self):
+        row = {
+            "canonical_chunk_id": str(uuid.uuid4()),
+            "canonical_zettel_id": str(uuid.uuid4()),
+            "score": 0.42,
+            "raw_dense_score": 0.81,
+            "raw_fts_score": 0.013,
+        }
+        c = chunk_from_v2_row(row, score_kind="dense")
+        assert c.raw_dense_score == pytest.approx(0.81)
+        assert c.raw_fts_score == pytest.approx(0.013)
+
+    def test_chunk_from_v2_row_handles_missing_raw_scores(self):
+        # Rows from non-hybrid RPCs (no raw_*_score keys) -> None.
+        row = {
+            "canonical_chunk_id": str(uuid.uuid4()),
+            "canonical_zettel_id": str(uuid.uuid4()),
+            "score": 0.42,
+        }
+        c = chunk_from_v2_row(row, score_kind="dense")
+        assert c.raw_dense_score is None
+        assert c.raw_fts_score is None
+
+    def test_frozen_still_holds_with_raw_scores(self):
+        c = ChunkCandidate(
+            canonical_chunk_id=uuid.uuid4(),
+            canonical_zettel_id=uuid.uuid4(),
+            score=0.5,
+            rrf_score=0.5,
+            score_kind="dense",
+            raw_dense_score=0.7,
+            raw_fts_score=0.1,
+        )
+        with pytest.raises(ValidationError):
+            c.raw_dense_score = 0.9  # type: ignore[misc]
+
+    def test_extra_forbid_still_rejects_unknown(self):
+        # Adding raw_*_score must not weaken extra="forbid".
+        with pytest.raises(ValidationError):
+            ChunkCandidate(
+                canonical_chunk_id=uuid.uuid4(),
+                canonical_zettel_id=uuid.uuid4(),
+                score=0.1,
+                rrf_score=0.1,
+                score_kind="dense",
+                raw_dense_score=0.5,
+                raw_fts_score=0.2,
+                bogus_unknown="nope",
+            )

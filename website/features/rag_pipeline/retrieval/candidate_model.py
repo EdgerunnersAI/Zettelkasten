@@ -71,6 +71,14 @@ class _CandidateBase(BaseModel):
     # Optional fields downstream may consume
     fts_text: str = ""
 
+    # Raw component scores from hybrid RPCs (e.g. hybrid_search_chunks_kasten).
+    # Populated when the producing RPC returns them; ``score``/``rrf_score`` stay
+    # the fused score per Cormack 2009 RRF semantics. Diagnostics + future
+    # weight-tuning consume these without re-running fusion. Default ``None``
+    # for back-compat with RPCs that only emit a single score.
+    raw_dense_score: float | None = None
+    raw_fts_score: float | None = None
+
     # ====================================================================
     # Back-compat alias (TECH DEBT — sunset when downstream uses typed access)
     # ====================================================================
@@ -182,6 +190,9 @@ def chunk_from_v2_row(
         fts_text = row.get("fts_text", "") or row.get("content", "") or ""
     else:
         fts_text = ""
+    # Raw component scores from hybrid RPCs (None if absent — never coerce to 0).
+    raw_dense = row.get("raw_dense_score")
+    raw_fts = row.get("raw_fts_score")
     return ChunkCandidate(
         canonical_chunk_id=uuid.UUID(str(row["canonical_chunk_id"])),
         canonical_zettel_id=uuid.UUID(str(row["canonical_zettel_id"])),
@@ -191,6 +202,8 @@ def chunk_from_v2_row(
         rrf_score=rrf_score,
         score_kind=score_kind,
         fts_text=fts_text,
+        raw_dense_score=float(raw_dense) if raw_dense is not None else None,
+        raw_fts_score=float(raw_fts) if raw_fts is not None else None,
     )
 
 
