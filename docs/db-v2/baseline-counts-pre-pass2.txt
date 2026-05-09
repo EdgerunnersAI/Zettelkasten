@@ -1,0 +1,22 @@
+# Phase-0 baseline row counts (live project) — captured 2026-05-09
+# Plan amendment 0.7 — used for verify_backfill assertions and pricing-immutability tests
+
+auth.users                                         2
+core.profiles                                      2
+core.workspaces                                    2
+content.canonical_zettels                          1
+content.workspace_zettels                          1
+content.canonical_chunks                           1
+content.workspace_chunk_membership                 1
+rag.kastens                                        0
+rag.kasten_zettels                                 0
+rag.chat_sessions                                  0
+rag.chat_messages                                  0
+public.kg_users                                    3
+public.kg_nodes                                    7
+public.kg_node_chunks                              0
+public.rag_sandboxes                               0
+public.chat_sessions                               0
+public.chat_messages                               0
+billing.pricing_subscriptions                      0
+billing.pricing_plan_entitlements                  0
