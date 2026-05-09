@@ -11,10 +11,8 @@ from uuid import UUID
 from website.core.text_polish import polish, rewrite_reddit_tag, strip_caveats
 
 from .client import get_supabase_client
+from website.core.graph_models import KGGraph, KGGraphLink, KGGraphNode
 from .models import (
-    KGGraph,
-    KGGraphLink,
-    KGGraphNode,
     KGLink,
     KGLinkCreate,
     KGNode,

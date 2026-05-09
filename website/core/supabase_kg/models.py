@@ -108,35 +108,10 @@ class KGLinkCreate(BaseModel):
     description: str | None = Field(default=None, description="Human-readable link description")
 
 
-# ── Graph (aggregate) ────────────────────────────────────────────────────────
-
-class KGGraphNode(BaseModel):
-    """Node in the frontend-compatible graph format."""
-    id: str
-    name: str
-    group: str          # source_type mapped to group name
-    summary: str = ""
-    tags: list[str] = Field(default_factory=list)
-    url: str
-    date: str = ""      # ISO date string (primary key the frontend reads)
-    node_date: str = ""  # alias of ``date`` — belt-and-suspenders for JS lookup
-                         # ``node.date || node.node_date || node.captured_at || node.created_at``
-    owner: str | None = None          # display_name of the node creator (global view)
-    contributors: int | None = None   # how many users captured this (global view)
-
-
-class KGGraphLink(BaseModel):
-    """Link in the frontend-compatible graph format."""
-    source: str
-    target: str
-    relation: str
-    weight: int | None = Field(default=None, ge=1, le=10, description="Link strength 1-10; null for auto-derived links")
-    link_type: str = Field(default="tag", description="Link origin: 'tag' | 'semantic' | 'entity'")
-    description: str | None = Field(default=None, description="Human-readable link description")
-
-
-class KGGraph(BaseModel):
-    """Full graph payload matching the frontend's expected structure."""
-    nodes: list[KGGraphNode] = Field(default_factory=list)
-    links: list[KGGraphLink] = Field(default_factory=list)
-    total_nodes: int | None = None  # total count for pagination awareness
+# ── Graph (aggregate) — relocated to website.core.graph_models ───────────────
+# These presentation-layer models live in ``website.core.graph_models`` so they
+# survive the v2 schema purge. Re-exported here for back-compat with code that
+# still imports from ``website.core.supabase_kg.models``. Update those imports
+# to ``from website.core.graph_models import KGGraph, ...`` and this shim can
+# be removed when supabase_kg is retired.
+from website.core.graph_models import KGGraph, KGGraphLink, KGGraphNode  # noqa: F401, E402

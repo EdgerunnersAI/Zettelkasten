@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import networkx as nx
 
-from website.core.supabase_kg.models import KGGraph
+from website.core.graph_models import KGGraph
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,6 @@
 from .client import get_supabase_client, is_supabase_configured
+from website.core.graph_models import KGGraph, KGGraphLink, KGGraphNode
 from .models import (
-    KGGraph,
-    KGGraphLink,
-    KGGraphNode,
     KGLink,
     KGLinkCreate,
     KGNode,

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from website.core.supabase_kg.models import (
+from website.core.graph_models import (
     KGGraph,
     KGGraphLink,
     KGGraphNode,
