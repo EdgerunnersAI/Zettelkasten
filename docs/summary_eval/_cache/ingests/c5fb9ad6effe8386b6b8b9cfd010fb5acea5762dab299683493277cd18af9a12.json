@@ -1,0 +1,18 @@
+{
+  "confidence_reason": "metadata fallback used (no transcript)",
+  "extraction_confidence": "medium",
+  "fetched_at": "2026-05-04T19:55:23.272271Z",
+  "ingestor_version": "2.0.0",
+  "metadata": {
+    "title": "Video Title",
+    "video_id": "test123"
+  },
+  "original_url": "https://www.youtube.com/watch?v=test123",
+  "raw_text": "## Video\nVideo Title\nChannel: TestChannel\n## Description\nThis is a sufficiently long description about the video content that provides enough context for summarization.",
+  "sections": {
+    "Transcript": "",
+    "Video": "Video Title\nChannel: TestChannel"
+  },
+  "source_type": "youtube",
+  "url": "https://www.youtube.com/watch?v=test123"
+}

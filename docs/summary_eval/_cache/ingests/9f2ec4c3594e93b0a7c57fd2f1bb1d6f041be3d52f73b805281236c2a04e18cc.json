@@ -1,0 +1,12 @@
+{
+  "confidence_reason": "no transcript available",
+  "extraction_confidence": "low",
+  "fetched_at": "2026-05-04T21:24:54.992687Z",
+  "ingestor_version": "2.0.0",
+  "metadata": {},
+  "original_url": "https://www.youtube.com/watch?v=thin123",
+  "raw_text": "## Video\nSome Title\n## Transcript\n",
+  "sections": {},
+  "source_type": "youtube",
+  "url": "https://www.youtube.com/watch?v=thin123"
+}

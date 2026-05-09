@@ -1,0 +1,12 @@
+{
+  "confidence_reason": "readme ok",
+  "extraction_confidence": "high",
+  "fetched_at": "2026-05-04T19:55:23.229332Z",
+  "ingestor_version": "2.0.0",
+  "metadata": {},
+  "original_url": "https://github.com/foo/bar",
+  "raw_text": "README content with enough text to pass the fifty character minimum content gate for summarization",
+  "sections": {},
+  "source_type": "github",
+  "url": "https://github.com/foo/bar"
+}
