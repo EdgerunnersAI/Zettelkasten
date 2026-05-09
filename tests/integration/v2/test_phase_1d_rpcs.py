@@ -684,3 +684,74 @@ async def test_resolve_effective_nodes_authz_denial(mint_user, asyncpg_pool):
         ).execute()
     assert _is_unauthorized(exc_info.value), \
         f"expected unauthorized, got {exc_info.value!r}"
+
+
+# ===========================================================================
+# 4a. kg.kg_node_aliases table (22_kg_aliases_table.sql)
+# ===========================================================================
+
+
+async def _seed_kg_node(
+    pool: asyncpg.Pool,
+    *,
+    workspace_id: uuid.UUID,
+    canonical_name: str,
+    aliases: list[tuple[str, str]] | None = None,  # (alias, kind)
+    node_type: str = "concept",
+) -> int:
+    """Insert a kg_node + optional aliases via service-role; return kg_node_id."""
+    slug = f"{canonical_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}"
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO kg.kg_nodes (workspace_id, type, canonical_name, slug)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            """,
+            workspace_id, node_type, canonical_name, slug,
+        )
+        node_id = row["id"]
+        for alias, kind in (aliases or []):
+            await conn.execute(
+                """
+                INSERT INTO kg.kg_node_aliases (kg_node_id, alias, alias_kind)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                node_id, alias, kind,
+            )
+        return node_id
+
+
+@pytest.mark.asyncio
+async def test_kg_node_aliases_rls_workspace_scope(mint_user, asyncpg_pool):
+    """A user can SELECT aliases for nodes in their workspace, but not others."""
+    owner = mint_user(workspace_count=1)
+    intruder = mint_user(workspace_count=1)
+    ws_id = owner.workspace_ids[0]
+
+    node_id = await _seed_kg_node(
+        asyncpg_pool, workspace_id=ws_id,
+        canonical_name="Transformer Architecture",
+        aliases=[("transformers", "surface_form"), ("xfmr", "abbreviation")],
+    )
+
+    # Owner sees both aliases via supabase-py user client.
+    owner_client = get_v2_user_client(owner.jwt)
+    resp = owner_client.schema("kg").table("kg_node_aliases").select(
+        "alias,alias_kind"
+    ).eq("kg_node_id", node_id).execute()
+    rows = resp.data or []
+    aliases = {(r["alias"], r["alias_kind"]) for r in rows}
+    assert aliases == {("transformers", "surface_form"), ("xfmr", "abbreviation")}, (
+        f"owner expected both aliases, got {aliases!r}"
+    )
+
+    # Intruder sees nothing (RLS blocks).
+    intruder_client = get_v2_user_client(intruder.jwt)
+    resp = intruder_client.schema("kg").table("kg_node_aliases").select(
+        "alias"
+    ).eq("kg_node_id", node_id).execute()
+    assert (resp.data or []) == [], (
+        f"intruder should see no aliases, got {resp.data!r}"
+    )

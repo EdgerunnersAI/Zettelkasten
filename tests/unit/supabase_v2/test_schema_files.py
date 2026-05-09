@@ -34,13 +34,20 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "19_enriched_search_rpc.sql",
         "20_hybrid_search_rpc.sql",
         "21_resolve_effective_nodes_rpc.sql",
+        "22_kg_aliases_table.sql",
     ]
 
 
-def test_v2_schema_declares_39_tables() -> None:
-    combined = "\n".join(p.read_text(encoding="utf-8") for p in sorted(V2_DIR.glob("0*.sql")))
+def test_v2_schema_declares_expected_tables() -> None:
+    # Includes 0*.sql (canonical 39 tables) plus 22_kg_aliases_table.sql
+    # which adds kg.kg_node_aliases (Phase 1.D.4a).
+    combined = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in sorted(V2_DIR.glob("*.sql"))
+        if p.name.startswith("0") or p.name == "22_kg_aliases_table.sql"
+    )
     tables = re.findall(r"CREATE TABLE IF NOT EXISTS ([a-z_]+\.[a-z_]+)", combined)
-    assert len(set(tables)) == 39
+    assert len(set(tables)) == 40
 
 
 def test_jwt_workspace_ids_uses_safe_jsonb_array_cast() -> None:
