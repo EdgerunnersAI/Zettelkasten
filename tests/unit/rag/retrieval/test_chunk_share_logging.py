@@ -8,7 +8,11 @@ import logging
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from website.features.rag_pipeline.retrieval.chunk_share import ChunkShareStore
+
+pytestmark = pytest.mark.skip(reason="v1 chunk_share surface retired in Phase 2.1; replaced by tests/unit/rag_pipeline/test_chunk_share_v2.py")
 
 
 def test_chunk_counts_empty_warning(caplog):

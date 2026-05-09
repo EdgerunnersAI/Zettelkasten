@@ -1,6 +1,10 @@
 import time
 
 import pytest
+
+pytestmark = pytest.mark.skip(reason="v1 chunk_share surface retired in Phase 2.1; replaced by tests/unit/rag_pipeline/test_chunk_share_v2.py")
+
+import pytest
 from unittest.mock import MagicMock
 from website.features.rag_pipeline.retrieval.chunk_share import ChunkShareStore
 
