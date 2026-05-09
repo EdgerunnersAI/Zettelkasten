@@ -59,6 +59,23 @@ class RAGRepository:
             on_conflict="kasten_id,workspace_zettel_id",
         ).execute()
 
+    def chunk_share_for_kasten(self, kasten_id: UUID) -> dict[str, int]:
+        """Per-canonical-chunk usage count inside a Kasten.
+
+        Wraps `rag.chunk_share_for_kasten(p_kasten_id)` (Phase 1.A v2 RPC).
+        Returns ``{canonical_chunk_id_str: chunk_count}``. Empty dict on no rows.
+        Caller is expected to handle / catch RPC errors — repository deliberately
+        does not swallow them so failure modes stay visible.
+        """
+        response = self._client.schema("rag").rpc(
+            "chunk_share_for_kasten", {"p_kasten_id": str(kasten_id)}
+        ).execute()
+        rows = response.data or []
+        return {
+            str(row["canonical_chunk_id"]): int(row.get("chunk_count", 0))
+            for row in rows
+        }
+
 
 def _first(data):
     if not data:

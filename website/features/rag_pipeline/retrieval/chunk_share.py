@@ -70,8 +70,10 @@ class ChunkShareStore:
         ttl_seconds: float = 60.0,
     ):
         if supabase is None:
-            from website.core.supabase_kg.client import get_supabase_client
-            supabase = get_supabase_client()
+            # v2 purge: defaults to the v2 client. Tests / callers can still
+            # inject a mock supabase-py-shaped client to override the default.
+            from website.core.supabase_v2.client import get_v2_client
+            supabase = get_v2_client()
         self._supabase = supabase
         # iter-08 G4: TTLCache so stale chunk-counts auto-recover within ttl.
         # Mirrors cachetools usage in query/metadata.py:71.
@@ -87,19 +89,30 @@ class ChunkShareStore:
         # iter-10 P12: surface RPC errors and empty results so q5-class 500s
         # have actionable forensic context (iter-09 lost the q5 500 traceback
         # when the deploy restart purged the worker logs).
+        # v2: rag.chunk_share_for_kasten(p_kasten_id) returns
+        # {canonical_chunk_id, chunk_count}. The public dict-shape stays
+        # `dict[str, int]`; keys are now canonical_chunk_ids (matches
+        # RetrievalCandidate.node_id under v2).
         try:
-            _log.debug("chunk_counts cache_miss sandbox=%s rpc=rag_kasten_chunk_counts", key)
-            response = await rpc_call(self._supabase.rpc(
-                "rag_kasten_chunk_counts",
-                {"p_sandbox_id": key},
-            ))
+            _log.debug(
+                "chunk_counts cache_miss sandbox=%s rpc=rag.chunk_share_for_kasten", key,
+            )
+            response = await rpc_call(
+                self._supabase.schema("rag").rpc(
+                    "chunk_share_for_kasten",
+                    {"p_kasten_id": key},
+                )
+            )
             data = response.data or []
         except Exception as exc:
             _log.warning(
                 "chunk_counts rpc_error sandbox=%s exc=%s", key, type(exc).__name__,
             )
             data = []
-        counts = {row["node_id"]: int(row.get("chunk_count", 0)) for row in data}
+        counts = {
+            str(row["canonical_chunk_id"]): int(row.get("chunk_count", 0))
+            for row in data
+        }
         if not counts:
             _log.warning(
                 "chunk_counts empty sandbox=%s (suspect member-coverage hole or RPC empty)",
