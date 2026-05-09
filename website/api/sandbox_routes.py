@@ -1,4 +1,18 @@
-﻿"""Sandbox and node-picker routes for the user-level RAG experience."""
+﻿"""Sandbox and node-picker routes for the user-level RAG experience.
+
+Phase 4.4 (DB v2 purge) — kasten CRUD dual-path:
+ * list/create/delete kastens, list-zettels-in-kasten, and add-zettels-to-kasten
+   route to ``rag.kastens`` + ``rag.kasten_zettels`` (via ``bulk_add_to_kasten``
+   / ``list_kasten_zettels`` RPCs) when DB v2 is on AND the JWT subject is a
+   Supabase Auth UUID with a default workspace.
+ * Tag- or source-type-filtered ``add_members`` requests intentionally fall
+   back to the v1 path because the v2 ``bulk_add_to_kasten`` RPC only accepts
+   an explicit ``workspace_zettel_id`` array.
+ * Kasten member-sharing (e.g. inviting other workspaces to a kasten via
+   ``rag.kasten_members``) is deferred to Phase 7 hardening — it requires an
+   RLS migration on ``rag.kastens`` to extend tenancy through the
+   ``kasten_members`` join, which is out of scope for 4.4.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +24,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from website.api.auth import get_current_user
+from website.core.db_version import use_supabase_v2
+from website.core.persist import get_supabase_v2_scope
+from website.core.supabase_v2.repositories.rag_repository import RAGRepository as V2RAGRepository
 from website.features.rag_pipeline.service import get_rag_runtime
 from website.features.rag_pipeline.types import SourceType
 from website.features.user_pricing.entitlements import consume_entitlement, require_entitlement
@@ -18,6 +35,81 @@ from website.features.user_pricing.models import Meter
 logger = logging.getLogger("website.api.sandbox_routes")
 
 router = APIRouter(prefix="/api/rag", tags=["rag-sandboxes"])
+
+
+def _is_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _v2_scope_for(user: dict) -> tuple[V2RAGRepository, UUID, UUID] | None:
+    """Return ``(rag_repo, profile_id, workspace_id)`` when v2 dual-path applies.
+
+    Phase 4.4 dual-path gate: requires DB v2 ON + UUID auth subject + a default
+    workspace via the standard ``get_supabase_v2_scope`` lookup. Returns None
+    otherwise so callers fall back to the legacy v1 path unchanged.
+    """
+    if not use_supabase_v2() or user is None:
+        return None
+    if not _is_uuid(user.get("sub")):
+        return None
+    scope = get_supabase_v2_scope(user["sub"])
+    if scope is None:
+        return None
+    _content_repo, profile_id, workspace_id = scope
+    return V2RAGRepository(), profile_id, workspace_id
+
+
+def _serialize_kasten_zettel_v2(row: dict) -> dict:
+    """Map a row from ``rag.list_kasten_zettels`` RPC into the legacy member shape.
+
+    The RPC returns a JOIN of workspace_zettels + canonical_zettels; the v1
+    client surface expects ``{node_id, added_via, added_filter, added_at, node:{...}}``
+    so we reshape conservatively. Any column the RPC doesn't return defaults to
+    a safe empty value rather than a 500.
+    """
+    wz_id = str(row.get("workspace_zettel_id") or row.get("id") or "")
+    return {
+        "node_id": wz_id,
+        "added_via": row.get("added_via") or "manual",
+        "added_filter": row.get("added_filter") or {},
+        "added_at": row.get("added_at"),
+        "node": {
+            "id": wz_id,
+            "name": row.get("title") or wz_id,
+            "source_type": row.get("source_type") or "web",
+            "url": row.get("normalized_url") or row.get("url") or "",
+            "summary": row.get("ai_summary") or row.get("summary") or "",
+            "tags": row.get("user_tags") or row.get("tags") or [],
+            "node_date": row.get("publication_date") or row.get("node_date"),
+        },
+    }
+
+
+def _serialize_kasten_v2(row: dict) -> dict:
+    """Serialise a ``rag.kastens`` row in the legacy sandbox shape.
+
+    Member count is not part of the v2 row — it is computed lazily by
+    :func:`_kasten_member_count_v2` only when the response shape requires it
+    (the list endpoint surfaces ``member_count`` in the UI).
+    """
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "description": row.get("description") or "",
+        "icon": row.get("icon") or "stack",
+        "color": row.get("color") or "#14b8a6",
+        "default_quality": row.get("default_quality", "fast"),
+        "member_count": row.get("member_count", 0),
+        "last_used_at": row.get("last_used_at"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
 
 
 class SandboxCreateRequest(BaseModel):
@@ -188,6 +280,17 @@ async def list_sandboxes(
     user: Annotated[dict, Depends(get_current_user)],
     limit: int = 50,
 ):
+    # Phase 4.4 v2 dual-path: read kastens from rag.kastens scoped to the
+    # authenticated user's default workspace.
+    v2 = _v2_scope_for(user)
+    if v2 is not None:
+        rag_repo, _profile_id, workspace_id = v2
+        try:
+            rows = rag_repo.list_kastens(workspace_id, limit=limit)
+            return {"sandboxes": [_serialize_kasten_v2(row) for row in rows]}
+        except Exception as exc:  # noqa: BLE001 — surface to logs, fall back to v1
+            logger.warning("v2 list_kastens failed, falling back to v1: %s", exc)
+
     runtime = _runtime_for_user(user)
     rows = await runtime.sandboxes.list_sandboxes(runtime.kg_user_id, limit=limit)
     return {"sandboxes": [_serialize_sandbox(row) for row in rows]}
@@ -200,6 +303,42 @@ async def create_sandbox(
 ):
     action_id = body.client_action_id or body.name
     await require_entitlement(Meter.KASTEN, user, action_id=action_id)
+
+    # Phase 4.4 v2 dual-path: write to rag.kastens via the v2 RAGRepository.
+    # The repo does not accept owner_profile_id — the workspace_id IS the
+    # tenancy boundary; kasten ownership is handled at the schema layer.
+    v2 = _v2_scope_for(user)
+    if v2 is not None:
+        rag_repo, _profile_id, workspace_id = v2
+        try:
+            row = rag_repo.create_kasten(
+                workspace_id=workspace_id,
+                name=body.name,
+                description=body.description,
+                icon=body.icon,
+                color=body.color,
+                default_quality=body.default_quality,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface real driver error to logs + client
+            detail_str = str(exc)
+            logger.exception(
+                "v2 create_kasten failed for workspace=%s name=%s: %s",
+                workspace_id,
+                body.name,
+                detail_str,
+            )
+            lower = detail_str.lower()
+            if "duplicate key" in lower or "unique" in lower:
+                raise HTTPException(status_code=409, detail="A kasten with that name already exists") from exc
+            raise HTTPException(status_code=500, detail="Create sandbox failed. Please try again.") from exc
+
+        if row is None:
+            logger.error("v2 create_kasten returned None for workspace=%s name=%s", workspace_id, body.name)
+            raise HTTPException(status_code=500, detail="Create sandbox returned no row")
+
+        await consume_entitlement(Meter.KASTEN, user, action_id=action_id)
+        return {"sandbox": _serialize_kasten_v2(row)}
+
     runtime = _runtime_for_user(user)
     try:
         row = await runtime.sandboxes.create_sandbox(
@@ -260,6 +399,21 @@ async def list_members(
     user: Annotated[dict, Depends(get_current_user)],
     limit: int = 500,
 ):
+    # Phase 4.4 v2 dual-path: list zettels via rag.list_kasten_zettels RPC.
+    v2 = _v2_scope_for(user)
+    if v2 is not None:
+        rag_repo, _profile_id, workspace_id = v2
+        try:
+            kasten = rag_repo.get_kasten(sandbox_id, workspace_id)
+            if kasten is None:
+                raise HTTPException(status_code=404, detail="Sandbox not found")
+            rows = rag_repo.list_kasten_zettels(sandbox_id)
+            return {"members": [_serialize_kasten_zettel_v2(row) for row in rows]}
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 — surface to logs, fall back to v1
+            logger.warning("v2 list_kasten_zettels failed, falling back to v1: %s", exc)
+
     runtime = _runtime_for_user(user)
     sandbox = await runtime.sandboxes.get_sandbox(sandbox_id, runtime.kg_user_id)
     if sandbox is None:
@@ -294,6 +448,20 @@ async def delete_sandbox(
     sandbox_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
 ):
+    # Phase 4.4 v2 dual-path: delete from rag.kastens scoped to workspace_id;
+    # cascading FKs in the schema clean up rag.kasten_zettels / kasten_members.
+    v2 = _v2_scope_for(user)
+    if v2 is not None:
+        rag_repo, _profile_id, workspace_id = v2
+        try:
+            deleted = rag_repo.delete_kasten(sandbox_id, workspace_id)
+        except Exception as exc:  # noqa: BLE001 — surface to logs, fall back to v1
+            logger.warning("v2 delete_kasten failed, falling back to v1: %s", exc)
+        else:
+            if not deleted:
+                raise HTTPException(status_code=404, detail="Sandbox not found")
+            return {"status": "ok", "sandbox_id": str(sandbox_id)}
+
     runtime = _runtime_for_user(user)
     deleted = await runtime.sandboxes.delete_sandbox(sandbox_id, runtime.kg_user_id)
     if not deleted:
@@ -307,6 +475,44 @@ async def add_members(
     body: SandboxMemberAddRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ):
+    # Phase 4.4 v2 dual-path: take the simplest case only — an explicit list of
+    # UUID-shaped node_ids (i.e. workspace_zettel_ids). Tag- or source-type-
+    # filtered adds fall back to v1 because the v2 RPC `bulk_add_to_kasten`
+    # only accepts an explicit workspace_zettel_id array.
+    v2 = _v2_scope_for(user)
+    use_v2_add = (
+        v2 is not None
+        and bool(body.node_ids)
+        and not body.tags
+        and not body.source_types
+        and all(_is_uuid(nid) for nid in body.node_ids)
+    )
+    if use_v2_add:
+        rag_repo, _profile_id, workspace_id = v2  # type: ignore[misc]
+        kasten = rag_repo.get_kasten(sandbox_id, workspace_id)
+        if kasten is None:
+            raise HTTPException(status_code=404, detail="Sandbox not found")
+        try:
+            wz_ids = [UUID(nid) for nid in body.node_ids]
+            added = rag_repo.add_zettels_to_kasten(
+                kasten_id=sandbox_id,
+                workspace_zettel_ids=wz_ids,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface real driver error to logs + client
+            logger.exception(
+                "v2 bulk_add_to_kasten failed for kasten=%s workspace=%s: %s",
+                sandbox_id,
+                workspace_id,
+                exc,
+            )
+            raise HTTPException(status_code=500, detail="Add to kasten failed.") from exc
+        rows = rag_repo.list_kasten_zettels(sandbox_id)
+        return {
+            "status": "ok",
+            "added_count": added,
+            "members": [_serialize_kasten_zettel_v2(row) for row in rows],
+        }
+
     runtime = _runtime_for_user(user)
     sandbox = await runtime.sandboxes.get_sandbox(sandbox_id, runtime.kg_user_id)
     if sandbox is None:
