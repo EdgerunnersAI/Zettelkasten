@@ -159,6 +159,14 @@ _MAX_CHUNKS_PER_NODE_BY_CLASS: dict[QueryClass, int] = {
 }
 _DEFAULT_MAX_CHUNKS_PER_NODE = 3
 
+# Phase 2.4.5-int2: post-fusion zettel rollup cap. Under chunk-level dedup,
+# candidates are unique per canonical_chunk_id, but multiple chunks can
+# belong to the same canonical_zettel_id. Cap at 3 chunks per zettel by
+# default (operator ruling #5) so a verbose source cannot crowd top-K
+# handed to the cross-encoder. Per-class variation is deferred to Phase 7
+# hardening if eval shows a need; default 3 covers all classes today.
+_MAX_CHUNKS_PER_ZETTEL = 3
+
 # iter-04: xQuAD diversity-by-construction (Abdollahpouri et al. 2017).
 # After all per-candidate score adjustments, we pick top-K slot-by-slot
 # greedy-maximising lambda*rel - (1-lambda)*overlap_with_already_picked,
@@ -962,6 +970,10 @@ class HybridRetriever:
                         cand.metadata["raw_dense_score"] = float(row["raw_dense_score"])
                     if row.get("raw_fts_score") is not None:
                         cand.metadata["raw_fts_score"] = float(row["raw_fts_score"])
+                    # Phase 2.4.5-int2: stash canonical_zettel_id for the
+                    # post-fusion zettel rollup; caps chunks per zettel.
+                    if row.get("canonical_zettel_id") is not None:
+                        cand.metadata["canonical_zettel_id"] = str(row["canonical_zettel_id"])
                     by_key[key] = cand
                     variant_hits[key] = 0
                 else:
@@ -1284,14 +1296,12 @@ class HybridRetriever:
                 score_floor=floor,
             )
 
-        # Phase 2.4.5-int: zettel-level _MAX_CHUNKS_PER_NODE_BY_CLASS cap
-        # removed. Under chunk-level dedup, candidate.node_id IS the
-        # canonical_chunk_id, so the legacy "cap chunks per node_id" semantic
-        # would degenerate to "cap = 1 chunk total per chunk-id" (a no-op
-        # in the unique case, catastrophically restrictive otherwise).
-        # Replaced by the zettel-aware _apply_zettel_rollup helper below
-        # (Phase 2.4.5-int2).
-        return ordered
+        # Phase 2.4.5-int2: post-fusion zettel rollup. Caps chunks per
+        # canonical_zettel_id at _MAX_CHUNKS_PER_ZETTEL (3 by operator
+        # ruling #5) so a verbose zettel cannot monopolise top-K. Runs
+        # AFTER xQuAD diversity selection so we cap on the post-diversity
+        # ordering, not the raw fused list.
+        return _apply_zettel_rollup(ordered)
 
 
 def _apply_anchor_boost(
@@ -1412,6 +1422,43 @@ def _ensure_member_coverage(
         promoted.extend(chunks)
     promoted.sort(key=lambda c: c.rrf_score, reverse=True)
     return promoted + leftover
+
+
+def _apply_zettel_rollup(
+    candidates: list[RetrievalCandidate],
+    *,
+    max_chunks_per_zettel: int = _MAX_CHUNKS_PER_ZETTEL,
+) -> list[RetrievalCandidate]:
+    """Phase 2.4.5-int2: cap chunks per canonical_zettel_id post-fusion.
+
+    Under chunk-level dedup the candidate pool is unique per
+    canonical_chunk_id, but a verbose zettel can still claim N>1 chunks in
+    the top-K. This cap (operator ruling #5, default ``_MAX_CHUNKS_PER_ZETTEL``)
+    ensures one zettel cannot crowd out the cross-encoder.
+
+    Walks the input in input order (already xQuAD-sorted upstream), keeps
+    up to ``max_chunks_per_zettel`` per canonical_zettel_id, and drops the
+    excess. ``canonical_zettel_id`` is read from ``candidate.metadata`` (set
+    by the v2 row adapter); when missing we fall back to the candidate's
+    ``node_id`` (legacy callers, no rollup applied).
+    """
+    if not candidates or max_chunks_per_zettel < 1:
+        return candidates
+    seen: dict[str, int] = {}
+    kept: list[RetrievalCandidate] = []
+    for cand in candidates:
+        zid = (
+            cand.metadata.get("canonical_zettel_id")
+            if cand.metadata
+            else None
+        )
+        bucket_key = str(zid) if zid else cand.node_id
+        count = seen.get(bucket_key, 0)
+        if count >= max_chunks_per_zettel:
+            continue
+        seen[bucket_key] = count + 1
+        kept.append(cand)
+    return kept
 
 
 def _cap_per_node(
