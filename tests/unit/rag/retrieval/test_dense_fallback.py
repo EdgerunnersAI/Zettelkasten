@@ -14,6 +14,12 @@ import pytest
 from website.features.rag_pipeline.retrieval.hybrid import HybridRetriever
 from website.features.rag_pipeline.types import QueryClass, ScopeFilter
 
+# Phase 2.4.4: this module mocks the retired v1 RPC ``rag_dense_recall`` and
+# the v1 ``rag_hybrid_search`` invocation pattern. The v2 replacement is
+# ``content.search_chunks_enriched_kasten`` (kasten-scoped, different param
+# shape). Coverage moved to integration v2 tests.
+pytestmark = pytest.mark.skip(reason="v1 RPC retired in Phase 2.4.4; coverage moved to integration v2 tests")
+
 
 class _StubEmbedder:
     async def embed_query_with_cache(self, q: str) -> list[float]:

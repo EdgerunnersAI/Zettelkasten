@@ -545,35 +545,61 @@ class HybridRetriever:
             for query_text, query_vec in zip(query_variants, embeddings)
         ])
 
-        # iter-10 P5: dense-only kasten-scoped fallback for recall miss.
-        # When the hybrid fan-out returns zero rows AND the kasten has members,
-        # run ONE dense pass scoped to all members so q6/q7-shape recall holes
-        # still surface SOMETHING for the cross-encoder. Guarded by env flag;
-        # never the primary path.
+        # iter-10 P5 / Phase 2.4.4: kasten-scoped dense-only fallback for
+        # recall miss. When the hybrid fan-out returns zero rows AND the
+        # kasten is in scope, run ONE dense pass via
+        # ``content.search_chunks_enriched_kasten`` so q6/q7-shape recall
+        # holes still surface SOMETHING for the cross-encoder. The kasten
+        # predicate lives inside the RPC's first CTE — operator anti-pattern
+        # guard: NEVER post-filter a workspace-wide RPC for kasten scope.
+        # Guarded by env flag; never the primary path.
         total_rows = sum(len(r) for r in results)
         if (
             _DENSE_FALLBACK_ENABLED
             and total_rows == 0
-            and effective_nodes
-            and len(effective_nodes) > 0
+            and sandbox_id is not None
             and embeddings
         ):
-            _log.warning(
-                "dense_fallback_fire scope=%d (hybrid recall=0)", len(effective_nodes)
-            )
+            _log.warning("dense_fallback_fire kasten=%s (hybrid recall=0)", sandbox_id)
             try:
-                fallback_resp = await rpc_call(self._supabase.rpc(
-                    "rag_dense_recall",
+                fallback_resp = await rpc_call(self._supabase.schema("content").rpc(
+                    "search_chunks_enriched_kasten",
                     {
-                        "p_user_id": str(user_id),
-                        "p_effective_nodes": effective_nodes,
+                        "p_kasten_id": str(sandbox_id),
                         "p_query_embedding": embeddings[0],
-                        "p_limit": min(limit, 8),
+                        "p_match_count": min(limit, 8),
                     },
                 ))
                 fallback_rows = fallback_resp.data or []
                 if fallback_rows:
-                    results = [fallback_rows]
+                    # search_chunks_enriched_kasten returns ``score`` (cosine sim);
+                    # adapt to the legacy ``rrf_score`` + ``raw_dense_score``
+                    # shape downstream code consumes. raw_fts_score stays None
+                    # (FTS did not run). Per CandidateBase, ``raw_dense_score``
+                    # carries the cosine for diagnostics; ``rrf_score`` keeps
+                    # the back-compat single-score field.
+                    adapted: list[dict] = []
+                    for row in fallback_rows:
+                        score = float(row.get("score") or 0.0)
+                        adapted.append({
+                            "kind": "chunk",
+                            "node_id": str(row["canonical_chunk_id"]),
+                            "chunk_id": row.get("canonical_chunk_id"),
+                            "chunk_idx": row.get("chunk_idx"),
+                            "name": row.get("title") or "",
+                            "title": row.get("title") or "",
+                            "source_type": row.get("source_type") or "web",
+                            "url": "",
+                            "content": row.get("content") or "",
+                            "tags": list(row.get("user_tags") or []),
+                            "metadata": {},
+                            "rrf_score": score,
+                            "raw_dense_score": score,
+                            "raw_fts_score": None,
+                            "canonical_chunk_id": row.get("canonical_chunk_id"),
+                            "canonical_zettel_id": row.get("canonical_zettel_id"),
+                        })
+                    results = [adapted]
             except Exception as exc:  # noqa: BLE001 — best-effort fallback
                 _log.warning("dense_fallback_rpc_error %s: %s", type(exc).__name__, exc)
 
