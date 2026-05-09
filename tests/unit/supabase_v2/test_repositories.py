@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from website.core.supabase_v2.models import CanonicalZettelCreate, QuotaDebitRequest
+from website.core.supabase_v2.models import (
+    CanonicalChunkCreate,
+    CanonicalZettelCreate,
+    QuotaDebitRequest,
+    WorkspaceZettelCreate,
+)
 from website.core.supabase_v2.repositories.billing_repository import BillingRepository
 from website.core.supabase_v2.repositories.content_repository import ContentRepository
 
@@ -74,6 +79,44 @@ def test_content_repository_uses_schema_table_form() -> None:
     assert ("table", "content", "canonical_zettels") in fake.calls
 
 
+def test_content_repository_links_workspace_chunks_for_search() -> None:
+    fake = _Client()
+    repo = ContentRepository(fake)
+
+    repo.upsert_canonical_zettel(
+        CanonicalZettelCreate(
+            normalized_url="https://example.com/a",
+            content_hash=b"abc",
+            source_type="web",
+            title="A",
+        ),
+        workspace=WorkspaceZettelCreate(
+            workspace_id=UUID("00000000-0000-0000-0000-000000000201"),
+            added_via="website",
+        ),
+        chunks=[
+            CanonicalChunkCreate(
+                chunk_idx=0,
+                content="chunk",
+                content_hash=b"chunk",
+            )
+        ],
+    )
+
+    membership_upserts = [
+        call
+        for call in fake.calls
+        if call[0:3] == ("upsert", "content", "workspace_chunk_membership")
+    ]
+    assert membership_upserts
+    payload = membership_upserts[0][3][0]
+    assert payload["workspace_id"] == "00000000-0000-0000-0000-000000000201"
+    assert payload["workspace_zettel_id"] == "00000000-0000-0000-0000-000000000101"
+    assert membership_upserts[0][4]["on_conflict"] == (
+        "workspace_id,canonical_chunk_id,workspace_zettel_id"
+    )
+
+
 def test_billing_repository_uses_typed_consume_quota_rpc() -> None:
     fake = _Client()
     repo = BillingRepository(fake)
@@ -88,4 +131,3 @@ def test_billing_repository_uses_typed_consume_quota_rpc() -> None:
 
     assert ok is True
     assert fake.calls[-1][0:3] == ("rpc", "core", "consume_quota")
-

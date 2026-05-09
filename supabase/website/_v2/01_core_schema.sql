@@ -106,6 +106,41 @@ $$;
 
 GRANT EXECUTE ON FUNCTION core.jwt_workspace_ids() TO authenticated, anon;
 
+CREATE OR REPLACE FUNCTION core.jwt_role() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT COALESCE(
+        NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+        auth.role()::text,
+        ''
+    );
+$$;
+
+GRANT EXECUTE ON FUNCTION core.jwt_role() TO authenticated, anon, service_role;
+
+CREATE OR REPLACE FUNCTION core.is_service_role() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT core.jwt_role() = 'service_role';
+$$;
+
+GRANT EXECUTE ON FUNCTION core.is_service_role() TO authenticated, anon, service_role;
+
+CREATE OR REPLACE FUNCTION core.jwt_has_workspace_role(
+    p_workspace_id uuid,
+    p_roles text[]
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+    SELECT core.is_service_role()
+        OR EXISTS (
+            SELECT 1
+              FROM core.workspace_members wm
+             WHERE wm.workspace_id = p_workspace_id
+               AND wm.profile_id = auth.uid()
+               AND wm.role = ANY (p_roles)
+        );
+$$;
+
+GRANT EXECUTE ON FUNCTION core.jwt_has_workspace_role(uuid, text[]) TO authenticated, service_role;
+
 -- Audit C.2: typed race-safe quota debit RPC.
 CREATE OR REPLACE FUNCTION core.consume_quota(
     p_workspace_id uuid,
@@ -117,7 +152,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
     rem numeric;
 BEGIN
-    IF NOT (p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
+    IF NOT (core.is_service_role() OR p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
         RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
     END IF;
 
@@ -228,4 +263,3 @@ DROP TRIGGER IF EXISTS trg_workspaces_allowlist_check ON core.workspaces;
 CREATE TRIGGER trg_workspaces_allowlist_check
     BEFORE INSERT ON core.workspaces
     FOR EACH ROW EXECUTE FUNCTION core.enforce_allowlist();
-

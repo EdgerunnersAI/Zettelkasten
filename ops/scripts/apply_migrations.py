@@ -51,7 +51,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Sequence
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:

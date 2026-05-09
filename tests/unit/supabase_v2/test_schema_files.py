@@ -52,10 +52,30 @@ def test_hnsw_is_only_in_post_backfill_file() -> None:
 
 
 def test_search_chunks_and_quota_are_typed_rpcs() -> None:
-    assert "CREATE OR REPLACE FUNCTION content.search_chunks" in _sql("02_content_schema.sql")
-    assert "p_query_embedding halfvec(768)" in _sql("02_content_schema.sql")
-    assert "CREATE OR REPLACE FUNCTION core.consume_quota" in _sql("01_core_schema.sql")
-    assert "exec_sql_returning" not in _sql("01_core_schema.sql")
+    content_sql = _sql("02_content_schema.sql")
+    core_sql = _sql("01_core_schema.sql")
+    kg_sql = _sql("03_kg_schema.sql")
+    assert "CREATE OR REPLACE FUNCTION content.search_chunks" in content_sql
+    assert "p_query_embedding halfvec(768)" in content_sql
+    assert "CREATE OR REPLACE FUNCTION core.consume_quota" in core_sql
+    assert "CREATE OR REPLACE FUNCTION core.is_service_role()" in core_sql
+    assert "CREATE OR REPLACE FUNCTION core.jwt_has_workspace_role" in core_sql
+    assert "core.is_service_role() OR p_workspace_id = ANY" in core_sql
+    assert "core.is_service_role() OR p_workspace_id = ANY" in content_sql
+    assert "core.is_service_role() OR p_workspace_id = ANY" in kg_sql
+    assert "exec_sql_returning" not in core_sql
+
+
+def test_search_chunks_excludes_null_embeddings() -> None:
+    sql = _sql("02_content_schema.sql")
+    assert "AND cc.embedding IS NOT NULL" in sql
+
+
+def test_citation_reaper_ignores_malformed_citation_ids() -> None:
+    sql = _sql("02_content_schema.sql")
+    assert "c ? 'canonical_chunk_id'" in sql
+    assert "(c ->> 'canonical_chunk_id') ~*" in sql
+    assert "(c ->> 'canonical_chunk_id')::uuid" in sql
 
 
 def test_citation_reaper_skips_chat_message_citations() -> None:
@@ -69,3 +89,10 @@ def test_rls_keeps_canonical_chunks_service_role_only() -> None:
     assert "canonical_chunks_service_all" in sql
     assert "FOR SELECT TO authenticated" not in sql.split("canonical_chunks_service_all")[0]
 
+
+def test_rls_uses_roles_for_workspace_writes() -> None:
+    sql = _sql("08_rls_policies.sql")
+    assert "core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor'])" in sql
+    assert "core.jwt_has_workspace_role(workspace_id, ARRAY['owner'])" in sql
+    assert "kasten_members_workspace_insert" in sql
+    assert "chat_messages_workspace_insert" in sql

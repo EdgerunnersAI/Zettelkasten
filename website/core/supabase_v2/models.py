@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class CanonicalZettelCreate(BaseModel):
@@ -69,4 +69,3 @@ class ScorerConfig(BaseModel):
     enabled: bool
     weight: float
     params: dict[str, Any] = Field(default_factory=dict)
-

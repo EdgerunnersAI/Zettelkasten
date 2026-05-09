@@ -123,7 +123,9 @@ BEGIN
         SELECT 1
           FROM rag.chat_messages cm,
                jsonb_array_elements(cm.citations) c
-         WHERE (c ->> 'canonical_chunk_id')::uuid IN (
+         WHERE c ? 'canonical_chunk_id'
+           AND (c ->> 'canonical_chunk_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+           AND (c ->> 'canonical_chunk_id')::uuid IN (
              SELECT id
                FROM content.canonical_chunks
               WHERE canonical_zettel_id = p_canonical_zettel_id
@@ -178,7 +180,7 @@ CREATE OR REPLACE FUNCTION content.search_chunks(
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-    IF NOT (p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
+    IF NOT (core.is_service_role() OR p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
         RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
     END IF;
 
@@ -192,10 +194,10 @@ BEGIN
           FROM content.workspace_chunk_membership wcm
           JOIN content.canonical_chunks cc ON cc.id = wcm.canonical_chunk_id
          WHERE wcm.workspace_id = p_workspace_id
+           AND cc.embedding IS NOT NULL
          ORDER BY cc.embedding <=> p_query_embedding
          LIMIT p_limit;
 END
 $$;
 
 GRANT EXECUTE ON FUNCTION content.search_chunks(uuid, halfvec, int) TO authenticated;
-

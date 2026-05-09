@@ -44,12 +44,16 @@ class ContentRepository:
         canonical_id = UUID(str(row["id"]))
 
         was_new = bool(row.get("was_new", False))
-        if chunks:
-            self.upsert_chunks(canonical_id, chunks)
+        chunk_ids = self.upsert_chunks(canonical_id, chunks or [])
 
         workspace_zettel_id: UUID | None = None
         if workspace:
             workspace_zettel_id = self.upsert_workspace_zettel(canonical_id, workspace)
+            self.upsert_workspace_chunk_membership(
+                workspace_id=workspace.workspace_id,
+                workspace_zettel_id=workspace_zettel_id,
+                canonical_chunk_ids=chunk_ids,
+            )
 
         return CanonicalUpsertResult(
             canonical_zettel_id=canonical_id,
@@ -99,6 +103,34 @@ class ContentRepository:
         row = _first(response.data)
         return UUID(str(row["id"]))
 
+    def upsert_workspace_chunk_membership(
+        self,
+        *,
+        workspace_id: UUID,
+        workspace_zettel_id: UUID,
+        canonical_chunk_ids: list[UUID],
+    ) -> None:
+        if not canonical_chunk_ids:
+            return
+
+        payloads = [
+            {
+                "workspace_id": str(workspace_id),
+                "canonical_chunk_id": str(chunk_id),
+                "workspace_zettel_id": str(workspace_zettel_id),
+            }
+            for chunk_id in canonical_chunk_ids
+        ]
+        (
+            self._client.schema("content")
+            .table("workspace_chunk_membership")
+            .upsert(
+                payloads,
+                on_conflict="workspace_id,canonical_chunk_id,workspace_zettel_id",
+            )
+            .execute()
+        )
+
     def search_chunks(
         self,
         *,
@@ -123,4 +155,3 @@ def _first(data):
     if isinstance(data, list):
         return data[0]
     return data
-

@@ -84,9 +84,28 @@ DROP POLICY IF EXISTS usage_events_workspace_all ON core.usage_events;
 DROP POLICY IF EXISTS usage_aggregates_workspace_select ON core.usage_aggregates;
 DROP POLICY IF EXISTS quotas_workspace_select ON core.quotas;
 DROP POLICY IF EXISTS kastens_workspace_all ON rag.kastens;
+DROP POLICY IF EXISTS kastens_workspace_select ON rag.kastens;
+DROP POLICY IF EXISTS kastens_workspace_insert ON rag.kastens;
+DROP POLICY IF EXISTS kastens_workspace_update ON rag.kastens;
+DROP POLICY IF EXISTS kastens_workspace_delete ON rag.kastens;
 DROP POLICY IF EXISTS kasten_members_workspace_all ON rag.kasten_members;
+DROP POLICY IF EXISTS kasten_members_workspace_select ON rag.kasten_members;
+DROP POLICY IF EXISTS kasten_members_workspace_insert ON rag.kasten_members;
+DROP POLICY IF EXISTS kasten_members_workspace_update ON rag.kasten_members;
+DROP POLICY IF EXISTS kasten_members_workspace_delete ON rag.kasten_members;
+DROP POLICY IF EXISTS kasten_zettels_workspace_select ON rag.kasten_zettels;
+DROP POLICY IF EXISTS kasten_zettels_workspace_insert ON rag.kasten_zettels;
+DROP POLICY IF EXISTS kasten_zettels_workspace_delete ON rag.kasten_zettels;
 DROP POLICY IF EXISTS chat_sessions_workspace_all ON rag.chat_sessions;
+DROP POLICY IF EXISTS chat_sessions_workspace_select ON rag.chat_sessions;
+DROP POLICY IF EXISTS chat_sessions_workspace_insert ON rag.chat_sessions;
+DROP POLICY IF EXISTS chat_sessions_workspace_update ON rag.chat_sessions;
+DROP POLICY IF EXISTS chat_sessions_workspace_delete ON rag.chat_sessions;
 DROP POLICY IF EXISTS chat_messages_workspace_all ON rag.chat_messages;
+DROP POLICY IF EXISTS chat_messages_workspace_select ON rag.chat_messages;
+DROP POLICY IF EXISTS chat_messages_workspace_insert ON rag.chat_messages;
+DROP POLICY IF EXISTS chat_messages_workspace_update ON rag.chat_messages;
+DROP POLICY IF EXISTS chat_messages_workspace_delete ON rag.chat_messages;
 
 -- Canonical content is service-role-only. Authenticated reads use content.search_chunks().
 CREATE POLICY canonical_zettels_service_all ON content.canonical_zettels
@@ -107,7 +126,9 @@ CREATE POLICY profiles_service_all ON core.profiles
 CREATE POLICY workspaces_member_read ON core.workspaces
     FOR SELECT TO authenticated USING (id = ANY (core.jwt_workspace_ids()));
 CREATE POLICY workspaces_member_write ON core.workspaces
-    FOR UPDATE TO authenticated USING (id = ANY (core.jwt_workspace_ids())) WITH CHECK (id = ANY (core.jwt_workspace_ids()));
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(id, ARRAY['owner', 'editor']));
 CREATE POLICY workspaces_service_all ON core.workspaces
     FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -119,11 +140,13 @@ CREATE POLICY workspace_members_service_all ON core.workspace_members
 CREATE POLICY workspace_zettels_member_select ON content.workspace_zettels
     FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
 CREATE POLICY workspace_zettels_member_insert ON content.workspace_zettels
-    FOR INSERT TO authenticated WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR INSERT TO authenticated WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
 CREATE POLICY workspace_zettels_member_update ON content.workspace_zettels
-    FOR UPDATE TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
 CREATE POLICY workspace_zettels_member_delete ON content.workspace_zettels
-    FOR DELETE TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR DELETE TO authenticated USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
 CREATE POLICY workspace_zettels_service_all ON content.workspace_zettels
     FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -135,14 +158,18 @@ CREATE POLICY workspace_chunks_service_all ON content.workspace_chunk_membership
 CREATE POLICY kg_nodes_workspace_select ON kg.kg_nodes
     FOR SELECT TO authenticated USING (workspace_id IS NULL OR workspace_id = ANY (core.jwt_workspace_ids()));
 CREATE POLICY kg_nodes_workspace_write ON kg.kg_nodes
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR ALL TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
 CREATE POLICY kg_nodes_service_all ON kg.kg_nodes
     FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE POLICY kg_edges_workspace_select ON kg.kg_edges
     FOR SELECT TO authenticated USING (workspace_id IS NULL OR workspace_id = ANY (core.jwt_workspace_ids()));
 CREATE POLICY kg_edges_workspace_write ON kg.kg_edges
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR ALL TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
 CREATE POLICY kg_edges_service_all ON kg.kg_edges
     FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -157,20 +184,85 @@ CREATE POLICY rag_pipeline_config_read ON rag.retrieval_pipeline_config
     FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY usage_events_workspace_all ON core.usage_events
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+    FOR ALL TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
 CREATE POLICY usage_aggregates_workspace_select ON core.usage_aggregates
     FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
 CREATE POLICY quotas_workspace_select ON core.quotas
     FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
 
-CREATE POLICY kastens_workspace_all ON rag.kastens
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
-CREATE POLICY kasten_members_workspace_all ON rag.kasten_members
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
-CREATE POLICY chat_sessions_workspace_all ON rag.chat_sessions
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
-CREATE POLICY chat_messages_workspace_all ON rag.chat_messages
-    FOR ALL TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids())) WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY kastens_workspace_select ON rag.kastens
+    FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY kastens_workspace_insert ON rag.kastens
+    FOR INSERT TO authenticated WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY kastens_workspace_update ON rag.kastens
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY kastens_workspace_delete ON rag.kastens
+    FOR DELETE TO authenticated USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
+
+CREATE POLICY kasten_members_workspace_select ON rag.kasten_members
+    FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY kasten_members_workspace_insert ON rag.kasten_members
+    FOR INSERT TO authenticated WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
+CREATE POLICY kasten_members_workspace_update ON rag.kasten_members
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
+CREATE POLICY kasten_members_workspace_delete ON rag.kasten_members
+    FOR DELETE TO authenticated USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
+
+CREATE POLICY kasten_zettels_workspace_select ON rag.kasten_zettels
+    FOR SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1
+              FROM rag.kastens k
+             WHERE k.id = rag.kasten_zettels.kasten_id
+               AND k.workspace_id = ANY (core.jwt_workspace_ids())
+        )
+    );
+CREATE POLICY kasten_zettels_workspace_insert ON rag.kasten_zettels
+    FOR INSERT TO authenticated WITH CHECK (
+        EXISTS (
+            SELECT 1
+              FROM rag.kastens k
+             WHERE k.id = rag.kasten_zettels.kasten_id
+               AND core.jwt_has_workspace_role(k.workspace_id, ARRAY['owner', 'editor'])
+        )
+    );
+CREATE POLICY kasten_zettels_workspace_delete ON rag.kasten_zettels
+    FOR DELETE TO authenticated USING (
+        EXISTS (
+            SELECT 1
+              FROM rag.kastens k
+             WHERE k.id = rag.kasten_zettels.kasten_id
+               AND core.jwt_has_workspace_role(k.workspace_id, ARRAY['owner', 'editor'])
+        )
+    );
+
+CREATE POLICY chat_sessions_workspace_select ON rag.chat_sessions
+    FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY chat_sessions_workspace_insert ON rag.chat_sessions
+    FOR INSERT TO authenticated WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY chat_sessions_workspace_update ON rag.chat_sessions
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY chat_sessions_workspace_delete ON rag.chat_sessions
+    FOR DELETE TO authenticated USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
+
+CREATE POLICY chat_messages_workspace_select ON rag.chat_messages
+    FOR SELECT TO authenticated USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY chat_messages_workspace_insert ON rag.chat_messages
+    FOR INSERT TO authenticated WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY chat_messages_workspace_update ON rag.chat_messages
+    FOR UPDATE TO authenticated
+    USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']))
+    WITH CHECK (core.jwt_has_workspace_role(workspace_id, ARRAY['owner', 'editor']));
+CREATE POLICY chat_messages_workspace_delete ON rag.chat_messages
+    FOR DELETE TO authenticated USING (core.jwt_has_workspace_role(workspace_id, ARRAY['owner']));
 
 -- Remaining operational tables are service-role only unless a narrower policy above exists.
 DO $$

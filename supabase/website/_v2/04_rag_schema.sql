@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS rag.chat_messages (
     created_at        timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE rag.chat_messages
+    DROP CONSTRAINT IF EXISTS chat_messages_citations_is_array;
+ALTER TABLE rag.chat_messages
+    ADD CONSTRAINT chat_messages_citations_is_array
+    CHECK (jsonb_typeof(citations) = 'array');
+
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON rag.chat_messages(session_id, created_at);
 
 CREATE OR REPLACE FUNCTION rag.assert_chat_message_workspace_match()
@@ -155,10 +161,10 @@ BEGIN
         SELECT 1
           FROM rag.kasten_members
          WHERE kasten_id = NEW.kasten_id
-           AND workspace_id = ANY (core.jwt_workspace_ids())
+           AND core.jwt_has_workspace_role(workspace_id, ARRAY['owner'])
            AND role = 'owner'
     ) THEN
-        IF current_setting('request.jwt.claims', true)::jsonb ->> 'role' <> 'service_role' THEN
+        IF NOT core.is_service_role() THEN
             RAISE EXCEPTION 'only kasten owners can grant memberships';
         END IF;
     END IF;
@@ -170,4 +176,3 @@ DROP TRIGGER IF EXISTS trg_kasten_members_grant_check ON rag.kasten_members;
 CREATE TRIGGER trg_kasten_members_grant_check
     BEFORE INSERT OR UPDATE ON rag.kasten_members
     FOR EACH ROW EXECUTE FUNCTION rag.assert_kasten_owner_can_grant();
-

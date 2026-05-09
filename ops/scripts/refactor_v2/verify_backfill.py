@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ops.scripts.refactor_v2.lib import assert_zero, run_statements, load_config, parse_args, require_continue, run_async
+from ops.scripts.refactor_v2.lib import assert_zero, run_statements, load_config, parse_args, require_continue, run_async  # noqa: E402
 
 
 COUNT_SQL = """

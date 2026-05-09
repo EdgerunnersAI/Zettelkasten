@@ -64,7 +64,7 @@ CREATE OR REPLACE FUNCTION kg.expand_subgraph(
 ) RETURNS TABLE(id bigint)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-    IF NOT (p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
+    IF NOT (core.is_service_role() OR p_workspace_id = ANY (core.jwt_workspace_ids())) THEN
         RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
     END IF;
 
@@ -84,4 +84,3 @@ END
 $$;
 
 GRANT EXECUTE ON FUNCTION kg.expand_subgraph(uuid, bigint[], int) TO authenticated;
-
