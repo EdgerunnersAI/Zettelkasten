@@ -1284,7 +1284,14 @@ class HybridRetriever:
                 score_floor=floor,
             )
 
-        return _cap_per_node(ordered, query_class=query_class)
+        # Phase 2.4.5-int: zettel-level _MAX_CHUNKS_PER_NODE_BY_CLASS cap
+        # removed. Under chunk-level dedup, candidate.node_id IS the
+        # canonical_chunk_id, so the legacy "cap chunks per node_id" semantic
+        # would degenerate to "cap = 1 chunk total per chunk-id" (a no-op
+        # in the unique case, catastrophically restrictive otherwise).
+        # Replaced by the zettel-aware _apply_zettel_rollup helper below
+        # (Phase 2.4.5-int2).
+        return ordered
 
 
 def _apply_anchor_boost(
