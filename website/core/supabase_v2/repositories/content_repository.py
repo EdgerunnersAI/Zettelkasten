@@ -141,6 +141,41 @@ class ContentRepository:
             .execute()
         )
 
+    def list_workspace_zettels(
+        self,
+        workspace_id: UUID,
+        *,
+        limit: int = 5000,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Return non-deleted workspace zettels joined with their canonical rows.
+
+        Shape per row mirrors the columns the v2 ``/api/graph`` v2 path needs to
+        assemble a ``KGGraph`` payload: workspace overlay (id, ai_summary,
+        user_tags, created_at) plus canonical fields (id, normalized_url, title,
+        source_type, publication_date). Soft-deleted overlays
+        (``deleted_at IS NOT NULL``) are filtered server-side.
+        """
+        response = (
+            self._client.schema("content")
+            .table("workspace_zettels")
+            .select(
+                "id,"
+                "canonical_zettel_id,"
+                "ai_summary,"
+                "user_tags,"
+                "created_at,"
+                "canonical:canonical_zettels!inner("
+                "id,normalized_url,title,source_type,publication_date)"
+            )
+            .eq("workspace_id", str(workspace_id))
+            .is_("deleted_at", "null")
+            .order("created_at", desc=True)
+            .range(offset, offset + max(0, limit - 1))
+            .execute()
+        )
+        return list(response.data or [])
+
     def search_chunks(
         self,
         *,

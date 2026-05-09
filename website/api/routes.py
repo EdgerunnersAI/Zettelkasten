@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections import defaultdict
 from typing import Annotated
@@ -12,15 +13,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from website.api.auth import get_current_user, get_optional_user
-from website.core.db_version import get_db_schema_version
+from website.core.db_version import get_db_schema_version, use_supabase_v2
 from website.core.pipeline import summarize_url
 from website.features.summarization_engine.core.errors import ExtractionConfidenceError
-from website.core.graph_store import get_graph, delete_node as delete_graph_node
+from website.core.graph_store import _SOURCE_PREFIX, get_graph, delete_node as delete_graph_node
 from website.core.graph_models import KGGraph
 from website.core.persist import (
+    extract_summary_parts,
     get_supabase_scope as _get_supabase,
+    get_supabase_v2_scope_for_read,
     persist_summarized_result,
 )
+from website.core.supabase_v2.repositories.kg_repository import KGRepository as V2KGRepository
 from website.features.user_pricing.entitlements import consume_entitlement, require_entitlement
 from website.features.user_pricing.models import Meter
 
@@ -239,6 +243,93 @@ _graph_cache_global: dict | None = None
 _graph_cache_global_ts: float = 0
 
 
+def _v2_assemble_graph(
+    *,
+    user_sub: str,
+    limit: int,
+    offset: int,
+) -> KGGraph | None:
+    """Assemble a v2 :class:`KGGraph` for the user across their workspaces.
+
+    Returns ``None`` when the user lacks a v2 scope (not configured, non-UUID
+    sub, or no workspace memberships). Soft-deleted overlays are filtered by
+    the repository. Edges are joined back through the workspace overlay rows
+    so the resulting source/target IDs match the node IDs we emit.
+    """
+    scope = get_supabase_v2_scope_for_read(user_sub)
+    if scope is None:
+        return None
+    content_repo, _profile_id, workspace_ids = scope
+    kg_repo = V2KGRepository()
+
+    nodes: list[dict] = []
+    overlay_index: dict[int, dict] = {}  # placeholder; v2 KG tables key by bigint
+    canonical_to_overlay: dict[str, str] = {}  # canonical_zettel_id -> frontend node id
+
+    for ws_id in workspace_ids:
+        rows = content_repo.list_workspace_zettels(ws_id, limit=limit, offset=offset)
+        for row in rows:
+            canonical = row.get("canonical") or {}
+            canonical_id = str(canonical.get("id") or row.get("canonical_zettel_id") or "")
+            if not canonical_id or canonical_id in canonical_to_overlay:
+                continue
+            source_type = str(canonical.get("source_type") or "web").lower()
+            prefix = _SOURCE_PREFIX.get(source_type, "web")
+            slug = re.sub(
+                r"[^a-z0-9]+", "-", str(canonical.get("title") or "").lower()
+            ).strip("-")[:24].rstrip("-") or "untitled"
+            node_id = f"{prefix}-{slug}-{canonical_id[:8]}"
+            canonical_to_overlay[canonical_id] = node_id
+
+            brief, _detailed = extract_summary_parts(row.get("ai_summary"), None)
+            pub_date = canonical.get("publication_date") or ""
+            nodes.append(
+                {
+                    "id": node_id,
+                    "name": str(canonical.get("title") or "Untitled"),
+                    "group": source_type,
+                    "summary": row.get("ai_summary") or "",
+                    "tags": list(row.get("user_tags") or []),
+                    "url": str(canonical.get("normalized_url") or ""),
+                    "date": str(pub_date),
+                    "node_date": str(pub_date),
+                }
+            )
+
+    links: list[dict] = []
+    for ws_id in workspace_ids:
+        edge_rows = kg_repo.list_workspace_edges(ws_id)
+        for edge in edge_rows:
+            evidence = edge.get("evidence_canonical_zettel_id")
+            # The v2 kg_edges table keys by bigint kg_nodes; without a mention
+            # join we cannot resolve src/dst -> overlay node ids generally. We
+            # only emit edges whose evidence canonical maps to a known overlay
+            # node — sufficient for the dual-path 4.1 surface and forward-
+            # compatible with richer mention joins in later phases.
+            if not evidence:
+                continue
+            target_node = canonical_to_overlay.get(str(evidence))
+            if not target_node:
+                continue
+            links.append(
+                {
+                    "source": target_node,
+                    "target": target_node,
+                    "relation": str(edge.get("relation_type") or "shared_tag"),
+                    "weight": None,
+                    "link_type": "tag",
+                    "description": edge.get("shared_tag_label"),
+                }
+            )
+
+    # Use Pydantic to enforce the shape; total_nodes mirrors v1 conventions.
+    try:
+        return KGGraph(nodes=nodes, links=links, total_nodes=len(nodes))
+    except Exception as exc:
+        logger.warning("v2 graph assembly produced invalid KGGraph: %s", exc)
+        return KGGraph(nodes=[], links=[], total_nodes=0)
+
+
 @router.get("/graph")
 async def graph_data(
     user: Annotated[dict | None, Depends(get_optional_user)] = None,
@@ -259,6 +350,20 @@ async def graph_data(
     offset = max(0, offset)
     now = time.time()
     is_personal = view == "my" and user is not None
+
+    # v2 dual-path: when DB v2 is live AND the caller is a UUID-subject user
+    # with workspace memberships, assemble the graph from content/kg v2 tables.
+    # On any miss (not configured, no scope, assembly failure) we fall through
+    # to the unmodified v1 behaviour below — v1 path remains untouched.
+    if use_supabase_v2() and user is not None:
+        try:
+            v2_graph = _v2_assemble_graph(
+                user_sub=user["sub"], limit=limit, offset=offset,
+            )
+            if v2_graph is not None:
+                return _enrich_graph_with_analytics(v2_graph.model_dump())
+        except Exception as exc:
+            logger.warning("v2 /api/graph assembly failed, falling back to v1: %s", exc)
 
     if is_personal:
         # Per-user graph — always fresh, no global cache

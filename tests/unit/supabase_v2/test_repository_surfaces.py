@@ -72,11 +72,11 @@ def test_kg_repository_uses_kg_schema() -> None:
 def test_rag_repository_uses_rag_schema() -> None:
     client = _Client()
     repo = RAGRepository(client)
-    kasten_id = repo.create_kasten(
+    kasten_row = repo.create_kasten(
         workspace_id=UUID("00000000-0000-0000-0000-000000000001"),
         name="Research",
     )
-    assert str(kasten_id) == "00000000-0000-0000-0000-000000000007"
+    assert kasten_row["id"] == "00000000-0000-0000-0000-000000000007"
     assert ("table", "rag", "kastens") in client.calls
 
 

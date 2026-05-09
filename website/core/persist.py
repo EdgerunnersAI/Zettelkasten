@@ -113,6 +113,55 @@ def get_supabase_scope(user_id_override: str | None = None) -> tuple[KGRepositor
     return _supabase_repo, _supabase_user_id
 
 
+def get_supabase_v2_scope_for_read(
+    user_sub: str | None = None,
+) -> tuple[V2ContentRepository, UUID, list[UUID]] | None:
+    """Return ``(content_repo, profile_id, workspace_ids)`` for read paths.
+
+    Mirrors :func:`get_supabase_v2_scope` but enumerates *every* workspace the
+    profile is a member of (default-workspace-only is too narrow for the graph
+    read path, which fans across personal + shared workspaces). Returns
+    ``None`` when v2 is not in use, the JWT subject is not a UUID, or the
+    profile has no workspace memberships.
+    """
+    global _v2_core_repo, _v2_content_repo
+
+    if not use_supabase_v2() or not user_sub:
+        return None
+    try:
+        profile_id = UUID(str(user_sub))
+    except (TypeError, ValueError):
+        logger.info(
+            "DB v2 read scope requires UUID auth subject; falling back for user_sub=%r",
+            user_sub,
+        )
+        return None
+
+    try:
+        _v2_core_repo = _v2_core_repo or V2CoreRepository()
+        _v2_content_repo = _v2_content_repo or V2ContentRepository()
+        # Enumerate all workspaces the profile is a member of via the same
+        # core.workspace_members table CoreRepository.get_default_workspace_id
+        # already uses; service-role client bypasses RLS for read fan-out.
+        response = (
+            _v2_core_repo._client.schema("core")
+            .table("workspace_members")
+            .select("workspace_id")
+            .eq("profile_id", str(profile_id))
+            .order("added_at")
+            .execute()
+        )
+        workspace_ids = [
+            UUID(str(row["workspace_id"])) for row in (response.data or []) if row.get("workspace_id")
+        ]
+        if not workspace_ids:
+            return None
+        return _v2_content_repo, profile_id, workspace_ids
+    except Exception as exc:
+        logger.warning("Supabase v2 read scope lookup failed, falling back: %s", exc)
+        return None
+
+
 def get_supabase_v2_scope(user_sub: str | None = None) -> tuple[V2ContentRepository, UUID, UUID] | None:
     """Return ``(content_repo, profile_id, workspace_id)`` for DB v2.
 

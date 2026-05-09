@@ -61,6 +61,32 @@ class KGRepository:
         response = self._client.schema("kg").table("kg_edges").insert(payload).execute()
         return int(_first(response.data)["id"])
 
+    def list_workspace_edges(
+        self,
+        workspace_id: UUID,
+        *,
+        limit: int = 10000,
+    ) -> list[dict]:
+        """Return raw kg_edges rows for a workspace.
+
+        Shape mirrors columns the v2 ``/api/graph`` path needs to render
+        ``KGGraphLink`` rows: src_node_id, dst_node_id, relation_type,
+        shared_tag_label, weight, evidence_canonical_zettel_id. Caller is
+        responsible for joining src/dst back to the workspace zettels.
+        """
+        response = (
+            self._client.schema("kg")
+            .table("kg_edges")
+            .select(
+                "id,src_node_id,dst_node_id,relation_type,"
+                "shared_tag_label,weight,evidence_canonical_zettel_id"
+            )
+            .eq("workspace_id", str(workspace_id))
+            .limit(max(1, limit))
+            .execute()
+        )
+        return list(response.data or [])
+
     def expand_subgraph(self, *, workspace_id: UUID, node_ids: list[int], depth: int = 1) -> list[int]:
         response = self._client.schema("kg").rpc(
             "expand_subgraph",

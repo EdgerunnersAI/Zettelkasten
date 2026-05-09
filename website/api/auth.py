@@ -34,12 +34,30 @@ def _get_jwt_secret() -> str:
 
 
 def _get_jwks_client() -> PyJWKClient | None:
-    """Return a JWKS client for the Supabase project, or None if not configured."""
+    """Return a JWKS client for the Supabase project, or None if not configured.
+
+    When DB v2 is active we prefer ``SUPABASE_V2_URL`` so JWTs minted by the v2
+    auth project verify correctly. Falls back to ``SUPABASE_URL`` for v1 / CI
+    so this module remains backward compatible during the v1 → v2 transition.
+    """
     global _jwks_client
     if _jwks_client is not None:
         return _jwks_client
 
-    supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    # Prefer v2 URL when DB v2 is active. Local import avoids a circular
+    # import (db_version -> supabase_v2.client -> ... -> api.auth on some
+    # paths) — keep the import lazy.
+    supabase_url = ""
+    try:
+        from website.core.db_version import use_supabase_v2
+
+        if use_supabase_v2():
+            supabase_url = os.environ.get("SUPABASE_V2_URL", "").rstrip("/")
+    except Exception:  # pragma: no cover - defensive
+        supabase_url = ""
+
+    if not supabase_url:
+        supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     if not supabase_url:
         return None
 
@@ -55,17 +73,24 @@ def _decode_token(token: str) -> dict:
     Strategy: try JWKS first (supports ECC P-256, RSA), fall back to HS256.
     Raises on any failure.
     """
-    # Try JWKS verification first (ECC/RSA — current Supabase default)
+    # Try JWKS verification first (ECC/RSA — current Supabase default).
+    # PyJWT 2.12+ strictly enforces ``algorithms`` against the JWK's ``alg``
+    # claim, so we narrow the allowlist to the algorithm the JWT itself
+    # advertises (still validated against the JWKS-resolved signing key).
     jwks = _get_jwks_client()
     if jwks:
         try:
-            signing_key = jwks.get_signing_key_from_jwt(token)
-            return pyjwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["ES256", "RS256"],
-                audience="authenticated",
-            )
+            unverified_header = pyjwt.get_unverified_header(token)
+            jwt_alg = unverified_header.get("alg")
+            if jwt_alg in {"ES256", "RS256"}:
+                signing_key = jwks.get_signing_key_from_jwt(token)
+                return pyjwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=[jwt_alg],
+                    audience="authenticated",
+                    leeway=60,
+                )
         except Exception as jwks_err:
             logger.debug("JWKS validation failed: %s", jwks_err)
             # Fall through to HS256 if JWKS fails (e.g., legacy token)
