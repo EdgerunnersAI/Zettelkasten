@@ -602,11 +602,18 @@ class HybridRetriever:
         # iter-08 Phase 6 / G3: resolve KG anchors from query metadata and
         # expand 1-hop. Boost is applied inside _dedup_and_fuse AFTER chunk-
         # share damping so neighbours keep the full +0.05 regardless of size.
-        # Phase 2.4.1: anchor_nodes / anchor_neighbours now hold typed bigint
-        # kg_node_ids (was string node_ids in v1). Phase 2.4.2 bridges these
-        # to canonical_chunk_ids via ``kg.entities_to_anchor_chunks``.
-        anchor_neighbours: set[int] = set()
+        # Phase 2.4.2: anchor_nodes (set[int] bigint kg_node_ids) +
+        # anchor_neighbour_kg_nodes (set[int]) hold the typed KG anchor set.
+        # The downstream chunk-level scoring pipeline needs canonical_chunk_ids
+        # (uuid), so we bridge bigint kg_node_ids -> canonical_chunk_id via
+        # ``kg.entities_to_anchor_chunks``. The bridge result is stored in
+        # ``anchor_neighbour_chunks`` (set[str] of canonical_chunk_id) and
+        # ``anchor_chunk_mentions`` (per-chunk mention_count + distinct
+        # kg_node_id count) for the graph-rank signal in 2.4.5.
+        anchor_neighbour_kg_nodes: set[int] = set()
         anchor_nodes: list[int] = []
+        anchor_neighbours: set[str] = set()
+        anchor_chunk_mentions: list[dict] = []
         if (
             _ANCHOR_BOOST_ENABLED
             and query_metadata is not None
@@ -620,6 +627,7 @@ class HybridRetriever:
                 from website.features.rag_pipeline.retrieval.entity_anchor import (
                     resolve_anchor_nodes,
                     get_one_hop_neighbours,
+                    entities_to_anchor_chunks,
                 )
                 entities = list(
                     (getattr(query_metadata, "authors", None) or [])
@@ -628,13 +636,26 @@ class HybridRetriever:
                 anchor_nodes = list(await resolve_anchor_nodes(
                     entities, workspace_id, self._supabase
                 ))
-                anchor_neighbours = await get_one_hop_neighbours(
+                anchor_neighbour_kg_nodes = await get_one_hop_neighbours(
                     set(anchor_nodes), workspace_id, self._supabase
                 )
+                # Anti-pattern guard: NEVER directly compare bigint kg_node_id
+                # to uuid canonical_chunk_id. Bridge via entities_to_anchor_chunks
+                # so anchor_neighbours stays in the same ID space (uuid string)
+                # as ChunkCandidate.canonical_chunk_id.
+                if anchor_neighbour_kg_nodes:
+                    anchor_chunk_mentions = await entities_to_anchor_chunks(
+                        anchor_neighbour_kg_nodes, workspace_id, self._supabase
+                    )
+                    anchor_neighbours = {
+                        m["canonical_chunk_id"] for m in anchor_chunk_mentions
+                    }
             except Exception as exc:  # noqa: BLE001 — best-effort
                 _log.debug("anchor_boost fetch failed: %s", exc)
-                anchor_neighbours = set()
+                anchor_neighbour_kg_nodes = set()
                 anchor_nodes = []
+                anchor_neighbours = set()
+                anchor_chunk_mentions = []
 
         # iter-10 P4: anchor-seed injection through pure-function gate.
         # Drops iter-09 (n_persons + n_entities) >= 1 re-gate (q10 fix);
@@ -699,6 +720,16 @@ class HybridRetriever:
             else:
                 _log.debug("anchor_seed skipped: %s", decision.reason)
 
+        # Phase 2.4.2: anchor_chunks_for_score_rank holds the canonical_chunk_id
+        # (uuid string) set used by the score-rank-correlation magnet gate's
+        # earned-exemption carve-out. Built from anchor_nodes (the seed kg_node
+        # set) bridged via entities_to_anchor_chunks; never compared directly
+        # to bigint kg_node_id.
+        anchor_chunks_for_score_rank: set[str] = (
+            {m["canonical_chunk_id"] for m in anchor_chunk_mentions
+             if int(m["kg_node_id"]) in set(anchor_nodes)}
+            if anchor_nodes else set()
+        )
         fused = self._dedup_and_fuse(
             results,
             query_variants=query_variants,
@@ -707,7 +738,7 @@ class HybridRetriever:
             chunk_counts=chunk_counts,
             effective_nodes=effective_nodes,
             anchor_neighbours=anchor_neighbours,
-            anchor_nodes=set(anchor_nodes) if anchor_nodes else None,
+            anchor_nodes=anchor_chunks_for_score_rank if anchor_chunks_for_score_rank else None,
             anchor_seeds=anchor_seeds,
             anchor_seed_floor=_bandit_floor,
         )
