@@ -111,9 +111,55 @@ Verified against the live schema in `_v2/01_core_schema.sql`, `_v2/02_content_sc
 - `content.workspace_zettels` ALREADY has the partial index `idx_workspace_zettels_workspace_created (workspace_id, created_at DESC) WHERE deleted_at IS NULL` (`02_content_schema.sql:92-94`). Adding a second `(id) WHERE deleted_at IS NULL` index is redundant.
 - `rag.kasten_zettels` PK is `(kasten_id, workspace_zettel_id)` (`04_rag_schema.sql:29-36`). The reverse-direction lookup `WHERE workspace_zettel_id = X` is uncovered — Amendment 4.4's soft-delete trigger would seq-scan every soft-delete without a covering index on `(workspace_zettel_id)`.
 
-### R2.1 — RLS `(SELECT …)` wrap is RLS-policy-only (BLOCKER, supabase RLS perf docs)
+### R2.1 — RLS `(SELECT …)` wrap is RLS-policy-only AND scalar-only (BLOCKER, supabase RLS perf docs)
 
-The `(SELECT core.jwt_workspace_ids())` wrap optimization applies to **per-row policy predicates only**. It is a no-op inside a `SECURITY DEFINER` RPC body (function called once per RPC). Apply it ONLY to the four RLS policies in Round-1 Amendment 1.6 on `pipelines.nexus_provider_tokens`. Do NOT modify the `IF NOT EXISTS (...)` auth checks inside the RPC bodies of Amendments 1.2 / 1.3 / 1.4 / 1.5 — those are correct as written.
+**SCOPE CORRECTION (2026-05-09 from Phase 1.B execution):** The `(SELECT …)` wrap optimisation applies to:
+
+1. **Per-row policy predicates only.** It is a no-op inside a `SECURITY DEFINER` RPC body (function called once per RPC). Apply it ONLY to RLS `USING` / `WITH CHECK` clauses, NOT to the `IF NOT EXISTS (...)` auth checks inside RPC bodies of Amendments 1.2 / 1.3 / 1.4 / 1.5.
+
+2. **Scalar-returning STABLE functions only.** The wrap CANNOT be applied to array-returning functions like `core.jwt_workspace_ids() RETURNS uuid[]`. The expression `workspace_id = ANY ((SELECT core.jwt_workspace_ids()))` does NOT type-check — `(SELECT uuid[])` is a scalar subquery yielding a single `uuid[]` value, so `ANY` over it tries `uuid = uuid[]` and raises `operator does not exist: uuid = uuid[]`.
+
+   The Supabase `(SELECT auth.uid()) = X.profile_id` pattern works because `auth.uid()` returns scalar `uuid`. For array-returning predicates, leave the function call unwrapped: `workspace_id = ANY (core.jwt_workspace_ids())`. The PG planner already memoises STABLE no-arg calls with no per-row cost.
+
+   The `current_setting('request.jwt.claims', true)::jsonb ->> 'role'` predicate IS scalar `text`, so the wrap is correct there.
+
+**Override for Amendment 1.6 RLS block (corrected for Phase 1.B):**
+
+```sql
+CREATE POLICY nexus_tokens_select ON pipelines.nexus_provider_tokens
+  FOR SELECT USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY nexus_tokens_insert ON pipelines.nexus_provider_tokens
+  FOR INSERT WITH CHECK (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY nexus_tokens_update ON pipelines.nexus_provider_tokens
+  FOR UPDATE USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY nexus_tokens_delete ON pipelines.nexus_provider_tokens
+  FOR DELETE USING (workspace_id = ANY (core.jwt_workspace_ids()));
+CREATE POLICY nexus_tokens_service_all ON pipelines.nexus_provider_tokens
+  FOR ALL
+  USING ((SELECT current_setting('request.jwt.claims', true)::jsonb ->> 'role') = 'service_role')
+  WITH CHECK ((SELECT current_setting('request.jwt.claims', true)::jsonb ->> 'role') = 'service_role');
+```
+
+This correction matches the canonical pattern in `_v2/08_rls_policies.sql` (jwt_workspace_ids() unwrapped at lines 127, 136, 141, 154).
+
+### R2.1.1 — Standard practice: explicit table-level GRANT on RLS-protected tables (BLOCKER, surfaced 2026-05-09 from Phase 1.B execution)
+
+PostgreSQL evaluates **table-level privileges BEFORE RLS**. RLS only filters rows the role is already permitted to access at the table level. Without explicit GRANTs, queries fail with `permission denied for table <t>` (SQLSTATE 42501) BEFORE RLS is consulted, regardless of what the policies allow.
+
+**Rule:** Every Phase-1 onwards migration that creates a RLS-protected table MUST include explicit table-level GRANTs. The `_v2/08_rls_policies.sql` file granted on the original tables once at apply-time; new tables added in later migrations must self-grant.
+
+**Standard pattern for any new RLS table:**
+```sql
+ALTER TABLE <schema>.<table> ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE <schema>.<table>
+    TO authenticated, service_role;
+-- (Do NOT grant to anon; authenticated covers signed-in users; service_role bypasses RLS.)
+
+CREATE POLICY ... -- as needed
+```
+
+This block must appear in the migration file alongside the table definition. Phase 1.B's `_v2/16_nexus_tokens.sql` is the canonical example.
 
 **Override for Amendment 1.6 RLS block:**
 
@@ -1134,6 +1180,17 @@ END $$;
 
 - [ ] **Step 1:** Set `TEST_KASTEN_ID` + `TEST_WORKSPACE_ZETTEL_IDS` in CI secrets via `set_github_secrets.sh`.
 - [ ] **Step 2:** Re-enable `tests/integration_tests/test_rag_sandbox_rpc.py` (currently skipped).
+
+### Task 7.4: Drop redundant retrieval index (added 2026-05-09 from Phase 1.A code-quality review)
+
+The Round-2 R2.3 amendment added `idx_retrieval_signal_workspace_class_target (workspace_id, query_class, target_canonical_chunk_id) INCLUDE (source_canonical_chunk_id, weight)`. This is a strict superset of the pre-existing `idx_retrieval_signal_workspace_target (workspace_id, target_canonical_chunk_id)`: every query the old index serves can be satisfied by the new index with index-only scans. The old index is dead weight on every INSERT/UPDATE.
+
+- [ ] Drop the redundant index after Phase 6 lands cleanly:
+  ```sql
+  -- supabase/website/_v2/18_drop_redundant_retrieval_index.sql (Phase 7 micro-migration)
+  DROP INDEX IF EXISTS rag.idx_retrieval_signal_workspace_target;
+  ```
+- [ ] Verify no new query regressions via `EXPLAIN ANALYZE` on `rag.search_signal_weights` (the index switch should be transparent — same or better plan).
 
 ### Task 7.3: Post-cutover monitoring dashboard
 
