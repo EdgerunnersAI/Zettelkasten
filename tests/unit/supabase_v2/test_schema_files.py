@@ -37,6 +37,8 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "22_kg_aliases_table.sql",
         "23_resolve_entity_anchors_rpc.sql",
         "24_entities_to_anchor_chunks_rpc.sql",
+        "25_search_chunks_enriched_kasten.sql",
+        "26_hybrid_search_chunks_kasten.sql",
     ]
 
 
