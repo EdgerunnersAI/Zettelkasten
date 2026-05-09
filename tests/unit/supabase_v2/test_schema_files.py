@@ -26,6 +26,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "08_rls_policies.sql",
         "09_seed_scorer_registry.sql",
         "10_hnsw_indexes.sql",
+        "11_post_install.sql",
     ]
 
 

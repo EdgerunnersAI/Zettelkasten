@@ -306,9 +306,6 @@
     "pricing_check_entitlement(p_render_user_id text, p_meter text, p_action_id text)": {
       "return_type": "boolean"
     },
-    "pricing_consume_entitlement(p_render_user_id text, p_meter text, p_action_id text)": {
-      "return_type": "boolean"
-    },
     "pricing_deduct_pack_credits(p_render_user_id text, p_meter text, p_quantity integer)": {
       "return_type": "bigint"
     },
