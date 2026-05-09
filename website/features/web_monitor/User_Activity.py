@@ -6,8 +6,9 @@ convention already established by DO_Alerts.py and App_Errors.py.
 
 Events surfaced:
     1. ``notify_new_signup(...)``      — first successful row insert into
-       ``kg_users``. Called from KGRepository.get_or_create_user() the
-       moment a brand-new user lands (OAuth or email signup, uniform path).
+       ``core.profiles`` (v2). Called from the v2 profile-bootstrap path
+       the moment a brand-new user lands (OAuth or email signup, uniform
+       path).
     2. ``notify_pricing_visit(...)``   — GET /pricing hit, throttled to
        one alert per IP per hour so bots / refresh-spam don't drown the
        channel.
@@ -19,11 +20,12 @@ Events surfaced:
 
 Wiring (one-time):
 
-    # website/core/supabase_kg/repository.py, in get_or_create_user() after insert
+    # website/core/supabase_v2/repositories/core_repository.py — after a new
+    # core.profiles row has been inserted via ensure_profile().
     from website.features.web_monitor.User_Activity import notify_new_signup
     import asyncio
     asyncio.create_task(notify_new_signup(
-        user_id=str(resp.data[0]["id"]),
+        user_id=str(profile_id),
         email=email,
         display_name=display_name,
         render_user_id=render_user_id,
@@ -173,14 +175,14 @@ async def notify_new_signup(
     render_user_id: str | None = None,
     signup_source: str | None = None,
 ) -> None:
-    """A new row just landed in ``kg_users`` — celebrate in Slack.
+    """A new row just landed in ``core.profiles`` — celebrate in Slack.
 
-    Called from KGRepository.get_or_create_user() immediately after the
-    INSERT succeeds. Never called on subsequent logins (that path returns
-    early on the SELECT branch).
+    Called from the v2 profile-bootstrap path immediately after the
+    INSERT into ``core.profiles`` succeeds. Never called on subsequent
+    logins (that path returns early on the SELECT branch).
 
     Args:
-        user_id: our internal Supabase UUID (primary key of kg_users).
+        user_id: our internal Supabase UUID (primary key of core.profiles).
         email: supplied by Supabase auth metadata; will be masked in Slack.
         display_name: OAuth provider display name if any.
         render_user_id: Supabase auth.users id (the ``sub`` from the JWT).
