@@ -99,9 +99,283 @@ Each Bucket-B file gets a paired test (modified or new). Same TDD cycle as the v
 
 ---
 
+## Pre-Phase-0 Amendments — Round 2 (postgres-pattern hardening, 2026-05-09)
+
+Verified against the live schema in `_v2/01_core_schema.sql`, `_v2/02_content_schema.sql`, `_v2/04_rag_schema.sql`. The 10 refinements below **override** the corresponding Round-1 SQL bodies where they conflict. Where a Round-1 amendment is silent on the topic, the Round-2 block is additive.
+
+**Verification facts the refinements rely on:**
+
+- `core.jwt_workspace_ids()` is declared `STABLE SECURITY DEFINER` in `01_core_schema.sql:95-105`. Inside a `SECURITY DEFINER` RPC body it is evaluated once per RPC call, NOT per row.
+- `rag.retrieval_signal_weights` PK is `(workspace_id, source_canonical_chunk_id, target_canonical_chunk_id, query_class)` and the only secondary index is `(workspace_id, target_canonical_chunk_id)` (`04_rag_schema.sql:85-96`). Neither covers the `(workspace_id, query_class, target_canonical_chunk_id = ANY(...))` filter pattern of `rag.search_signal_weights` without a residual in-memory `query_class` filter.
+- `content.canonical_zettels` defines `UNIQUE (normalized_url, content_hash)` and has NO `updated_at` column (`02_content_schema.sql:19-32`). DO UPDATE SET cannot reference a non-existent column.
+- `content.workspace_zettels` ALREADY has the partial index `idx_workspace_zettels_workspace_created (workspace_id, created_at DESC) WHERE deleted_at IS NULL` (`02_content_schema.sql:92-94`). Adding a second `(id) WHERE deleted_at IS NULL` index is redundant.
+- `rag.kasten_zettels` PK is `(kasten_id, workspace_zettel_id)` (`04_rag_schema.sql:29-36`). The reverse-direction lookup `WHERE workspace_zettel_id = X` is uncovered — Amendment 4.4's soft-delete trigger would seq-scan every soft-delete without a covering index on `(workspace_zettel_id)`.
+
+### R2.1 — RLS `(SELECT …)` wrap is RLS-policy-only (BLOCKER, supabase RLS perf docs)
+
+The `(SELECT core.jwt_workspace_ids())` wrap optimization applies to **per-row policy predicates only**. It is a no-op inside a `SECURITY DEFINER` RPC body (function called once per RPC). Apply it ONLY to the four RLS policies in Round-1 Amendment 1.6 on `pipelines.nexus_provider_tokens`. Do NOT modify the `IF NOT EXISTS (...)` auth checks inside the RPC bodies of Amendments 1.2 / 1.3 / 1.4 / 1.5 — those are correct as written.
+
+**Override for Amendment 1.6 RLS block:**
+
+```sql
+CREATE POLICY nexus_tokens_select ON pipelines.nexus_provider_tokens
+  FOR SELECT USING (workspace_id = ANY ((SELECT core.jwt_workspace_ids())));
+CREATE POLICY nexus_tokens_insert ON pipelines.nexus_provider_tokens
+  FOR INSERT WITH CHECK (workspace_id = ANY ((SELECT core.jwt_workspace_ids())));
+CREATE POLICY nexus_tokens_update ON pipelines.nexus_provider_tokens
+  FOR UPDATE USING (workspace_id = ANY ((SELECT core.jwt_workspace_ids())));
+CREATE POLICY nexus_tokens_delete ON pipelines.nexus_provider_tokens
+  FOR DELETE USING (workspace_id = ANY ((SELECT core.jwt_workspace_ids())));
+CREATE POLICY nexus_tokens_service_all ON pipelines.nexus_provider_tokens
+  FOR ALL USING ((SELECT current_setting('request.jwt.claims', true)::jsonb ->> 'role') = 'service_role')
+       WITH CHECK ((SELECT current_setting('request.jwt.claims', true)::jsonb ->> 'role') = 'service_role');
+```
+
+### R2.2 — `pipelines.nexus_provider_tokens.workspace_id` covering index (BLOCKER, unindexed FK + RLS predicate)
+
+The PK is `(profile_id, provider)`, leaving `workspace_id` uncovered. Every RLS predicate evaluation, every `ON DELETE CASCADE` from `core.workspaces`, and every `WHERE workspace_id = $1` query would seq-scan. **Add to Amendment 1.6 SQL after the table DDL, before the RLS block:**
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_nexus_tokens_workspace_id
+    ON pipelines.nexus_provider_tokens (workspace_id);
+```
+
+### R2.3 — `rag.retrieval_signal_weights` query-class composite index (MAJOR, hot retrieval path)
+
+`rag.search_signal_weights` filters `WHERE workspace_id = $1 AND query_class = $2 AND target_canonical_chunk_id = ANY($3)`. The existing `(workspace_id, target_canonical_chunk_id)` index forces a residual in-memory `query_class` filter post-fetch — acceptable at 10-15 users, unacceptable at 10k+ when the table grows by `workspaces × chunks × query_classes`. **Add to `_v2/13_v2_kasten_rpcs.sql` immediately after the function definition for `rag.search_signal_weights`:**
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_retrieval_signal_workspace_class_target
+    ON rag.retrieval_signal_weights (workspace_id, query_class, target_canonical_chunk_id)
+    INCLUDE (source_canonical_chunk_id, weight);
+```
+
+This index supports an index-only scan for the hot retrieval path. Existing `idx_retrieval_signal_workspace_target` is retained for reverse-direction lookups (cron recompute scans by target).
+
+### R2.4 — Drop the `set_config('hnsw.iterative_scan', …)` line in `rag.fetch_anchor_seeds_v2` (MINOR, dead code)
+
+Inside `rag.fetch_anchor_seeds_v2` the inner query filters `cc.id = ANY (p_anchor_canonical_chunk_ids)` BEFORE the distance ordering. The planner picks a B-tree id scan plus sequential distance compute — the HNSW index never enters the plan, making the iterative-scan setting a no-op. **Override Amendment 1.4: remove the line `PERFORM set_config('hnsw.iterative_scan','relaxed_order', true);`** from the function body. No other change.
+
+### R2.5 — `_v2/15_drop_legacy_tables.sql` pre-flight `pg_depend` enumeration (BLOCKER, CASCADE blast radius)
+
+`DROP … CASCADE` silently drops dependent views, materialised views, RLS policies, triggers, and FKs that are NOT on the verbatim 22-table list. This violates Round-1 Amendment 6.1's "verbatim list" guarantee. **Override Amendment 6.1's DROP block. Replace with:**
+
+```sql
+-- Pre-flight: enumerate every dependent object outside the allow-list.
+-- Halt the migration if any dependent will be dropped that operator did not approve.
+DO $$
+DECLARE
+    allow_list text[] := ARRAY[
+        'public.kg_users', 'public.kg_nodes', 'public.kg_links', 'public.kg_node_chunks',
+        'public.kg_usage_edges', 'public.kg_usage_edges_agg', 'public.kg_kasten_node_freq',
+        'public.kg_bandit_posteriors', 'public.kg_extraction_blocklist', 'public.kg_kasten_metrics',
+        'public.rag_sandboxes', 'public.rag_sandbox_members',
+        'public.chat_sessions', 'public.chat_messages',
+        'public.summary_batch_runs', 'public.summary_batch_items',
+        'public.nexus_provider_accounts', 'public.nexus_oauth_states',
+        'public.nexus_ingest_runs', 'public.nexus_ingested_artifacts',
+        'public.recompute_runs', 'public._migrations_applied'
+    ];
+    rec record;
+    unexpected_dependents text := '';
+BEGIN
+    FOR rec IN
+        SELECT DISTINCT
+            n2.nspname || '.' || c2.relname AS dependent_object,
+            n1.nspname || '.' || c1.relname AS legacy_table,
+            c2.relkind AS dependent_kind
+        FROM pg_depend d
+        JOIN pg_class c1 ON c1.oid = d.refobjid
+        JOIN pg_namespace n1 ON n1.oid = c1.relnamespace
+        JOIN pg_class c2 ON c2.oid = d.objid
+        JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
+        WHERE n1.nspname || '.' || c1.relname = ANY (allow_list)
+          AND c2.oid <> c1.oid
+          AND (n2.nspname || '.' || c2.relname) <> ALL (allow_list)
+          AND c2.relkind IN ('r', 'v', 'm', 'f', 'p')  -- tables, views, mviews, foreign, partitioned
+    LOOP
+        unexpected_dependents := unexpected_dependents
+            || format(E'  - %s (kind=%s) depends on %s\n',
+                     rec.dependent_object, rec.dependent_kind, rec.legacy_table);
+    END LOOP;
+    IF length(unexpected_dependents) > 0 THEN
+        RAISE EXCEPTION E'Legacy table drop blocked: dependents outside allow-list:\n%\nOperator must approve each before re-running.', unexpected_dependents;
+    END IF;
+END $$;
+
+-- 14-day soak guard (carried over from Round-1 Amendment 6.2)
+DO $$
+DECLARE
+  cutover_at timestamptz;
+BEGIN
+  SELECT applied_at INTO cutover_at FROM core._migrations_applied
+   WHERE name = '11_post_install.sql';
+  IF cutover_at IS NULL THEN
+    RAISE EXCEPTION 'Cannot drop legacy tables: 11_post_install.sql not applied';
+  END IF;
+  IF (now() - cutover_at) < INTERVAL '14 days' THEN
+    RAISE EXCEPTION 'Legacy table drop blocked: only % days since cutover (need 14)',
+      EXTRACT(DAY FROM now() - cutover_at);
+  END IF;
+END $$;
+
+-- Drops are RESTRICT (default), NOT CASCADE. Pre-flight already proved no unexpected
+-- dependents exist; if any FK/view inside the allow-list itself depends on another
+-- allow-list table, drop them in topological order below.
+DROP TABLE IF EXISTS public.kg_node_chunks RESTRICT;
+DROP TABLE IF EXISTS public.kg_usage_edges RESTRICT;
+DROP MATERIALIZED VIEW IF EXISTS public.kg_usage_edges_agg RESTRICT;
+DROP TABLE IF EXISTS public.kg_kasten_node_freq RESTRICT;
+DROP TABLE IF EXISTS public.kg_bandit_posteriors RESTRICT;
+DROP TABLE IF EXISTS public.kg_extraction_blocklist RESTRICT;
+DROP TABLE IF EXISTS public.kg_kasten_metrics RESTRICT;
+DROP TABLE IF EXISTS public.kg_links RESTRICT;
+DROP TABLE IF EXISTS public.kg_nodes RESTRICT;
+DROP TABLE IF EXISTS public.kg_users RESTRICT;
+DROP TABLE IF EXISTS public.rag_sandbox_members RESTRICT;
+DROP TABLE IF EXISTS public.rag_sandboxes RESTRICT;
+DROP TABLE IF EXISTS public.chat_messages RESTRICT;
+DROP TABLE IF EXISTS public.chat_sessions RESTRICT;
+DROP TABLE IF EXISTS public.summary_batch_items RESTRICT;
+DROP TABLE IF EXISTS public.summary_batch_runs RESTRICT;
+DROP TABLE IF EXISTS public.nexus_ingested_artifacts RESTRICT;
+DROP TABLE IF EXISTS public.nexus_ingest_runs RESTRICT;
+DROP TABLE IF EXISTS public.nexus_oauth_states RESTRICT;
+DROP TABLE IF EXISTS public.nexus_provider_accounts RESTRICT;
+DROP TABLE IF EXISTS public.recompute_runs RESTRICT;
+DROP TABLE IF EXISTS public._migrations_applied RESTRICT;
+```
+
+If any individual `DROP … RESTRICT` raises a dependency error, the migration halts; that dependency was missed by the pre-flight (e.g., a view in a non-`public` schema), and operator must triage before retrying. CASCADE is never used.
+
+The Round-1 Amendment 6.1 line "PLUS the deprecated `pricing_*` legacy public-schema rows" is REMOVED (Round-1 Amendment 6.1 already removed it). This Round-2 block is the only authoritative DROP source.
+
+### R2.6 — `content.upsert_canonical_zettel` ON CONFLICT clause (BLOCKER, race-test correctness)
+
+`ON CONFLICT … DO NOTHING` returns zero rows on conflict — the parallel race-test in Amendment 2.0 ("10 parallel `asyncio.gather` calls → exactly 1 `was_new=True`") would fail because the 9 conflicting calls receive no row. The `(xmax = 0) AS was_new` trick requires the row to be RETURNED, which means `DO UPDATE` with a no-op SET. Since `content.canonical_zettels` has NO `updated_at` column, use a literal self-assign:
+
+**Override the Amendment 2.0 RPC body for `content.upsert_canonical_zettel`:**
+
+```sql
+CREATE OR REPLACE FUNCTION content.upsert_canonical_zettel(
+    p_normalized_url   text,
+    p_content_hash     bytea,
+    p_source_type      text,
+    p_title            text,
+    p_body_md          text,
+    p_publication_date date,
+    p_source_metadata  jsonb
+) RETURNS TABLE (id uuid, was_new boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+    RETURN QUERY
+        INSERT INTO content.canonical_zettels (
+            normalized_url, content_hash, source_type, title,
+            body_md, publication_date, source_metadata
+        )
+        VALUES (
+            p_normalized_url, p_content_hash, p_source_type, p_title,
+            p_body_md, p_publication_date, p_source_metadata
+        )
+        ON CONFLICT (normalized_url, content_hash)
+        DO UPDATE SET normalized_url = EXCLUDED.normalized_url  -- literal no-op; retains row in RETURNING
+        RETURNING canonical_zettels.id, (xmax = 0) AS was_new;
+END $$;
+GRANT EXECUTE ON FUNCTION content.upsert_canonical_zettel(text, bytea, text, text, text, date, jsonb)
+    TO authenticated, service_role;
+```
+
+The literal self-assign `SET normalized_url = EXCLUDED.normalized_url` returns the row WITHOUT firing any update-side trigger semantically (the value does not change), and `xmax = 0` correctly reports the inserter even under concurrent contention.
+
+### R2.7 — Pricing golden-file: hash logical body, not `pg_get_functiondef` text (MAJOR, brittleness)
+
+`pg_get_functiondef` byte-equality is brittle to PG minor-version whitespace changes, `search_path` reformatting, and `GRANT` reordering. Replace the golden-file approach in Round-1 Amendment 0.8 with a hash of the **logical** function definition pulled from `pg_proc`. **Override Amendment 0.8 Step 3 test body:**
+
+```python
+@pytest.mark.live
+async def test_pricing_consume_entitlement_body_unchanged(asyncpg_pool):
+    """Defends against any redefinition of consume_entitlement (audit A.2).
+    Hashes (prosrc, proargtypes, provolatile, prosecdef, prorettype) — robust
+    to whitespace and pg_get_functiondef reformatting across pg minor versions.
+    """
+    actual_hash = await asyncpg_pool.fetchval("""
+        SELECT md5(
+            prosrc
+            || ':' || proargtypes::text
+            || ':' || provolatile::text
+            || ':' || prosecdef::text
+            || ':' || prorettype::text
+        )
+        FROM pg_proc
+        WHERE oid = 'billing.pricing_consume_entitlement(uuid,text,text)'::regprocedure
+    """)
+    golden_hash = open("supabase/website/_v2/golden/pricing_consume_entitlement.md5").read().strip()
+    assert actual_hash == golden_hash, (
+        f"pricing_consume_entitlement logical body drifted from golden hash. "
+        f"Actual: {actual_hash}, golden: {golden_hash}. "
+        "If this is intentional, regenerate the golden file ONLY with operator approval."
+    )
+```
+
+**Replace `_v2/golden/pricing_consume_entitlement.sql`** with `_v2/golden/pricing_consume_entitlement.md5` containing the exact md5 string captured against the current production function definition.
+
+### R2.8 — Reverse-direction index on `rag.kasten_zettels (workspace_zettel_id)` (BLOCKER, swaps R1's redundant partial index)
+
+The originally proposed partial index `(id) WHERE deleted_at IS NULL` on `content.workspace_zettels` is **redundant** — `idx_workspace_zettels_workspace_created (workspace_id, created_at DESC) WHERE deleted_at IS NULL` already exists at `02_content_schema.sql:92-94`. The genuine missing index is on `rag.kasten_zettels (workspace_zettel_id)` to support the soft-delete trigger added in Round-1 Amendment 4.4 (which scans `WHERE workspace_zettel_id = OLD.id`). Without this index, every soft-delete seq-scans the kasten_zettels table.
+
+**Add to `_v2/13_v2_kasten_rpcs.sql` (or a new `_v2/18_supporting_indexes.sql` if 13 is bloated):**
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_kasten_zettels_workspace_zettel
+    ON rag.kasten_zettels (workspace_zettel_id);
+```
+
+This is the reverse-direction FK index for the PK `(kasten_id, workspace_zettel_id)`.
+
+### R2.9 — Soft-delete trigger predicate transition-only (BLOCKER, idempotency)
+
+Round-1 Amendment 4.4's trigger predicate `WHEN (NEW.deleted_at IS NOT NULL)` re-fires on every UPDATE of an already-deleted row (e.g., reaper sweep updating other columns). Tighten to fire only on the NULL → not-NULL transition:
+
+**Override Amendment 4.4 trigger DDL:**
+
+```sql
+CREATE OR REPLACE FUNCTION content.fn_propagate_zettel_soft_delete()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    DELETE FROM rag.kasten_zettels WHERE workspace_zettel_id = OLD.id;
+    RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_workspace_zettels_soft_delete_propagate
+    ON content.workspace_zettels;
+
+CREATE TRIGGER trg_workspace_zettels_soft_delete_propagate
+    AFTER UPDATE OF deleted_at ON content.workspace_zettels
+    FOR EACH ROW
+    WHEN (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL)
+    EXECUTE FUNCTION content.fn_propagate_zettel_soft_delete();
+```
+
+The `AFTER UPDATE OF deleted_at` clause AND the `WHEN` predicate together guarantee the trigger fires exactly once per soft-delete event, regardless of how many later updates touch the row.
+
+### R2.10 — PostgREST `NOTIFY pgrst, 'reload schema'` is belt-and-braces on Supabase managed (MINOR, doc clarity)
+
+Supabase managed Postgres reloads the PostgREST schema cache automatically on a poll interval (~10s default per Supabase docs). The explicit `NOTIFY pgrst, 'reload schema'` in Round-1 Amendment 1.7 accelerates the reload to ≤1s. Keep the NOTIFY (zero-cost belt-and-braces) but tighten the documented sleep window:
+
+**Override Amendment 1.7 cadence:**
+
+> After every Phase-1 task that adds a function:
+> ```sql
+> NOTIFY pgrst, 'reload config';
+> NOTIFY pgrst, 'reload schema';
+> ```
+> Then sleep 2 seconds before re-running the test against the supabase-py client. (Self-hosted PostgREST honours NOTIFY immediately; Supabase managed honours within ~1s. The 5-10s wait in Round-1 was overly conservative; 2s is sufficient with NOTIFY, and the 60s default poll is the fallback if NOTIFY is dropped.)
+
+---
+
 ## Pre-Phase-0 Amendments (folded in from bulletproof audit 2026-05-09)
 
-The original Phase 0 was insufficient. These amendments add 31 BLOCKER+MAJOR items the bulletproof audit surfaced. Read every amendment before executing the corresponding phase.
+The original Phase 0 was insufficient. These amendments add 31 BLOCKER+MAJOR items the bulletproof audit surfaced. Read every amendment before executing the corresponding phase. **Where Round-2 above conflicts with a Round-1 amendment below, Round-2 wins.**
 
 ### Amendment 0.0 — Clean working tree (BLOCKER, audit L.7)
 
