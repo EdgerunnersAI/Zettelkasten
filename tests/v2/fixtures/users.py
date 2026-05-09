@@ -9,16 +9,33 @@ from __future__ import annotations
 
 import time
 import uuid
+from typing import NamedTuple
+
+from postgrest.exceptions import APIError
 
 from website.core.supabase_v2.client import get_v2_anon_client, get_v2_client
 
 _DEFAULT_PASSWORD = "x" * 16
 
 
-def mint_test_user_with_workspaces(
-    *, workspace_count: int = 1
-) -> tuple[uuid.UUID, list[uuid.UUID], str]:
-    """Create a fresh Supabase auth user, sign them in, return (profile_id, [workspace_ids], jwt).
+class MintedUser(NamedTuple):
+    """Result of ``mint_test_user_with_workspaces``.
+
+    ``auth_user_id`` is the ``auth.users.id`` UUID — this is what
+    ``delete_test_user`` requires for teardown. ``profile_id`` is the
+    ``core.profiles.id`` UUID; today the FK invariant makes them equal,
+    but callers should not rely on that and should use ``auth_user_id``
+    explicitly when deleting.
+    """
+
+    auth_user_id: uuid.UUID
+    profile_id: uuid.UUID
+    workspace_ids: list[uuid.UUID]
+    jwt: str
+
+
+def mint_test_user_with_workspaces(*, workspace_count: int = 1) -> MintedUser:
+    """Create a fresh Supabase auth user, sign them in, return a ``MintedUser``.
 
     Steps:
       1. Service-role client creates an auth user with a unique e2e email. The
@@ -28,14 +45,16 @@ def mint_test_user_with_workspaces(
       2. Briefly poll for the profile + personal workspace via the service-role
          PostgREST client (the trigger chain is synchronous, but the auth API
          response and the profile/workspace rows can show up on slightly
-         different read snapshots in practice).
+         different read snapshots in practice). Only ``APIError`` with the
+         "no rows" code (PGRST116) is treated as transient — every other error
+         re-raises immediately so tests fail fast.
       3. If ``workspace_count`` > 1, insert additional workspaces (with
          ``is_personal=false``) and matching owner ``workspace_members`` rows.
          The personal workspace is always first in the returned list.
       4. Sign in via the anon client to mint a fresh JWT (whose
          ``app_metadata.workspace_ids`` is populated by the
          ``trg_workspace_members_jwt_sync`` trigger).
-      5. Return ``(profile_id, workspace_ids, jwt)``.
+      5. Return ``MintedUser(auth_user_id, profile_id, workspace_ids, jwt)``.
     """
     if workspace_count < 1:
         raise ValueError("workspace_count must be >= 1")
@@ -55,22 +74,26 @@ def mint_test_user_with_workspaces(
     auth_user_id = uuid.UUID(str(auth_user.id))
 
     # Wait briefly for the auth -> profile -> personal-workspace trigger chain.
+    # Narrow transient catch: only PGRST116 ("no rows") is retried; anything
+    # else (auth, 401/403, 5xx) re-raises so the test fails fast.
     profile_id: uuid.UUID | None = None
     personal_ws_id: uuid.UUID | None = None
     deadline = time.monotonic() + 5.0
     last_err: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            profile_row = (
-                service.schema("core")
-                .table("profiles")
-                .select("id")
-                .eq("id", str(auth_user_id))
-                .maybe_single()
-                .execute()
-            )
-            if profile_row and profile_row.data:
-                profile_id = uuid.UUID(str(profile_row.data["id"]))
+            if profile_id is None:
+                profile_row = (
+                    service.schema("core")
+                    .table("profiles")
+                    .select("id")
+                    .eq("id", str(auth_user_id))
+                    .maybe_single()
+                    .execute()
+                )
+                if profile_row and profile_row.data:
+                    profile_id = uuid.UUID(str(profile_row.data["id"]))
+            if profile_id is not None and personal_ws_id is None:
                 members = (
                     service.schema("core")
                     .table("workspace_members")
@@ -80,15 +103,23 @@ def mint_test_user_with_workspaces(
                 )
                 if members.data:
                     personal_ws_id = uuid.UUID(str(members.data[0]["workspace_id"]))
-                    break
-        except Exception as exc:  # noqa: BLE001 — retry loop, propagate at end
-            last_err = exc
+            if profile_id is not None and personal_ws_id is not None:
+                break
+        except APIError as exc:
+            # PGRST116 = "no rows returned" from .maybe_single()/.single() — transient
+            # while the trigger chain is still propagating. Anything else is permanent.
+            if getattr(exc, "code", None) == "PGRST116":
+                last_err = exc
+            else:
+                raise
         time.sleep(0.25)
 
     if profile_id is None or personal_ws_id is None:
-        raise RuntimeError(
-            f"profile/personal workspace not provisioned for auth_user={auth_user_id} "
-            f"after trigger chain (last error={last_err!r})"
+        raise TimeoutError(
+            f"Trigger handle_new_auth_user did not produce profile+workspace within 5s "
+            f"for auth_user={auth_user_id} "
+            f"(profile_found={profile_id is not None}, "
+            f"workspace_found={personal_ws_id is not None}, last_err={last_err!r})"
         )
 
     workspace_ids: list[uuid.UUID] = [personal_ws_id]
@@ -134,7 +165,12 @@ def mint_test_user_with_workspaces(
         )
     jwt = session.access_token
 
-    return profile_id, workspace_ids, jwt
+    return MintedUser(
+        auth_user_id=auth_user_id,
+        profile_id=profile_id,
+        workspace_ids=workspace_ids,
+        jwt=jwt,
+    )
 
 
 def delete_test_user(auth_user_id: uuid.UUID) -> None:
