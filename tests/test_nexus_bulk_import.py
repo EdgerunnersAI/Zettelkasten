@@ -5,12 +5,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
+
 from website.experimental_features.nexus.service.bulk_import import run_provider_import
 from website.experimental_features.nexus.source_ingest.common.models import (
     ImportRequest,
     NexusProvider,
     ProviderArtifact,
     StoredProviderAccount,
+)
+
+# Phase 3.5: bulk_import was rebased from public.nexus_ingest_runs +
+# public.nexus_ingested_artifacts (v1) onto pipelines.pipeline_runs +
+# pipelines.pipeline_run_items. The patches below target legacy v1 helper
+# names and shapes that no longer exist; new v2 coverage lives in
+# tests/unit/experimental_features/test_nexus_v2.py.
+pytestmark = pytest.mark.skip(
+    reason="v1 nexus bulk_import retired in Phase 3.5; replaced by tests/unit/experimental_features/test_nexus_v2.py"
 )
 
 

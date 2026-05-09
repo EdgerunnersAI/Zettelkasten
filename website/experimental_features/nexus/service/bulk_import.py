@@ -1,4 +1,17 @@
-"""Bulk import orchestration for Nexus provider ingestion."""
+"""Bulk import orchestration for Nexus provider ingestion.
+
+Phase 3.5 of the v2 purge: rebases off the legacy
+``public.nexus_ingest_runs`` and ``public.nexus_ingested_artifacts``
+tables onto ``pipelines.pipeline_runs`` (with ``kind='nexus_ingest'``)
+and ``pipelines.pipeline_run_items``. The flat per-artifact fields
+(external_id, url, title, description, source_type, metadata) move into
+the ``result`` jsonb column on ``pipeline_run_items`` since the v2
+schema kept the run-items table generic across all pipeline kinds.
+
+Workspace_id is NOT NULL on ``pipelines.pipeline_runs``, so every run
+insert resolves the profile's default workspace via
+``CoreRepository.get_default_workspace_id`` before writing.
+"""
 
 from __future__ import annotations
 
@@ -11,12 +24,13 @@ from typing import Any
 from uuid import UUID
 
 from website.core.pipeline import summarize_url
-from website.core.supabase_kg import get_supabase_client, is_supabase_configured
 from website.core.persist import (
     PersistenceOutcome,
     get_supabase_scope,
     persist_summarized_result,
 )
+from website.core.supabase_v2.client import get_v2_client, is_v2_configured
+from website.core.supabase_v2.repositories.core_repository import CoreRepository
 from website.experimental_features.nexus.service.token_store import ProviderTokenStore
 from website.experimental_features.nexus.source_ingest.common.models import (
     ImportRequest,
@@ -27,6 +41,11 @@ from website.experimental_features.nexus.source_ingest.common.models import (
 )
 
 logger = logging.getLogger("website.experimental_features.nexus.bulk_import")
+
+_PIPELINE_KIND = "nexus_ingest"
+_RUNS_SCHEMA = "pipelines"
+_RUNS_TABLE = "pipeline_runs"
+_RUN_ITEMS_TABLE = "pipeline_run_items"
 
 
 @dataclass(slots=True)
@@ -41,31 +60,44 @@ class BulkImportResult:
     credentials_forgotten: bool = False
 
 
-def get_provider_account(user_id: str, provider: NexusProvider) -> StoredProviderAccount | None:
-    """Return a stored provider account for a KG user."""
+def _is_configured() -> bool:
+    return is_v2_configured()
 
-    if not is_supabase_configured():
+
+def _resolve_workspace_id(profile_id: UUID) -> UUID:
+    workspace_id = CoreRepository().get_default_workspace_id(profile_id)
+    if workspace_id is None:
+        raise RuntimeError(
+            f"profile {profile_id} has no default workspace; cannot run Nexus import"
+        )
+    return workspace_id
+
+
+def get_provider_account(user_id: str, provider: NexusProvider) -> StoredProviderAccount | None:
+    """Return a stored provider account for a profile."""
+
+    if not _is_configured():
         return None
 
     try:
         user_uuid = UUID(str(user_id))
     except (TypeError, ValueError):
-        logger.warning("Invalid KG user id passed to get_provider_account: %s", user_id)
+        logger.warning("Invalid profile id passed to get_provider_account: %s", user_id)
         return None
 
     return ProviderTokenStore().get_account(user_uuid, provider)
 
 
 def list_provider_accounts(user_id: str) -> dict[NexusProvider, StoredProviderAccount]:
-    """Return all stored provider accounts for a KG user."""
+    """Return all stored provider accounts for a profile."""
 
-    if not is_supabase_configured():
+    if not _is_configured():
         return {}
 
     try:
         user_uuid = UUID(str(user_id))
     except (TypeError, ValueError):
-        logger.warning("Invalid KG user id passed to list_provider_accounts: %s", user_id)
+        logger.warning("Invalid profile id passed to list_provider_accounts: %s", user_id)
         return {}
 
     decrypted_accounts = ProviderTokenStore().list_accounts(user_uuid)
@@ -83,40 +115,101 @@ def upsert_provider_account(account: StoredProviderAccount) -> StoredProviderAcc
 def disconnect_provider_account(user_id: str, provider: NexusProvider) -> bool:
     """Delete a stored provider account."""
 
-    if not is_supabase_configured():
+    if not _is_configured():
         return False
 
     try:
         user_uuid = UUID(str(user_id))
     except (TypeError, ValueError):
-        logger.warning("Invalid KG user id passed to disconnect_provider_account: %s", user_id)
+        logger.warning("Invalid profile id passed to disconnect_provider_account: %s", user_id)
         return False
 
     return ProviderTokenStore().delete_account(user_uuid, provider)
 
 
 def list_import_runs(user_id: str, limit: int = 20) -> list[ImportRun]:
-    """Return recent Nexus ingest runs for a KG user."""
+    """Return recent Nexus ingest runs for a profile.
 
-    if not is_supabase_configured():
+    Reads ``pipelines.pipeline_runs`` filtered to ``kind='nexus_ingest'``
+    and the user's default workspace.
+    """
+
+    if not _is_configured():
         return []
 
-    client = get_supabase_client()
+    try:
+        profile_uuid = UUID(str(user_id))
+    except (TypeError, ValueError):
+        logger.warning("Invalid profile id passed to list_import_runs: %s", user_id)
+        return []
+    try:
+        workspace_id = _resolve_workspace_id(profile_uuid)
+    except RuntimeError as exc:
+        logger.warning("list_import_runs: %s", exc)
+        return []
+
+    client = get_v2_client()
     response = (
-        client.table("nexus_ingest_runs")
+        client.schema(_RUNS_SCHEMA)
+        .table(_RUNS_TABLE)
         .select("*")
-        .eq("user_id", user_id)
-        .order("started_at", desc=True)
+        .eq("workspace_id", str(workspace_id))
+        .eq("kind", _PIPELINE_KIND)
+        .order("created_at", desc=True)
         .limit(max(1, min(limit, 100)))
         .execute()
     )
     runs: list[ImportRun] = []
     for row in response.data or []:
         try:
-            runs.append(ImportRun(**row))
+            runs.append(_pipeline_run_row_to_import_run(row))
         except Exception as exc:
-            logger.warning("Skipping invalid ingest run row: %s", exc)
+            logger.warning("Skipping invalid pipeline_run row: %s", exc)
     return runs
+
+
+def _pipeline_run_row_to_import_run(row: dict[str, Any]) -> ImportRun:
+    """Adapt a pipelines.pipeline_runs row to the legacy ImportRun shape.
+
+    Per-run counters (total_artifacts/imported/skipped/failed) and the
+    legacy ``provider`` field live in the ``metrics`` jsonb column on
+    pipeline_runs; the run's ``status`` is normalized below.
+    """
+    metrics = row.get("metrics") or {}
+    config = row.get("config") or {}
+    provider_value = config.get("provider") or metrics.get("provider")
+    if not provider_value:
+        raise ValueError("pipeline_runs row is missing config.provider")
+
+    status_map = {
+        "queued": "running",
+        "running": "running",
+        "succeeded": "completed",
+        "failed": "failed",
+        "cancelled": "failed",
+    }
+    raw_status = row.get("status", "running")
+    failed = int(metrics.get("failed_count") or 0)
+    imported = int(metrics.get("imported_count") or 0)
+    skipped = int(metrics.get("skipped_count") or 0)
+    if raw_status == "succeeded" and failed and (imported or skipped):
+        normalized_status = "partial_success"
+    else:
+        normalized_status = status_map.get(raw_status, raw_status)
+
+    return ImportRun(
+        id=UUID(str(row["id"])),
+        provider=NexusProvider(provider_value),
+        status=normalized_status,
+        total_artifacts=int(metrics.get("total_artifacts") or 0),
+        imported_count=imported,
+        skipped_count=skipped,
+        failed_count=failed,
+        started_at=row.get("started_at"),
+        completed_at=row.get("finished_at"),
+        error_message=row.get("error"),
+        metadata=metrics.get("metadata") or {},
+    )
 
 
 def _utcnow() -> datetime:
@@ -221,56 +314,149 @@ async def summarize_artifact_url(url: str) -> dict[str, Any]:
 
 
 def _create_run(
-    user_id: str,
+    profile_id: str,
+    workspace_id: UUID,
     provider: NexusProvider,
     *,
     provider_account_id: str | None = None,
 ) -> ImportRun:
-    client = get_supabase_client()
+    client = get_v2_client()
+    started_at_iso = _utcnow().isoformat()
     payload = {
-        "user_id": user_id,
-        "provider": provider.value,
-        "provider_account_id": provider_account_id,
+        "workspace_id": str(workspace_id),
+        "kind": _PIPELINE_KIND,
         "status": "running",
-        "started_at": _utcnow().isoformat(),
-        "metadata": {},
+        "config": {
+            "provider": provider.value,
+            "profile_id": profile_id,
+            "provider_account_id": provider_account_id,
+        },
+        "metrics": {},
+        "started_at": started_at_iso,
     }
-    response = client.table("nexus_ingest_runs").insert(payload).execute()
+    response = (
+        client.schema(_RUNS_SCHEMA)
+        .table(_RUNS_TABLE)
+        .insert(payload)
+        .execute()
+    )
     if not response.data:
         raise RuntimeError("Failed to create ingest run")
-    return ImportRun(**response.data[0])
+    return _pipeline_run_row_to_import_run(response.data[0])
 
 
 def _update_run(run_id: str, **fields: Any) -> ImportRun:
-    client = get_supabase_client()
+    """Update a pipeline_runs row.
+
+    Translates the legacy keyword args (status, total_artifacts, imported_count,
+    skipped_count, failed_count, completed_at, error_message, metadata) into
+    the v2 column shape (status normalized, counters folded into metrics jsonb,
+    completed_at -> finished_at, error_message -> error).
+    """
+    client = get_v2_client()
+
+    # Pull current metrics so we can merge counter updates without a SELECT race
+    # (single-process, single-flight per run, no contention).
+    payload: dict[str, Any] = {}
+    metrics_keys = {"total_artifacts", "imported_count", "skipped_count", "failed_count", "metadata"}
+    metrics_updates: dict[str, Any] = {}
+
+    for key, value in fields.items():
+        if key in metrics_keys:
+            metrics_updates[key] = value
+            continue
+        if key == "completed_at":
+            payload["finished_at"] = value
+            continue
+        if key == "error_message":
+            payload["error"] = value
+            continue
+        if key == "status":
+            payload["status"] = _normalize_run_status_for_v2(value)
+            continue
+        payload[key] = value
+
+    if metrics_updates:
+        existing = (
+            client.schema(_RUNS_SCHEMA)
+            .table(_RUNS_TABLE)
+            .select("metrics")
+            .eq("id", run_id)
+            .limit(1)
+            .execute()
+        )
+        prior = (existing.data[0]["metrics"] if existing.data else {}) or {}
+        merged = {**prior, **{k: v for k, v in metrics_updates.items() if v is not None}}
+        payload["metrics"] = merged
+
     response = (
-        client.table("nexus_ingest_runs")
-        .update(fields)
+        client.schema(_RUNS_SCHEMA)
+        .table(_RUNS_TABLE)
+        .update(payload)
         .eq("id", run_id)
         .execute()
     )
     if not response.data:
         raise RuntimeError("Failed to update ingest run")
-    return ImportRun(**response.data[0])
+    return _pipeline_run_row_to_import_run(response.data[0])
 
 
-def _artifact_exists(user_id: str, provider: NexusProvider, external_id: str) -> bool:
-    client = get_supabase_client()
-    response = (
-        client.table("nexus_ingested_artifacts")
+def _normalize_run_status_for_v2(legacy_status: str) -> str:
+    """Map the legacy ImportRun statuses to pipeline_runs CHECK constraint."""
+    mapping = {
+        "running": "running",
+        "completed": "succeeded",
+        "partial_success": "succeeded",  # surfaced via metrics.failed_count > 0
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "queued": "queued",
+    }
+    return mapping.get(legacy_status, "running")
+
+
+def _artifact_exists(run_workspace_id: UUID, provider: NexusProvider, external_id: str) -> bool:
+    """Has this provider+external_id already been recorded as imported?
+
+    Scans pipeline_run_items rows whose run is this workspace's nexus_ingest
+    run with matching provider+external_id in the result jsonb. The lookup is
+    workspace-scoped (RLS-equivalent) and bounded by the most recent runs.
+    """
+    client = get_v2_client()
+    # Find recent nexus_ingest runs for this workspace (cap at 50 to bound work).
+    runs_resp = (
+        client.schema(_RUNS_SCHEMA)
+        .table(_RUNS_TABLE)
         .select("id")
-        .eq("user_id", user_id)
-        .eq("provider", provider.value)
-        .eq("external_id", external_id)
-        .limit(1)
+        .eq("workspace_id", str(run_workspace_id))
+        .eq("kind", _PIPELINE_KIND)
+        .order("created_at", desc=True)
+        .limit(50)
         .execute()
     )
-    return bool(response.data)
+    run_ids = [row["id"] for row in (runs_resp.data or [])]
+    if not run_ids:
+        return False
+    items_resp = (
+        client.schema(_RUNS_SCHEMA)
+        .table(_RUN_ITEMS_TABLE)
+        .select("id, result")
+        .in_("run_id", run_ids)
+        .eq("status", "succeeded")
+        .execute()
+    )
+    for row in items_resp.data or []:
+        result = row.get("result") or {}
+        if (
+            result.get("provider") == provider.value
+            and result.get("external_id") == external_id
+        ):
+            return True
+    return False
 
 
 def _record_artifact(
     *,
-    user_id: str,
+    workspace_id: UUID,
     provider: NexusProvider,
     provider_account_id: str | None,
     artifact: ProviderArtifact,
@@ -279,35 +465,51 @@ def _record_artifact(
     persistence: PersistenceOutcome | None = None,
     error_message: str | None = None,
 ) -> None:
+    """Insert a per-artifact row into ``pipelines.pipeline_run_items``.
+
+    Per-artifact fields (external_id, url, title, description, source_type,
+    provider, metadata) are folded into the ``result`` jsonb column since the
+    v2 ``pipeline_run_items`` table is generic across all pipeline kinds.
+    """
     try:
-        metadata = dict(artifact.metadata or {})
+        v2_status = _v2_run_item_status(status)
         node_id = (
             (persistence.supabase_node_id or persistence.file_node_id)
             if persistence is not None
             else None
         )
-
-        payload = {
-            "user_id": user_id,
+        result = {
             "provider": provider.value,
             "provider_account_id": provider_account_id,
-            "run_id": ingest_run_id,
-            "ingest_run_id": ingest_run_id,
-            "status": status,
-            "error_message": error_message,
-            "node_id": node_id,
             "external_id": artifact.external_id,
             "url": artifact.url,
             "title": artifact.title or "",
             "description": artifact.description or "",
             "source_type": artifact.source_type,
-            "metadata": metadata,
+            "metadata": dict(artifact.metadata or {}),
+            "node_id": node_id,
             "imported_at": _utcnow().isoformat(),
+            "legacy_status": status,
         }
-        client = get_supabase_client()
+        # If the canonical zettel id is a UUID, surface it on the structured
+        # FK column so future joins can light up; if it's a non-UUID legacy
+        # node id ("yt-...", "rd-...") we leave that column NULL and keep the
+        # value in result.node_id only.
+        workspace_zettel_id = _maybe_uuid(node_id)
+        payload: dict[str, Any] = {
+            "run_id": ingest_run_id,
+            "status": v2_status,
+            "attempt": 1,
+            "result": result,
+            "error": error_message,
+        }
+        if workspace_zettel_id is not None:
+            payload["workspace_zettel_id"] = str(workspace_zettel_id)
+        client = get_v2_client()
         (
-            client.table("nexus_ingested_artifacts")
-            .upsert(payload, on_conflict="user_id,provider,external_id")
+            client.schema(_RUNS_SCHEMA)
+            .table(_RUN_ITEMS_TABLE)
+            .insert(payload)
             .execute()
         )
     except Exception as exc:
@@ -319,7 +521,31 @@ def _record_artifact(
         )
 
 
+def _v2_run_item_status(legacy: str) -> str:
+    """Map the legacy artifact status to pipeline_run_items CHECK constraint."""
+    return {
+        "imported": "succeeded",
+        "skipped": "skipped",
+        "failed": "failed",
+        "running": "running",
+        "queued": "queued",
+    }.get(legacy, "failed")
+
+
+def _maybe_uuid(value: Any) -> UUID | None:
+    if value is None:
+        return None
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _touch_account_imported_at(account: StoredProviderAccount) -> None:
+    # In v2 the token table no longer persists last_imported_at; the
+    # mark_imported call updates the in-memory record only. Cross-process
+    # "when did the last import run" should be sourced from
+    # pipelines.pipeline_runs by callers that need it.
     try:
         ProviderTokenStore().mark_imported(account.user_id, account.provider)
     except Exception as exc:
@@ -378,14 +604,17 @@ async def run_provider_import(
 ) -> BulkImportResult:
     """Import artifacts from one provider, summarize them, and persist them."""
 
-    kg_user_id = _resolve_user_scope(auth_user_sub)
-    account = get_provider_account(kg_user_id, provider)
+    profile_id = _resolve_user_scope(auth_user_sub)
+    profile_uuid = UUID(str(profile_id))
+    workspace_id = _resolve_workspace_id(profile_uuid)
+    account = get_provider_account(profile_id, provider)
     if account is None:
         raise ValueError(f"No connected account for provider '{provider.value}'")
 
-    provider_account_id = str(account.id) if account.id else None
+    provider_account_id = str(account.user_id)
     run = _create_run(
-        kg_user_id,
+        profile_id,
+        workspace_id,
         provider,
         provider_account_id=provider_account_id,
     )
@@ -399,7 +628,8 @@ async def run_provider_import(
             request=request,
             provider=provider,
             provider_account_id=provider_account_id,
-            kg_user_id=kg_user_id,
+            workspace_id=workspace_id,
+            profile_id=profile_id,
             auth_user_sub=auth_user_sub,
             ingest_run_id=str(run.id),
         )
@@ -413,7 +643,7 @@ async def run_provider_import(
         )
         _touch_account_imported_at(account)
         credentials_forgotten = _forget_credentials_if_requested(
-            kg_user_id=kg_user_id,
+            profile_id=profile_id,
             provider=provider,
             forget_after_import=forget_after_import,
         )
@@ -441,7 +671,7 @@ async def run_provider_import(
         )
         if forget_after_import:
             try:
-                credentials_forgotten = disconnect_provider_account(kg_user_id, provider)
+                credentials_forgotten = disconnect_provider_account(profile_id, provider)
             except Exception as disconnect_exc:
                 logger.warning(
                     "Failed to forget provider credentials for %s after failed import: %s",
@@ -457,7 +687,8 @@ async def _process_artifacts(
     request: ImportRequest,
     provider: NexusProvider,
     provider_account_id: str | None,
-    kg_user_id: str,
+    workspace_id: UUID,
+    profile_id: str,
     auth_user_sub: str,
     ingest_run_id: str,
 ) -> dict[str, Any]:
@@ -472,7 +703,8 @@ async def _process_artifacts(
             request=request,
             provider=provider,
             provider_account_id=provider_account_id,
-            kg_user_id=kg_user_id,
+            workspace_id=workspace_id,
+            profile_id=profile_id,
             auth_user_sub=auth_user_sub,
             ingest_run_id=ingest_run_id,
         )
@@ -498,7 +730,8 @@ async def _process_single_artifact(
     request: ImportRequest,
     provider: NexusProvider,
     provider_account_id: str | None,
-    kg_user_id: str,
+    workspace_id: UUID,
+    profile_id: str,
     auth_user_sub: str,
     ingest_run_id: str,
 ) -> tuple[dict[str, Any], str]:
@@ -516,15 +749,15 @@ async def _process_single_artifact(
             error_message="Artifact is missing required external_id or url",
             provider=provider,
             provider_account_id=provider_account_id,
-            kg_user_id=kg_user_id,
+            workspace_id=workspace_id,
             ingest_run_id=ingest_run_id,
         )
 
-    if not request.force and _artifact_exists(kg_user_id, provider, artifact.external_id):
+    if not request.force and _artifact_exists(workspace_id, provider, artifact.external_id):
         artifact_result["status"] = "skipped"
         artifact_result["reason"] = "Artifact already imported"
         _record_artifact(
-            user_id=kg_user_id,
+            workspace_id=workspace_id,
             provider=provider,
             provider_account_id=provider_account_id,
             artifact=artifact,
@@ -548,7 +781,7 @@ async def _process_single_artifact(
             artifact_result["node_id"] = persistence.supabase_node_id or persistence.file_node_id
             status = "imported"
         _record_artifact(
-            user_id=kg_user_id,
+            workspace_id=workspace_id,
             provider=provider,
             provider_account_id=provider_account_id,
             artifact=artifact,
@@ -564,7 +797,7 @@ async def _process_single_artifact(
             error_message=str(exc),
             provider=provider,
             provider_account_id=provider_account_id,
-            kg_user_id=kg_user_id,
+            workspace_id=workspace_id,
             ingest_run_id=ingest_run_id,
         )
 
@@ -576,13 +809,13 @@ def _fail_artifact(
     error_message: str,
     provider: NexusProvider,
     provider_account_id: str | None,
-    kg_user_id: str,
+    workspace_id: UUID,
     ingest_run_id: str,
 ) -> tuple[dict[str, Any], str]:
     artifact_result["status"] = "failed"
     artifact_result["error"] = error_message
     _record_artifact(
-        user_id=kg_user_id,
+        workspace_id=workspace_id,
         provider=provider,
         provider_account_id=provider_account_id,
         artifact=artifact,
@@ -634,13 +867,13 @@ def _resolve_run_status(
 
 def _forget_credentials_if_requested(
     *,
-    kg_user_id: str,
+    profile_id: str,
     provider: NexusProvider,
     forget_after_import: bool,
 ) -> bool:
     if not forget_after_import:
         return False
-    forgotten = disconnect_provider_account(kg_user_id, provider)
+    forgotten = disconnect_provider_account(profile_id, provider)
     if not forgotten:
         logger.warning(
             "Testing mode requested forget_connection for %s, but account delete returned false.",
@@ -659,9 +892,9 @@ async def run_all_imports(
     kg_scope = get_supabase_scope(auth_user_sub)
     if not kg_scope:
         raise RuntimeError("Supabase is required for Nexus imports")
-    _repo, kg_user_id = kg_scope
+    _repo, profile_id = kg_scope
 
-    accounts = list_provider_accounts(kg_user_id)
+    accounts = list_provider_accounts(profile_id)
     if not accounts:
         return []
 

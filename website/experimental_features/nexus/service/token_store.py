@@ -1,3 +1,30 @@
+"""Provider OAuth token store backed by ``pipelines.nexus_provider_tokens``.
+
+Phase 3.5 of the v2 purge: rebases off the legacy
+``public.nexus_provider_accounts`` table onto Phase-1.B's
+``pipelines.nexus_provider_tokens``. PK = ``(profile_id, provider)``;
+``workspace_id`` is NOT NULL (RLS predicate target).
+
+Mapping notes:
+    * v1 ``user_id`` (uuid) → v2 ``profile_id`` (uuid). Semantically the
+      same UUID; v1 ``kg_users.id`` was provisioned 1:1 with the auth
+      profile, and v2 makes that explicit by referencing
+      ``core.profiles(id)``.
+    * v2 stores only ``encrypted_token``, ``refresh_token`` (both bytea),
+      ``expires_at``. v1's ``account_id``, ``account_username``,
+      ``scopes``, ``metadata``, ``last_refreshed_at``,
+      ``last_imported_at`` are NOT persisted in v2 — the v2 schema
+      deliberately keeps the table token-only. Callers that need those
+      fields receive None / [] / {} on roundtrip; this is a documented
+      v2 simplification, not a regression.
+    * Token encryption is unchanged: same Fernet key from
+      ``NEXUS_TOKEN_ENCRYPTION_KEY``, same ciphertext format. The bytea
+      column stores the same UTF-8 base64 token bytes the v1 text
+      column stored.
+
+Public class name (``ProviderTokenStore``) and method signatures are
+preserved byte-for-byte.
+"""
 from __future__ import annotations
 
 import inspect
@@ -10,7 +37,8 @@ from uuid import UUID
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from website.core.supabase_kg import get_supabase_client
+from website.core.supabase_v2.client import get_v2_client
+from website.core.supabase_v2.repositories.core_repository import CoreRepository
 from website.experimental_features.nexus.source_ingest.common.models import (
     NexusProvider,
     ProviderTokenSet,
@@ -18,7 +46,8 @@ from website.experimental_features.nexus.source_ingest.common.models import (
 )
 
 TOKEN_ENCRYPTION_KEY_ENV = "NEXUS_TOKEN_ENCRYPTION_KEY"
-_ACCOUNT_TABLE = "nexus_provider_accounts"
+_TOKENS_SCHEMA = "pipelines"
+_TOKENS_TABLE = "nexus_provider_tokens"
 logger = logging.getLogger("website.experimental_features.nexus.token_store")
 
 TokenRefreshCallback = Callable[
@@ -27,33 +56,56 @@ TokenRefreshCallback = Callable[
 ]
 
 
+class _UnknownWorkspaceError(RuntimeError):
+    """Raised when a profile has no default workspace — required for
+    NOT NULL workspace_id on ``pipelines.nexus_provider_tokens``."""
+
+
 class ProviderTokenStore:
-    def __init__(self, *, client: Any | None = None, encryption_key: str | None = None) -> None:
-        self._client = client or get_supabase_client()
+    def __init__(
+        self,
+        *,
+        client: Any | None = None,
+        encryption_key: str | None = None,
+        core_repo: CoreRepository | None = None,
+    ) -> None:
+        self._client = client or get_v2_client()
         self._fernet = Fernet(_load_encryption_key(encryption_key))
+        self._core = core_repo or CoreRepository()
+        self._workspace_cache: dict[UUID, UUID] = {}
+
+    def _resolve_workspace_id(self, profile_id: UUID) -> UUID:
+        cached = self._workspace_cache.get(profile_id)
+        if cached is not None:
+            return cached
+        workspace_id = self._core.get_default_workspace_id(profile_id)
+        if workspace_id is None:
+            raise _UnknownWorkspaceError(
+                f"profile {profile_id} has no default workspace; cannot persist Nexus token row"
+            )
+        self._workspace_cache[profile_id] = workspace_id
+        return workspace_id
 
     def upsert_account(self, account: StoredProviderAccount) -> StoredProviderAccount:
         if not account.access_token:
             raise ValueError("Provider accounts must include a non-empty access token.")
+        workspace_id = self._resolve_workspace_id(account.user_id)
         payload = {
-            "user_id": str(account.user_id),
+            "profile_id": str(account.user_id),
+            "workspace_id": str(workspace_id),
             "provider": account.provider.value,
-            "account_id": account.account_id,
-            "account_username": account.account_username,
-            "access_token_encrypted": self._encrypt(account.access_token),
-            "refresh_token_encrypted": self._encrypt(account.refresh_token)
-            if account.refresh_token
-            else None,
-            "token_type": account.token_type,
-            "scopes": account.scopes,
+            "encrypted_token": _bytes_to_hex(self._encrypt_bytes(account.access_token)),
+            "refresh_token": (
+                _bytes_to_hex(self._encrypt_bytes(account.refresh_token))
+                if account.refresh_token
+                else None
+            ),
             "expires_at": _isoformat(account.expires_at),
-            "metadata": account.metadata,
-            "last_refreshed_at": _isoformat(account.last_refreshed_at),
-            "last_imported_at": _isoformat(account.last_imported_at),
         }
         response = (
-            self._client.table(_ACCOUNT_TABLE)
-            .upsert(payload, on_conflict="user_id,provider")
+            self._client.schema(_TOKENS_SCHEMA)
+            .table(_TOKENS_TABLE)
+            .upsert(payload, on_conflict="profile_id,provider")
             .execute()
         )
         if not response.data:
@@ -69,9 +121,10 @@ class ProviderTokenStore:
         provider: NexusProvider,
     ) -> StoredProviderAccount | None:
         response = (
-            self._client.table(_ACCOUNT_TABLE)
+            self._client.schema(_TOKENS_SCHEMA)
+            .table(_TOKENS_TABLE)
             .select("*")
-            .eq("user_id", str(user_id))
+            .eq("profile_id", str(user_id))
             .eq("provider", provider.value)
             .limit(1)
             .execute()
@@ -82,9 +135,10 @@ class ProviderTokenStore:
 
     def list_accounts(self, user_id: UUID) -> list[StoredProviderAccount]:
         response = (
-            self._client.table(_ACCOUNT_TABLE)
+            self._client.schema(_TOKENS_SCHEMA)
+            .table(_TOKENS_TABLE)
             .select("*")
-            .eq("user_id", str(user_id))
+            .eq("profile_id", str(user_id))
             .execute()
         )
         rows = response.data or []
@@ -93,14 +147,15 @@ class ProviderTokenStore:
             try:
                 accounts.append(self._row_to_account(row))
             except Exception as exc:
-                logger.warning("Skipping provider account row that could not be decoded: %s", exc)
+                logger.warning("Skipping provider token row that could not be decoded: %s", exc)
         return accounts
 
     def delete_account(self, user_id: UUID, provider: NexusProvider) -> bool:
         (
-            self._client.table(_ACCOUNT_TABLE)
+            self._client.schema(_TOKENS_SCHEMA)
+            .table(_TOKENS_TABLE)
             .delete()
-            .eq("user_id", str(user_id))
+            .eq("profile_id", str(user_id))
             .eq("provider", provider.value)
             .execute()
         )
@@ -144,62 +199,67 @@ class ProviderTokenStore:
         *,
         imported_at: datetime | None = None,
     ) -> StoredProviderAccount:
+        # v2 schema does not persist last_imported_at — the in-memory copy
+        # is updated for callers that hold the returned account, but the
+        # value is not roundtripped through the database. Callers that need
+        # cross-process visibility into "when did the last import run for
+        # provider X" should use ``pipelines.pipeline_runs`` rows instead.
         account = self.get_account(user_id, provider)
         if account is None:
             raise LookupError(f"No Nexus provider account found for provider {provider.value}.")
-
-        updated_account = account.model_copy(
-            update={"last_imported_at": imported_at or _utcnow()}
-        )
-        return self.upsert_account(updated_account)
+        return account.model_copy(update={"last_imported_at": imported_at or _utcnow()})
 
     def _row_to_account(self, row: dict[str, Any]) -> StoredProviderAccount:
         try:
-            access_token = self._decrypt(row.get("access_token_encrypted"))
-            refresh_token = self._decrypt(row.get("refresh_token_encrypted"))
+            access_token = self._decrypt_bytes(row.get("encrypted_token"))
+            refresh_token = self._decrypt_bytes(row.get("refresh_token"))
         except InvalidToken as exc:
             raise RuntimeError(
                 "Failed to decrypt stored Nexus provider tokens. "
                 f"Verify {TOKEN_ENCRYPTION_KEY_ENV}."
             ) from exc
 
-        # Backwards-compatible fallback for legacy rows that stored plaintext
-        # while migration to encrypted storage completes.
-        if not access_token:
-            fallback_access_token = row.get("access_token")
-            access_token = str(fallback_access_token).strip() if fallback_access_token else None
-        if not refresh_token:
-            fallback_refresh_token = row.get("refresh_token")
-            refresh_token = str(fallback_refresh_token).strip() if fallback_refresh_token else None
-
         if not access_token:
             raise RuntimeError("Stored Nexus provider account does not include a usable access token.")
 
         return StoredProviderAccount(
-            id=row.get("id"),
-            user_id=row["user_id"],
+            user_id=row["profile_id"],
             provider=NexusProvider(row["provider"]),
-            account_id=row.get("account_id"),
-            account_username=row.get("account_username"),
             access_token=access_token,
             refresh_token=refresh_token,
-            token_type=row.get("token_type") or "Bearer",
-            scopes=row.get("scopes") or [],
+            token_type="Bearer",
+            scopes=[],
             expires_at=row.get("expires_at"),
-            metadata=row.get("metadata") or {},
+            metadata={},
             created_at=row.get("created_at"),
             updated_at=row.get("updated_at"),
-            last_refreshed_at=row.get("last_refreshed_at"),
-            last_imported_at=row.get("last_imported_at"),
+            last_refreshed_at=None,
+            last_imported_at=None,
         )
 
-    def _encrypt(self, value: str) -> str:
-        return self._fernet.encrypt(value.encode("utf-8")).decode("utf-8")
+    def _encrypt_bytes(self, value: str) -> bytes:
+        return self._fernet.encrypt(value.encode("utf-8"))
 
-    def _decrypt(self, value: str | None) -> str | None:
-        if not value:
+    def _decrypt_bytes(self, value: Any) -> str | None:
+        if value is None:
             return None
-        return self._fernet.decrypt(value.encode("utf-8")).decode("utf-8")
+        # PostgREST returns bytea as a hex-prefixed string ("\x...") or raw bytes
+        # depending on representation. Normalise both.
+        if isinstance(value, str):
+            if value.startswith("\\x"):
+                raw = bytes.fromhex(value[2:])
+            else:
+                # Already decrypted ciphertext token (legacy fallback path).
+                raw = value.encode("utf-8")
+        elif isinstance(value, (bytes, bytearray)):
+            raw = bytes(value)
+        elif isinstance(value, memoryview):
+            raw = value.tobytes()
+        else:
+            return None
+        if not raw:
+            return None
+        return self._fernet.decrypt(raw).decode("utf-8")
 
 
 def _load_encryption_key(explicit_key: str | None) -> bytes:
@@ -217,6 +277,10 @@ def _load_encryption_key(explicit_key: str | None) -> bytes:
     return raw_key.encode("utf-8")
 
 
+def _bytes_to_hex(value: bytes) -> str:
+    return "\\x" + value.hex()
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -224,6 +288,8 @@ def _utcnow() -> datetime:
 def _isoformat(value: datetime | None) -> str | None:
     if value is None:
         return None
+    if isinstance(value, str):
+        return value
     return value.astimezone(timezone.utc).isoformat()
 
 

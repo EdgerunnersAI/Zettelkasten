@@ -9,6 +9,14 @@ import pytest
 from website.experimental_features.nexus.source_ingest.common.models import NexusProvider
 from website.experimental_features.nexus.source_ingest.common.oauth_state import consume_oauth_state
 
+# Phase 3.5: oauth_state was rebased from public.nexus_oauth_states (v1) onto an
+# in-memory store with TTL. The legacy mocks below patch ``get_supabase_client``
+# on the module, which no longer exists. New v2 coverage lives in
+# tests/unit/experimental_features/test_nexus_v2.py — skip-mark these v1 mocks.
+pytestmark = pytest.mark.skip(
+    reason="v1 oauth_state retired in Phase 3.5; replaced by tests/unit/experimental_features/test_nexus_v2.py"
+)
+
 
 def _state_row(*, consumed_at=None, expires_at=None):
     return {
