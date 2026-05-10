@@ -1,0 +1,59 @@
+name: V2 schema drift (prod introspect)
+
+# Phase 8.5.R1-2: nightly drift detection.
+#
+# `apply_migrations.py --v2 --check-manifest-fresh` connects to the LIVE prod
+# Supabase, introspects the schema, and compares against
+# `supabase/website/_v2/expected_schema.json` (committed in repo).
+# Any drift → CI failure → ops alert. Catches manual SQL-editor sessions on
+# prod that bypass the migration pipeline (highest-risk drift source for a
+# single-Supabase-project shop with no staging environment).
+#
+# UTC scheduling: 04:30 UTC = 10:00 IST = post-India-morning-spike, before
+# US East-Coast wakeup. Spaced 4h+ from existing crons.
+#
+# This workflow needs SUPABASE_DB_URL set in GitHub Actions secrets pointing
+# at the prod Postgres connection string (read-only ideally; the script does
+# only SELECT). Without that secret, the workflow fails-fast in step 1.
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-v2-manifest-fresh:
+    name: Verify _v2 expected_schema.json matches prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate secret presence
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret missing — cannot run drift check"
+            exit 1
+          fi
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ops/requirements.txt
+      - name: Introspect prod & diff against repo manifest
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python ops/scripts/apply_migrations.py --v2 --check-manifest-fresh
+      - name: Drift detected (failure annotation)
+        if: failure()
+        run: |
+          echo "::warning::v2 schema drift detected against prod. Inspect logs and run "
+          echo "::warning::\`MIGRATION_MANIFEST_AUTOBOOTSTRAP=1 python ops/scripts/apply_migrations.py --v2\` "
+          echo "::warning::locally to regenerate expected_schema.json after auditing the drift."
