@@ -10,12 +10,22 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
-from website.features.kg_features import retrieval as retr_mod
-from website.features.kg_features.retrieval import hybrid_search
+# 8.0-H7: kg_features.retrieval was hard-deleted (v1 hybrid_kg_search RPC
+# referenced dropped public.kg_nodes/kg_links). Skip the whole module rather
+# than rewriting against v2; v2 hybrid retrieval is covered by
+# tests/integration/v2/test_hybrid_pipeline_e2e.py.
+pytest.skip(
+    "v1 kg_features.retrieval retired in Phase 8.0 H7 (hybrid cleanup); "
+    "see plan docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md",
+    allow_module_level=True,
+)
+
+from unittest.mock import patch  # noqa: E402
+
+from website.features.kg_features import retrieval as retr_mod  # noqa: E402
+from website.features.kg_features.retrieval import hybrid_search  # noqa: E402
 
 
 USER_ID = "11111111-1111-1111-1111-111111111111"

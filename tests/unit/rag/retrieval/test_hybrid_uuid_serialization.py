@@ -10,10 +10,23 @@ inflating Gemini retry pressure and contributing to worker OOM under q1 load.
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-from uuid import UUID
+import pytest
 
-from website.features.kg_features import retrieval
+# 8.0-H7: kg_features.retrieval was hard-deleted (v1 hybrid_kg_search RPC
+# referenced dropped public.kg_nodes/kg_links). The UUID-coercion fix this
+# test pinned no longer applies — v2 retrieval coerces in
+# website/features/rag_pipeline/retrieval/hybrid.py.
+pytest.skip(
+    "v1 kg_features.retrieval retired in Phase 8.0 H7; UUID coercion now "
+    "handled in v2 HybridRetriever (see "
+    "docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md)",
+    allow_module_level=True,
+)
+
+from unittest.mock import MagicMock  # noqa: E402
+from uuid import UUID  # noqa: E402
+
+from website.features.kg_features import retrieval  # noqa: E402
 
 
 def _stub_client():

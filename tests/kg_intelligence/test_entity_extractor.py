@@ -10,11 +10,21 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import MagicMock, patch
+import pytest
 
-from website.features.kg_features import entity_extractor as ext_mod
-from website.features.kg_features.entity_extractor import (
+# 8.0-H7: kg_features.entity_extractor was hard-deleted (v1 entity-canonicalisation
+# helper, no v2 counterpart). Skip the whole module.
+pytest.skip(
+    "v1 kg_features.entity_extractor retired in Phase 8.0 H7 (hybrid cleanup); "
+    "see plan docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md",
+    allow_module_level=True,
+)
+
+import asyncio  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+from website.features.kg_features import entity_extractor as ext_mod  # noqa: E402
+from website.features.kg_features.entity_extractor import (  # noqa: E402
     EntityExtractor,
     ExtractedEntity,
     ExtractedRelationship,

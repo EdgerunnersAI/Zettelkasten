@@ -9,12 +9,23 @@ itself lives in SQL and is exercised by integration tests (T21).
 
 from __future__ import annotations
 
-from copy import deepcopy
-from unittest.mock import MagicMock
-
 import pytest
 
-from website.features.kg_features.retrieval import expand_subgraph
+# 8.0-H7: kg_features.retrieval.expand_subgraph was hard-deleted (v1 RPC
+# kg_expand_subgraph against dropped public.kg_links). v2 equivalent lives in
+# website/core/supabase_v2/repositories/kg_repository.py:90 and is covered by
+# tests/unit/supabase_v2/.
+pytest.skip(
+    "v1 kg_features.retrieval.expand_subgraph retired in Phase 8.0 H7; "
+    "v2 equivalent in KGRepository.expand_subgraph (see "
+    "docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md)",
+    allow_module_level=True,
+)
+
+from copy import deepcopy  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
+
+from website.features.kg_features.retrieval import expand_subgraph  # noqa: E402
 
 
 def _client_returning(rows):

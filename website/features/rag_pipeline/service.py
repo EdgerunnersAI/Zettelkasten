@@ -28,7 +28,6 @@ from website.features.rag_pipeline.retrieval.graph_score import LocalizedPageRan
 from website.features.rag_pipeline.retrieval.hybrid import HybridRetriever
 from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner
 from website.features.rag_pipeline.scoring.runtime import get_registry_adapter
-from website.features.kg_features import retrieval as kg_retrieval
 from website.core.supabase_v2.client import get_v2_client
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -42,22 +41,13 @@ _EXAMPLE_QUERIES = (
 )
 
 
-class _KGModuleAdapter:
-    """Bind a Supabase client to ``kg_features.retrieval`` callables.
-
-    The :class:`RetrievalPlanner` invokes ``hybrid_search`` and
-    ``expand_subgraph`` with a positional client argument and reads the
-    client off the kg_module via ``_supabase``. Module-level functions in
-    ``kg_features.retrieval`` don't carry state, so this adapter holds the
-    client and exposes the two callables plus the expected ``_supabase``
-    attribute. Keeping the shim local to ``service.py`` avoids leaking
-    runtime wiring into the kg_features feature surface.
-    """
-
-    def __init__(self, *, client) -> None:
-        self._supabase = client
-        self.hybrid_search = kg_retrieval.hybrid_search
-        self.expand_subgraph = kg_retrieval.expand_subgraph
+# 8.0-H7: ``_KGModuleAdapter`` retired alongside ``website.features.kg_features.retrieval``.
+# The v1 ``hybrid_search`` / ``expand_subgraph`` calls hit ``hybrid_kg_search`` and
+# ``kg_expand_subgraph`` RPCs against the dropped v1 ``public.kg_nodes`` / ``kg_links``
+# tables (Phase 6 commit e168b38) and silently returned [] in prod. v2 entity-anchor
+# expansion now happens directly inside ``HybridRetriever`` via ``entity_anchor.py``
+# (`kg.expand_subgraph(p_workspace_id, p_node_ids bigint[], p_depth int)`), so the
+# ``RetrievalPlanner`` no longer needs a kg_module shim — see planner.py header.
 
 
 @dataclass(slots=True)
@@ -88,12 +78,10 @@ def _build_runtime(user_sub: str | None) -> RAGRuntime:
     sessions = ChatSessionStore(supabase=None)
     sandboxes = SandboxStore(supabase=None)
     embedder = ChunkEmbedder(pool=get_embedding_pool())
-    # T20: bind the Supabase client to the kg_features module functions so the
-    # RetrievalPlanner can call hybrid_search/expand_subgraph without each
-    # caller threading the client. The adapter is a tiny shim that exposes
-    # the same callables plus a ``_supabase`` attribute the planner reads.
-    kg_module_adapter = _KGModuleAdapter(client=client)
-    planner = RetrievalPlanner(kg_module=kg_module_adapter)
+    # 8.0-H7: planner no longer needs a kg_module — v2 entity-anchor expansion
+    # is performed by ``HybridRetriever`` via ``entity_anchor.py``. The planner
+    # is a pass-through preserved for orchestrator wiring symmetry.
+    planner = RetrievalPlanner(kg_module=None)
     orchestrator = RAGOrchestrator(
         rewriter=QueryRewriter(),
         router=QueryRouter(),

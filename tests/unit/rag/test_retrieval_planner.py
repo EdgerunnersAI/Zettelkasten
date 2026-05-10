@@ -1,13 +1,26 @@
-"""Tests for the RetrievalPlanner KG-first adapter (Task 19)."""
-from __future__ import annotations
+"""Tests for the RetrievalPlanner KG-first adapter (Task 19).
 
-from unittest.mock import MagicMock
+8.0-H7: the planner is now a pass-through (kg_features.retrieval was deleted;
+v2 entity-anchor expansion runs inside HybridRetriever via entity_anchor.py).
+The narrowing behaviour these tests pin no longer exists. Skip-marked rather
+than rewriting against v2 -- the behaviour is now covered by
+tests/integration/v2/test_hybrid_pipeline_e2e.py.
+"""
+from __future__ import annotations
 
 import pytest
 
-from website.features.rag_pipeline.query.metadata import QueryMetadata
-from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner
-from website.features.rag_pipeline.types import QueryClass, ScopeFilter
+pytestmark = pytest.mark.skip(
+    reason="RetrievalPlanner narrowing retired in Phase 8.0 H7 (now pass-through); "
+    "v2 entity-anchor expansion lives in HybridRetriever. See plan "
+    "docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md"
+)
+
+from unittest.mock import MagicMock  # noqa: E402
+
+from website.features.rag_pipeline.query.metadata import QueryMetadata  # noqa: E402
+from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner  # noqa: E402
+from website.features.rag_pipeline.types import QueryClass, ScopeFilter  # noqa: E402
 
 
 def _fake_kg(expanded=None, hits=None):

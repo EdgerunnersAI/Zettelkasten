@@ -10,12 +10,21 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
-from website.features.kg_features import nl_query as nl_mod
-from website.features.kg_features.nl_query import (
+# 8.0-H7: kg_features.nl_query was hard-deleted (v1 NL->SQL translator
+# referenced dropped public.kg_* tables). Skip the whole module — the public
+# /api/graph/query surface is also retired (410 Gone per 8.5.C-defer).
+pytest.skip(
+    "v1 kg_features.nl_query retired in Phase 8.0 H7 (hybrid cleanup); "
+    "see plan docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md",
+    allow_module_level=True,
+)
+
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+from website.features.kg_features import nl_query as nl_mod  # noqa: E402
+from website.features.kg_features.nl_query import (  # noqa: E402
     NLGraphQuery,
     NLQueryError,
     NLQueryResult,
