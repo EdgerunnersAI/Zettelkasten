@@ -47,6 +47,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "35_retrieval_signal_views.sql",
         "36_signal_views_pgcron.sql",
         "37_signal_cron_3hourly_and_monitors.sql",
+        "38_extensible_attrs.sql",
     ]
 
 
