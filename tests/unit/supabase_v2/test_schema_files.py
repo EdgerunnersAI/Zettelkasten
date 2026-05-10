@@ -43,6 +43,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "27_drop_redundant_retrieval_idx.sql",
         "28_drop_legacy_rpcs.sql",
         "29_kasten_sharing_rls.sql",
+        "30_billing_pricing_active_plan.sql",
         "34_retrieval_feedback_events.sql",
         "35_retrieval_signal_views.sql",
         "36_signal_views_pgcron.sql",
