@@ -1,16 +1,18 @@
-"""Unit tests for the Phase 2.4.0 typed Candidate discriminated union + ACL adapters.
+"""Unit tests for the typed Candidate discriminated union + v2-row adapters.
 
 Covers contract guarantees the rest of Phase 2.4.x relies on:
 1. Pydantic discriminator selection by ``kind``.
 2. Per-kind required field enforcement.
-3. ``node_id`` back-compat alias correctness.
-4. ``extra="forbid"`` catches typos / silent contract drift.
-5. ``frozen=True`` immutability.
-6. ``candidate_to_legacy_dict`` shape per kind.
-7. ``score_kind`` set from CALL-SITE arg, not derived from row.
-8. ``fts_text`` synthesis only when ``score_kind == "fts"``.
-9. ``default_rrf_score`` override for RRF fusion call-sites.
-10. ``score_kind`` Literal validation.
+3. ``extra="forbid"`` catches typos / silent contract drift.
+4. ``frozen=True`` immutability.
+5. ``score_kind`` set from CALL-SITE arg, not derived from row.
+6. ``fts_text`` synthesis only when ``score_kind == "fts"``.
+7. ``score_kind`` Literal validation.
+8. ``raw_dense_score`` + ``raw_fts_score`` propagation.
+
+ACL-001 sunset closed 2026-05-10 (commit 8.5.R4-cleanup): the legacy
+``node_id`` alias property + ``candidate_to_legacy_dict`` projector +
+``default_rrf_score`` knob were deleted after audit confirmed zero consumers.
 """
 from __future__ import annotations
 
@@ -24,7 +26,6 @@ from website.features.rag_pipeline.retrieval.candidate_model import (
     ChunkCandidate,
     DocCandidate,
     EntityCandidate,
-    candidate_to_legacy_dict,
     chunk_from_v2_row,
     doc_from_v2_row,
     entity_from_v2_row,
@@ -126,42 +127,7 @@ class TestRequiredFieldsPerKind:
 
 
 # ---------------------------------------------------------------------------
-# 3. node_id back-compat alias
-# ---------------------------------------------------------------------------
-class TestNodeIdAlias:
-    def test_chunk_node_id_is_canonical_chunk_id_str(self):
-        chunk_id = uuid.uuid4()
-        c = ChunkCandidate(
-            canonical_chunk_id=chunk_id,
-            canonical_zettel_id=uuid.uuid4(),
-            score=0.1,
-            rrf_score=0.1,
-            score_kind="dense",
-        )
-        assert c.node_id == str(chunk_id)
-
-    def test_entity_node_id_is_kg_node_id_str(self):
-        c = EntityCandidate(
-            kg_node_id=987,
-            score=0.1,
-            rrf_score=0.1,
-            score_kind="graph",
-        )
-        assert c.node_id == "987"
-
-    def test_doc_node_id_is_canonical_zettel_id_str(self):
-        zet_id = uuid.uuid4()
-        c = DocCandidate(
-            canonical_zettel_id=zet_id,
-            score=0.1,
-            rrf_score=0.1,
-            score_kind="dense",
-        )
-        assert c.node_id == str(zet_id)
-
-
-# ---------------------------------------------------------------------------
-# 4. extra="forbid"
+# 3. extra="forbid"
 # ---------------------------------------------------------------------------
 class TestExtraForbid:
     def test_unknown_field_chunk_raises(self):
@@ -233,73 +199,7 @@ class TestFrozen:
 
 
 # ---------------------------------------------------------------------------
-# 6. candidate_to_legacy_dict shape
-# ---------------------------------------------------------------------------
-class TestLegacyDictProjection:
-    def test_chunk_legacy_dict_has_expected_keys(self):
-        chunk_id = uuid.uuid4()
-        zet_id = uuid.uuid4()
-        c = ChunkCandidate(
-            canonical_chunk_id=chunk_id,
-            canonical_zettel_id=zet_id,
-            chunk_idx=3,
-            content="hello",
-            score=0.7,
-            rrf_score=0.7,
-            score_kind="dense",
-        )
-        d = candidate_to_legacy_dict(c)
-        assert d["node_id"] == str(chunk_id)
-        assert d["score"] == 0.7
-        assert d["rrf_score"] == 0.7
-        assert d["score_kind"] == "dense"
-        assert d["kind"] == "chunk"
-        assert d["canonical_chunk_id"] == str(chunk_id)
-        assert d["canonical_zettel_id"] == str(zet_id)
-        assert d["kg_node_id"] is None
-        assert d["chunk_idx"] == 3
-        assert d["content"] == "hello"
-
-    def test_entity_legacy_dict_has_expected_keys(self):
-        c = EntityCandidate(
-            kg_node_id=42,
-            title="Topic",
-            entity_type="concept",
-            score=0.4,
-            rrf_score=0.4,
-            score_kind="graph",
-        )
-        d = candidate_to_legacy_dict(c)
-        assert d["node_id"] == "42"
-        assert d["kind"] == "entity"
-        assert d["kg_node_id"] == 42
-        assert d["canonical_chunk_id"] is None
-        assert d["canonical_zettel_id"] is None
-        assert d["title"] == "Topic"
-        assert d["entity_type"] == "concept"
-        assert d["score_kind"] == "graph"
-
-    def test_doc_legacy_dict_has_expected_keys(self):
-        zet_id = uuid.uuid4()
-        c = DocCandidate(
-            canonical_zettel_id=zet_id,
-            title="Doc title",
-            score=0.6,
-            rrf_score=0.6,
-            score_kind="rerank",
-        )
-        d = candidate_to_legacy_dict(c)
-        assert d["node_id"] == str(zet_id)
-        assert d["kind"] == "doc"
-        assert d["canonical_zettel_id"] == str(zet_id)
-        assert d["canonical_chunk_id"] is None
-        assert d["kg_node_id"] is None
-        assert d["title"] == "Doc title"
-        assert d["score_kind"] == "rerank"
-
-
-# ---------------------------------------------------------------------------
-# 7. chunk_from_v2_row honors caller-supplied score_kind
+# 5. chunk_from_v2_row honors caller-supplied score_kind
 # ---------------------------------------------------------------------------
 class TestScoreKindIsCallSiteSet:
     @pytest.fixture
@@ -366,10 +266,10 @@ class TestFtsTextSynthesis:
 
 
 # ---------------------------------------------------------------------------
-# 9. default_rrf_score override
+# 7. rrf_score defaults to score (no override knob post-ACL-001 sunset)
 # ---------------------------------------------------------------------------
-class TestDefaultRrfScoreOverride:
-    def test_rrf_score_defaults_to_score(self):
+class TestRrfScoreEqualsScore:
+    def test_chunk_rrf_score_equals_score(self):
         row = {
             "canonical_chunk_id": str(uuid.uuid4()),
             "canonical_zettel_id": str(uuid.uuid4()),
@@ -378,31 +278,19 @@ class TestDefaultRrfScoreOverride:
         c = chunk_from_v2_row(row, score_kind="dense")
         assert c.rrf_score == 0.5
 
-    def test_default_rrf_score_overrides_score(self):
-        row = {
-            "canonical_chunk_id": str(uuid.uuid4()),
-            "canonical_zettel_id": str(uuid.uuid4()),
-            "score": 0.5,
-        }
-        c = chunk_from_v2_row(row, score_kind="dense", default_rrf_score=0.0123)
-        assert c.score == 0.5
-        assert c.rrf_score == 0.0123
-
-    def test_default_rrf_score_override_for_entity(self):
+    def test_entity_rrf_score_equals_score(self):
         row = {"kg_node_id": 7, "score": 0.9}
-        c = entity_from_v2_row(row, score_kind="graph", default_rrf_score=0.001)
-        assert c.score == 0.9
-        assert c.rrf_score == 0.001
+        c = entity_from_v2_row(row, score_kind="graph")
+        assert c.rrf_score == 0.9
 
-    def test_default_rrf_score_override_for_doc(self):
+    def test_doc_rrf_score_equals_score(self):
         row = {"canonical_zettel_id": str(uuid.uuid4()), "score": 0.3}
-        c = doc_from_v2_row(row, score_kind="rerank", default_rrf_score=0.5)
-        assert c.score == 0.3
-        assert c.rrf_score == 0.5
+        c = doc_from_v2_row(row, score_kind="rerank")
+        assert c.rrf_score == 0.3
 
 
 # ---------------------------------------------------------------------------
-# 10. score_kind Literal enforcement
+# 8. score_kind Literal enforcement
 # ---------------------------------------------------------------------------
 class TestScoreKindLiteralEnforcement:
     def test_invalid_score_kind_chunk_raises(self):

@@ -2,30 +2,25 @@
 
 Open items added during the v2 purge that have explicit sunset triggers.
 
-## ACL-001: legacy `node_id` back-compat alias on Candidate (added Phase 2.4.0, 2026-05-09)
+(Currently empty — all tracked items have been retired.)
 
-**Description:** `website/features/rag_pipeline/retrieval/candidate_model.py` exposes
-a `node_id` derived property on every Candidate variant + `candidate_to_legacy_dict()`
-projects typed Candidates into the legacy v1 dict shape. Both exist so the v2 RPC
-migration in Phase 2.4 doesn't have to refactor `_dedup_and_fuse` / RRF fusion /
-bandit posterior updates simultaneously.
+## Closed
 
-**Sunset trigger:** when every consumer in `website/features/rag_pipeline/` accesses
-Candidate fields by their typed names (`canonical_chunk_id`, `kg_node_id`,
-`canonical_zettel_id`) instead of the `node_id` alias, delete:
-- the `node_id` property on each `*Candidate` subclass
-- `candidate_to_legacy_dict()`
-- the `chunk_from_v2_row(... default_rrf_score=...)` knob (RRF fusion will own its own
-  per-source rank arithmetic natively)
+### ACL-001 — Candidate.node_id alias + candidate_to_legacy_dict (CLOSED 2026-05-10)
 
-**Sunset due:** Phase 7 hardening (post-soak, before legacy DROP migration).
+Closed in commit 8.5.R4-cleanup. Audit (Phase 8.5.R4) found zero consumers of
+the legacy `node_id` property / `candidate_to_legacy_dict` projector / the
+`default_rrf_score` knob in `chunk_from_v2_row`/`entity_from_v2_row`/
+`doc_from_v2_row`. All three were deleted. The architectural fitness ratchet
+test (`tests/architecture/test_acl_001_sunset.py`) was retired alongside.
 
-**Industry rationale:** ACL pattern (Microsoft / AWS Prescriptive Guidance) is intentionally
-temporary. Permanent ACLs are the dominant ACL failure mode (Thoughtworks, AWS).
+The 3 files originally flagged by the AST-walk ratchet
+(`retrieval/graph_score.py`, `orchestrator.py`, `rerank/cascade.py`) were
+false positives — they access `RetrievalCandidate.node_id` from
+`website/features/rag_pipeline/types.py`, a first-class Pydantic field used
+by `Citation.node_id` + `AnswerTurn.retrieved_node_ids` + frontend citation
+chips. Renaming would have broken externally-observable behaviour. The
+ratchet's substring-match wasn't AST-resolving the receiver type.
 
-**Owner:** v2 purge executor.
-
-**References:**
-- Microsoft Azure ACL pattern: https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer
-- AWS Prescriptive Guidance ACL: https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/acl.html
-- Thoughtworks Strangler Fig: https://www.thoughtworks.com/en-us/insights/articles/embracing-strangler-fig-pattern-legacy-modernization-part-one
+Industry pattern: Microsoft GraphRAG / LlamaIndex / Pinecone / Weaviate —
+typed candidate fields per kind, never collapsed into a single string id.
