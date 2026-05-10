@@ -45,6 +45,56 @@ jobs:
             echo "::endgroup::"
           done
 
+  migrate-v2-fresh:
+    # Phase 8.5.R1-3: PR-time "_v2 applies cleanly on a fresh Supabase stack"
+    # gate. Boots a full local Supabase stack (auth/GoTrue, vault, pgsodium,
+    # pgvector) via `supabase start` so RLS policies referencing auth.uid() /
+    # auth.jwt() / auth.users compile against the real schema (vanilla
+    # pgvector/pgvector containers can't represent these).
+    #
+    # Canonical pattern per R-A research (Supabase docs + community 2024-2026).
+    # Composes with `lint-v2-sql` (Squawk; advisory) + `v2_drift_check.yml`
+    # (nightly against prod) for the 3-layer migration gate.
+    name: Fresh-Supabase _v2 apply + manifest check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Boot local Supabase stack
+        run: |
+          # `supabase start` boots Postgres + GoTrue + Storage + Realtime +
+          # vault + pgsodium + pgvector in Docker. The Postgres URL is fixed
+          # at 127.0.0.1:54322 with postgres/postgres credentials.
+          supabase start --workdir . --ignore-health-check || (supabase status --workdir .; exit 1)
+          supabase status --workdir .
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ops/requirements.txt
+      - name: Apply _v2 migrations to fresh DB
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          MIGRATION_MANIFEST_AUTOBOOTSTRAP: "1"
+        run: |
+          python ops/scripts/apply_migrations.py --v2
+      - name: Verify manifest matches freshly-applied DB
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: |
+          # --check-manifest-fresh asserts every _v2/expected_schema.json
+          # entry exists in the connected DB. A non-zero exit blocks merge.
+          python ops/scripts/apply_migrations.py --v2 --check-manifest-fresh
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --workdir . --no-backup || true
+
   lint-v2-sql:
     # Phase 8.5.R1-1: Squawk lint for _v2/*.sql migrations.
     # Catches lock-takeing operations (CREATE INDEX without CONCURRENTLY,
