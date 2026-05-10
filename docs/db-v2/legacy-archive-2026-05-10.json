@@ -1256,6 +1256,100 @@
         "raw_app_meta_data": "{\"provider\": \"email\", \"providers\": [\"email\"], \"workspace_ids\": [\"ee51320c-dd56-46f2-9d04-099f1ca0efcf\"]}",
         "created_at": "2026-05-09T19:46:22.784101+00:00"
       }
+    ],
+    "public.pricing_billing_profiles": [],
+    "public.pricing_credit_ledger": [],
+    "public.pricing_orders": [],
+    "public.pricing_subscriptions": [],
+    "public.pricing_usage_counters": [
+      {
+        "id": "798f526d-b835-4b64-8ee6-9b9b46e1daba",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "kasten",
+        "period_type": "day",
+        "period_start": "2026-05-09",
+        "used_count": 1,
+        "created_at": "2026-05-09T05:56:12.125313+00:00",
+        "updated_at": "2026-05-09T05:56:12.125313+00:00"
+      },
+      {
+        "id": "b7184aee-d4fe-4285-b80d-ccaf55e294cb",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "kasten",
+        "period_type": "week",
+        "period_start": "2026-05-04",
+        "used_count": 1,
+        "created_at": "2026-05-09T05:56:12.125313+00:00",
+        "updated_at": "2026-05-09T05:56:12.125313+00:00"
+      },
+      {
+        "id": "d407ec6e-4f82-4980-9426-27a541e6f13b",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "kasten",
+        "period_type": "month",
+        "period_start": "2026-05-01",
+        "used_count": 1,
+        "created_at": "2026-05-09T05:56:12.125313+00:00",
+        "updated_at": "2026-05-09T05:56:12.125313+00:00"
+      },
+      {
+        "id": "048bae30-500b-44b0-b205-bf86249eac09",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "kasten",
+        "period_type": "total",
+        "period_start": "1970-01-01",
+        "used_count": 1,
+        "created_at": "2026-05-09T05:56:12.125313+00:00",
+        "updated_at": "2026-05-09T05:56:12.125313+00:00"
+      },
+      {
+        "id": "a292ba29-98ff-4930-bdff-6f1ad7f3ee1e",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "rag_question",
+        "period_type": "day",
+        "period_start": "2026-05-09",
+        "used_count": 3,
+        "created_at": "2026-05-09T05:56:13.978286+00:00",
+        "updated_at": "2026-05-09T06:50:28.070896+00:00"
+      },
+      {
+        "id": "c3c2938f-10ee-4a06-918a-46f14052d334",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "rag_question",
+        "period_type": "week",
+        "period_start": "2026-05-04",
+        "used_count": 3,
+        "created_at": "2026-05-09T05:56:13.978286+00:00",
+        "updated_at": "2026-05-09T06:50:28.070896+00:00"
+      },
+      {
+        "id": "5b8f3c24-027e-4229-9495-d566d8425ed0",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "rag_question",
+        "period_type": "month",
+        "period_start": "2026-05-01",
+        "used_count": 3,
+        "created_at": "2026-05-09T05:56:13.978286+00:00",
+        "updated_at": "2026-05-09T06:50:28.070896+00:00"
+      },
+      {
+        "id": "2a617987-ab98-4ccf-b574-b24e47113022",
+        "user_id": null,
+        "render_user_id": "user-1",
+        "meter": "rag_question",
+        "period_type": "total",
+        "period_start": "1970-01-01",
+        "used_count": 3,
+        "created_at": "2026-05-09T05:56:13.978286+00:00",
+        "updated_at": "2026-05-09T06:50:28.070896+00:00"
+      }
     ]
   },
   "counts_before": {
@@ -1293,5 +1387,149 @@
     "public.rag_sandbox_members": 0,
     "public.chat_sessions": 0,
     "public.chat_messages": 0
-  }
+  },
+  "view_definitions": {
+    "public.kg_graph_view": " SELECT id AS user_id,\n    jsonb_build_object('nodes', COALESCE(( SELECT jsonb_agg(jsonb_build_object('id', n.id, 'name', n.name, 'group', n.source_type, 'summary', n.summary, 'tags', n.tags, 'url', n.url, 'date', COALESCE(n.node_date::text, ''::text))) AS jsonb_agg\n           FROM kg_nodes n\n          WHERE n.user_id = u.id), '[]'::jsonb), 'links', COALESCE(( SELECT jsonb_agg(jsonb_build_object('source', l.source_node_id, 'target', l.target_node_id, 'relation', l.relation, 'weight', l.weight, 'link_type', l.link_type, 'description', l.description)) AS jsonb_agg\n           FROM kg_links l\n          WHERE l.user_id = u.id), '[]'::jsonb)) AS graph_data\n   FROM kg_users u;",
+    "public.kg_user_stats": " SELECT id AS user_id,\n    render_user_id,\n    display_name,\n    ( SELECT count(*) AS count\n           FROM kg_nodes n\n          WHERE n.user_id = u.id) AS node_count,\n    ( SELECT count(*) AS count\n           FROM kg_links l\n          WHERE l.user_id = u.id) AS link_count,\n    COALESCE(( SELECT array_agg(DISTINCT unnested.unnested) AS array_agg\n           FROM kg_nodes n2,\n            LATERAL unnest(n2.tags) unnested(unnested)\n          WHERE n2.user_id = u.id), '{}'::text[]) AS all_tags\n   FROM kg_users u;",
+    "public.rag_sandbox_stats": " SELECT id,\n    user_id,\n    name,\n    description,\n    icon,\n    color,\n    default_quality,\n    last_used_at,\n    created_at,\n    updated_at,\n    ( SELECT count(*) AS count\n           FROM rag_sandbox_members m\n          WHERE m.sandbox_id = s.id) AS member_count\n   FROM rag_sandboxes s;"
+  },
+  "phase6_predrop_counts": {
+    "captured_at": "2026-05-10T06:41:24.775485+00:00",
+    "objects": {
+      "public.kg_users": {
+        "kind": "r",
+        "count": 1
+      },
+      "public.kg_nodes": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_links": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_node_chunks": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_usage_edges": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_usage_edges_agg": {
+        "kind": "m",
+        "count": 0
+      },
+      "public.kg_kasten_node_freq": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_bandit_posteriors": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_extraction_blocklist": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.kg_kasten_metrics": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.rag_sandboxes": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.rag_sandbox_members": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.chat_sessions": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.chat_messages": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.summary_batch_runs": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.summary_batch_items": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.nexus_provider_accounts": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.nexus_oauth_states": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.nexus_ingest_runs": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.nexus_ingested_artifacts": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.recompute_runs": {
+        "kind": "r",
+        "count": 0
+      },
+      "public._migrations_applied": {
+        "kind": "r",
+        "count": 21
+      },
+      "public.kg_graph_view": {
+        "kind": "v",
+        "count": null
+      },
+      "public.kg_user_stats": {
+        "kind": "v",
+        "count": null
+      },
+      "public.rag_sandbox_stats": {
+        "kind": "v",
+        "count": null
+      },
+      "public.pricing_billing_profiles": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.pricing_credit_ledger": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.pricing_orders": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.pricing_subscriptions": {
+        "kind": "r",
+        "count": 0
+      },
+      "public.pricing_usage_counters": {
+        "kind": "r",
+        "count": 8
+      }
+    },
+    "billing_baseline": {
+      "billing.pricing_balances": 0,
+      "billing.pricing_billing_profiles": 0,
+      "billing.pricing_disputes": 0,
+      "billing.pricing_entitlement_consumption": 0,
+      "billing.pricing_orders": 0,
+      "billing.pricing_payment_events": 0,
+      "billing.pricing_plan_cache": 0,
+      "billing.pricing_plan_entitlements": 0,
+      "billing.pricing_refunds": 0,
+      "billing.pricing_subscriptions": 0,
+      "billing.pricing_webhook_events": 0
+    }
+  },
+  "phase6_predrop_extension_at": "2026-05-10T06:41:27.646586+00:00"
 }
