@@ -32,6 +32,7 @@ class MintedUser(NamedTuple):
     profile_id: uuid.UUID
     workspace_ids: list[uuid.UUID]
     jwt: str
+    email: str  # 8.0-TX: PII canary for cross-tenant leak detection
 
 
 def mint_test_user_with_workspaces(*, workspace_count: int = 1) -> MintedUser:
@@ -170,6 +171,7 @@ def mint_test_user_with_workspaces(*, workspace_count: int = 1) -> MintedUser:
         profile_id=profile_id,
         workspace_ids=workspace_ids,
         jwt=jwt,
+        email=email,
     )
 
 

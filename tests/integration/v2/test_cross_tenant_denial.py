@@ -151,6 +151,12 @@ def test_adhoc_with_other_users_session_id_denied(v2_app, mint_user, asyncpg_poo
         body_text = resp.text
         # No leak: A's email pattern (e2e-{hex}@test.com) must not appear in response
         assert a.email not in body_text, "user A's email leaked in B's adhoc response"
+        # OWASP API1:2023 BOLA — UUID canaries catch leaks where A's data appears
+        # without the email field (raw chunks, summaries, IDs).
+        assert str(a.auth_user_id) not in body_text, "cross-tenant leak: A's auth_user_id in B's response"
+        assert str(a.profile_id) not in body_text, "cross-tenant leak: A's profile_id in B's response"
+        for ws_id in a.workspace_ids:
+            assert str(ws_id) not in body_text, f"cross-tenant leak: A's workspace_id {ws_id} in B's response"
     else:
         assert resp.status_code in (402, 403, 404), resp.text
 
@@ -217,7 +223,13 @@ def test_kasten_adhoc_with_other_tenants_kasten_id_denied(v2_app, mint_user, asy
     assert resp.status_code in (200, 402, 403, 404), resp.text
     if resp.status_code == 200:
         # No A-leak: A's email pattern must not appear
-        assert a.email not in resp.text, "user A's email leaked"
+        body_text = resp.text
+        assert a.email not in body_text, "user A's email leaked"
+        # OWASP API1:2023 BOLA — UUID canaries catch leaks without email field.
+        assert str(a.auth_user_id) not in body_text, "cross-tenant leak: A's auth_user_id in B's response"
+        assert str(a.profile_id) not in body_text, "cross-tenant leak: A's profile_id in B's response"
+        for ws_id in a.workspace_ids:
+            assert str(ws_id) not in body_text, f"cross-tenant leak: A's workspace_id {ws_id} in B's response"
 
 
 def test_kasten_members_list_cross_tenant_denied(v2_app, mint_user, asyncpg_pool):
