@@ -39,6 +39,7 @@ class UserPurgeReport(BaseModel):
 
     retrieval_feedback_events_anonymised: int = 0
     pricing_subscriptions_cancelled: int = 0
+    kasten_memberships_removed: int = 0
     notes: list[str] = []
 
 
@@ -84,6 +85,23 @@ def purge_user_dependencies(
     except Exception as exc:  # noqa: BLE001
         logger.warning("pricing_subscriptions cancel failed: %s", exc)
         report.notes.append(f"pricing_cancel_failed: {exc!r}")
+
+    # 3) Explicit kasten_members removal (Phase 8.5.R2 amendment 2026-05-10).
+    # CASCADE chain through core.profiles handles this functionally today, but
+    # explicit handling is belt-and-suspenders against a future FK clause
+    # change (e.g. dropping CASCADE) silently breaking offboarding.
+    try:
+        resp = (
+            sb.schema("rag")
+            .table("kasten_members")
+            .delete()
+            .eq("member_profile_id", str(profile_id))
+            .execute()
+        )
+        report.kasten_memberships_removed = len(resp.data or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("kasten_members removal failed: %s", exc)
+        report.notes.append(f"kasten_members_failed: {exc!r}")
 
     # Future: storage.objects cleanup once Supabase Storage is wired into v2.
     # Tracked in the v2 final-acceptance test plan.
