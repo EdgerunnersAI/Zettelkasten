@@ -45,6 +45,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "29_kasten_sharing_rls.sql",
         "34_retrieval_feedback_events.sql",
         "35_retrieval_signal_views.sql",
+        "36_signal_views_pgcron.sql",
     ]
 
 
