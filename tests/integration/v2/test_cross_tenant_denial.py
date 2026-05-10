@@ -55,6 +55,17 @@ async def _seed_session(pool: asyncpg.Pool, *, workspace_id: uuid.UUID, profile_
     return sid
 
 
+async def _seed_kasten(pool: asyncpg.Pool, *, workspace_id: uuid.UUID) -> uuid.UUID:
+    """Insert a Kasten directly via service-role asyncpg; return its id."""
+    kid = uuid.uuid4()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO rag.kastens (id, workspace_id, name) VALUES ($1, $2, $3)",
+            kid, workspace_id, f"xtenant-kasten-{uuid.uuid4().hex[:8]}",
+        )
+    return kid
+
+
 async def _seed_workspace_zettel(pool: asyncpg.Pool, *, workspace_id: uuid.UUID) -> uuid.UUID:
     cz = uuid.uuid4()
     wz = uuid.uuid4()
@@ -168,6 +179,64 @@ def test_zettel_patch_cross_tenant_denied(v2_app, mint_user, asyncpg_pool):
         f"User B's PATCH must NOT have modified user A's zettel "
         f"(http={resp.status_code}, user_note={note!r})"
     )
+
+
+def test_kasten_get_cross_tenant_denied(v2_app, mint_user, asyncpg_pool):
+    """User B from a different workspace cannot GET A's Kasten by id."""
+    import asyncio
+    a = mint_user(workspace_count=1)
+    b = mint_user(workspace_count=1)
+    kid = asyncio.get_event_loop().run_until_complete(
+        _seed_kasten(asyncpg_pool, workspace_id=a.workspace_ids[0])
+    )
+    with TestClient(v2_app) as client:
+        resp = client.get(f"/api/rag/sandboxes/{kid}", headers=_auth(b.jwt))
+    if resp.status_code == 503 and ("runtime" in resp.text.lower() or "not configured" in resp.text.lower()):
+        pytest.skip("RAG/Sandbox runtime unavailable in test env")
+    assert resp.status_code in (403, 404), resp.text
+
+
+def test_kasten_adhoc_with_other_tenants_kasten_id_denied(v2_app, mint_user, asyncpg_pool):
+    """B's POST /api/rag/adhoc with kasten_id pointing at A's Kasten must not leak."""
+    import asyncio
+    a = mint_user(workspace_count=1)
+    b = mint_user(workspace_count=1)
+    kid = asyncio.get_event_loop().run_until_complete(
+        _seed_kasten(asyncpg_pool, workspace_id=a.workspace_ids[0])
+    )
+    with TestClient(v2_app) as client:
+        resp = client.post(
+            "/api/rag/adhoc",
+            headers=_auth(b.jwt),
+            json={"content": "leak A's kasten", "sandbox_id": str(kid)},
+        )
+    if resp.status_code == 503 and "RAG runtime" in resp.text:
+        pytest.skip("RAG runtime unavailable in test env")
+    # 200 is acceptable IF no A-data leaks (B's adhoc against B's own scope).
+    # 402/403/404 are explicit denials.
+    assert resp.status_code in (200, 402, 403, 404), resp.text
+    if resp.status_code == 200:
+        # No A-leak: A's email pattern must not appear
+        assert a.email not in resp.text, "user A's email leaked"
+
+
+def test_kasten_members_list_cross_tenant_denied(v2_app, mint_user, asyncpg_pool):
+    """B cannot list members of A's Kasten via the share endpoint."""
+    import asyncio
+    a = mint_user(workspace_count=1)
+    b = mint_user(workspace_count=1)
+    kid = asyncio.get_event_loop().run_until_complete(
+        _seed_kasten(asyncpg_pool, workspace_id=a.workspace_ids[0])
+    )
+    with TestClient(v2_app) as client:
+        # /api/rag/sandboxes/{id}/members is the list-members endpoint
+        # (also used to bulk-add via POST). GET should 404 for non-members.
+        resp = client.get(f"/api/rag/sandboxes/{kid}/members", headers=_auth(b.jwt))
+    if resp.status_code == 503 and ("runtime" in resp.text.lower() or "not configured" in resp.text.lower()):
+        pytest.skip("RAG/Sandbox runtime unavailable in test env")
+    # Some routers may not expose GET on this path — 404/403/405 all
+    # acceptable as denial. The safety property is "no list of A's members".
+    assert resp.status_code in (403, 404, 405), resp.text
 
 
 def test_zettel_delete_cross_tenant_denied(v2_app, mint_user, asyncpg_pool):
