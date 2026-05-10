@@ -437,28 +437,13 @@ async def graph_data(
     return result
 
 
-@router.post("/graph/rebuild-links")
-async def rebuild_links(user: Annotated[dict | None, Depends(get_optional_user)] = None):
-    """Rebuild all tag-based links for a user (or default user).
-
-    Deletes existing links and re-creates them from shared tags.
-    """
-    global _graph_cache_global, _graph_cache_global_ts
-
-    sb = _get_supabase(user_id_override=user["sub"] if user else None)
-    if not sb:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
-
-    repo, user_id = sb
-    try:
-        from uuid import UUID
-        count = repo.rebuild_links(UUID(user_id))
-        _graph_cache_global = None
-        _graph_cache_global_ts = 0
-        return {"status": "ok", "links_created": count, "user_id": user_id}
-    except Exception as exc:
-        logger.error("Rebuild links failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Failed to rebuild links: {exc}")
+# Phase 8.5.R3 / Phase 8 Task 4d: /api/graph/rebuild-links — HARD DELETED.
+# Admin endpoint with no external callers; production link maintenance is
+# event-driven (Supabase triggers, pg_cron), not REST-triggered. FastAPI's
+# default 404 handles unknown URLs. If ever needed again, ship as
+# ops/scripts/rebuild_links.py — one-shot ops script, never an HTTP route.
+# Industry pattern: Sitecore Content Hub graph-rebuild-tracking, Neo4j LLM
+# Knowledge Graph Builder, Microsoft GraphRAG — all event-driven.
 
 
 def _is_supabase_uuid(value: str | None) -> bool:
@@ -709,30 +694,35 @@ async def graph_search(
     request: Request,
     user: Annotated[dict | None, Depends(get_optional_user)] = None,
 ):
-    """Hybrid search across the knowledge graph (M6)."""
-    ip = request.client.host if request.client else "unknown"
-    if not _check_query_rate_limit(ip):
-        raise HTTPException(status_code=429, detail="Too many queries. Wait a minute.")
+    """RETIRED: 410 Gone per Phase 8.5.R3 / Phase 8 Task 4c.
 
-    sb = _get_supabase(user_id_override=user["sub"] if user else None)
-    if not sb:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
+    Graph search is either a frontend filter over the already-loaded /api/graph
+    payload (Obsidian/Roam/Logseq pattern) or subsumed by RAG retrieval
+    (/api/rag/adhoc — Tana/Mem.ai/Microsoft GraphRAG pattern). No v2 successor
+    today; if a real product surface ever needs it, ship as a scope filter on
+    the existing RAG endpoint, not by un-deprecating this v1 route.
 
-    repo, user_id = sb
-    try:
-        from website.features.kg_features.retrieval import hybrid_search
-
-        results = hybrid_search(
-            supabase_client=repo._client,
-            user_id=user_id,
-            query=body.query,
-            seed_node_id=body.seed_node_id,
-            limit=body.limit,
-        )
-        return {"results": [r.model_dump() for r in results]}
-    except Exception as exc:
-        logger.error("Graph search failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Search failed.")
+    Industry pattern (2026): Notion/Zalando/Sentry deprecation conventions —
+    410 with RFC 8594 Sunset + IETF Deprecation header so clients can
+    distinguish intentional retirement from 404 not-found.
+    """
+    return JSONResponse(
+        status_code=410,
+        content={
+            "error": "gone",
+            "message": (
+                "/api/graph/search is retired. Use /api/rag/adhoc for query-"
+                "driven retrieval over your Kasten content, or filter the "
+                "/api/graph payload client-side."
+            ),
+            "v2_endpoint": None,
+            "docs": "docs/db-v2/cutover-runbook.md",
+        },
+        headers={
+            "Sunset": "Sat, 10 May 2026 00:00:00 GMT",
+            "Deprecation": "@1715299200",
+        },
+    )
 
 
 @router.post("/summarize")
