@@ -8,10 +8,10 @@ Phase 4.4 (DB v2 purge) — kasten CRUD dual-path:
  * Tag- or source-type-filtered ``add_members`` requests intentionally fall
    back to the v1 path because the v2 ``bulk_add_to_kasten`` RPC only accepts
    an explicit ``workspace_zettel_id`` array.
- * Kasten member-sharing (e.g. inviting other workspaces to a kasten via
-   ``rag.kasten_members``) is deferred to Phase 7 hardening — it requires an
-   RLS migration on ``rag.kastens`` to extend tenancy through the
-   ``kasten_members`` join, which is out of scope for 4.4.
+ * Kasten member-sharing (inviting other workspaces to a kasten via
+   ``rag.kasten_members``) is wired through the v2-only POST /share endpoint
+   (Phase 7.2-deferred). RLS on ``rag.kastens`` + ``rag.kasten_zettels`` is
+   extended through the ``kasten_members`` join in ``_v2/29``.
 """
 
 from __future__ import annotations
@@ -145,6 +145,27 @@ class SandboxUpdateRequest(BaseModel):
     icon: str | None = None
     color: str | None = None
     default_quality: str | None = None
+
+
+class KastenShareRequest(BaseModel):
+    """Request body for POST /api/rag/sandboxes/{id}/share — v2 kasten member-sharing.
+
+    Phase 7.2-deferred: workspace-keyed sharing (rag.kasten_members is keyed
+    by workspace_id, not profile_id, per the v2 design — sharing a kasten with
+    another tenant means adding their workspace as a member). Defaults role to
+    'viewer' if omitted.
+    """
+
+    workspace_id: UUID
+    role: str = "viewer"
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"viewer", "editor", "owner"}:
+            raise ValueError("role must be viewer, editor, or owner")
+        return normalized
 
 
 class SandboxMemberAddRequest(BaseModel):
@@ -467,6 +488,65 @@ async def delete_sandbox(
     if not deleted:
         raise HTTPException(status_code=404, detail="Sandbox not found")
     return {"status": "ok", "sandbox_id": str(sandbox_id)}
+
+
+@router.post("/sandboxes/{sandbox_id}/share")
+async def share_kasten(
+    sandbox_id: UUID,
+    body: KastenShareRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Add a recipient workspace as a member of a kasten (v2-only).
+
+    Phase 7.2-deferred (closes the deferral from Phase 4.4): kasten member-
+    sharing routes through ``rag.kasten_members``. The granter must be acting
+    from a workspace that holds the kasten's owner row — enforced by the
+    ``rag.assert_kasten_owner_can_grant`` trigger; recipient SELECT access is
+    granted by the ``kastens_member_or_owner_select`` /
+    ``kasten_zettels_member_or_owner_select`` policies in ``_v2/29``.
+    """
+    v2 = _v2_scope_for(user)
+    if v2 is None:
+        # v2-only feature (workspace-keyed sharing has no v1 equivalent — v1
+        # rag_sandbox_members was profile-keyed). Surface a clear 501 rather
+        # than a misleading fall-through to a non-existent v1 path.
+        raise HTTPException(
+            status_code=501,
+            detail="Kasten sharing requires DB v2",
+        )
+    rag_repo, _profile_id, workspace_id = v2
+    kasten = rag_repo.get_kasten(sandbox_id, workspace_id)
+    if kasten is None:
+        # 404 covers both 'kasten does not exist' and 'caller's workspace does
+        # not own the kasten'. Either way, the caller cannot grant.
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    try:
+        rag_repo.add_kasten_member(
+            kasten_id=sandbox_id,
+            workspace_id=body.workspace_id,
+            role=body.role,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface real driver error to logs + client
+        logger.exception(
+            "v2 add_kasten_member failed for kasten=%s recipient_workspace=%s role=%s: %s",
+            sandbox_id,
+            body.workspace_id,
+            body.role,
+            exc,
+        )
+        # The trigger raises 'only kasten owners can grant memberships' (P0001)
+        # for non-owner granters; surface as 403 so callers can distinguish
+        # auth failures from generic 500s.
+        msg = str(exc).lower()
+        if "only kasten owners" in msg or "p0001" in msg:
+            raise HTTPException(status_code=403, detail="Only kasten owners can grant memberships") from exc
+        raise HTTPException(status_code=500, detail="Share kasten failed.") from exc
+    return {
+        "status": "ok",
+        "kasten_id": str(sandbox_id),
+        "workspace_id": str(body.workspace_id),
+        "role": body.role,
+    }
 
 
 @router.post("/sandboxes/{sandbox_id}/members")

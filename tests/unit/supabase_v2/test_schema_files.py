@@ -42,6 +42,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "26_hybrid_search_chunks_kasten.sql",
         "27_drop_redundant_retrieval_idx.sql",
         "28_drop_legacy_rpcs.sql",
+        "29_kasten_sharing_rls.sql",
     ]
 
 
