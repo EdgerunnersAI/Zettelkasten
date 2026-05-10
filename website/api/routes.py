@@ -249,24 +249,33 @@ async def update_avatar(
     body: AvatarUpdateRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ):
-    """Update the authenticated user's avatar."""
+    """Update the authenticated user's avatar.
+
+    Phase 8.5.R3 v2 port: writes to ``core.profiles.avatar_url`` via the
+    authenticated profile id (resolved from JWT ``sub``). The product surface
+    is a preset-picker (avatar_id ∈ [0, 59]) mapping to pre-built SVG assets
+    under ``/artifacts/avatars/``. No file upload, no Pillow re-encode — the
+    R-B research's full upload pipeline is overkill for this product shape.
+
+    v1 fallback retired: pre-v2, this called ``KGRepository.update_user_avatar``
+    against ``public.kg_users``. That table was dropped in Phase 6.
+    """
+    from uuid import UUID
     avatar_url = f"/artifacts/avatars/avatar_{body.avatar_id:02d}.svg"
 
-    sb = _get_supabase(user_id_override=user["sub"])
-    if not sb:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
+    if not _is_supabase_uuid(user.get("sub")):
+        raise HTTPException(status_code=400, detail="v2 avatar update requires UUID auth subject")
 
-    repo, _ = sb
-    # Ensure user exists in kg_users before updating avatar
-    metadata = user.get("user_metadata", {})
-    repo.get_or_create_user(
-        render_user_id=user["sub"],
-        display_name=metadata.get("full_name"),
-        email=user.get("email"),
-    )
-    updated = repo.update_user_avatar(user["sub"], avatar_url)
+    scope = get_supabase_v2_scope(user["sub"])
+    if scope is None:
+        raise HTTPException(status_code=404, detail="No v2 profile scope")
+    _content_repo, profile_id, _workspace_id = scope
+
+    from website.core.supabase_v2.repositories.core_repository import CoreRepository
+    core_repo = CoreRepository()
+    updated = core_repo.update_avatar(profile_id, avatar_url)
     if not updated:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Profile not found")
 
     return {"avatar_url": avatar_url}
 

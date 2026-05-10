@@ -57,3 +57,20 @@ class CoreRepository:
             on_conflict="id",
         ).execute()
 
+    def update_avatar(self, profile_id: UUID, avatar_url: str) -> bool:
+        """Set ``core.profiles.avatar_url`` for the given profile.
+
+        Phase 8.5.R3 v2 port. The compound-key match (id only — profile_id IS
+        the user identity) gates writes to the caller's own row by construction;
+        the API handler resolves ``profile_id`` from the authenticated JWT.
+        Returns ``True`` on success, ``False`` when no row was updated.
+        """
+        response = (
+            self._client.schema("core")
+            .table("profiles")
+            .update({"avatar_url": avatar_url})
+            .eq("id", str(profile_id))
+            .execute()
+        )
+        return bool(response.data)
+
