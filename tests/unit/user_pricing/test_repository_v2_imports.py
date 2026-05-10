@@ -6,16 +6,42 @@ operator-defined territory: ZERO behaviour changes, ZERO seeding, ZERO
 diff was a single-line import swap (legacy ``supabase_kg`` → v2
 ``supabase_v2`` aliased to the same name). These tests guard that
 constraint.
+
+**Retired in Phase 8.0.2 (2026-05-10).** The v1 fallback branches in
+``user_pricing/repository.py`` were deleted as part of the v2-purge
+closeout — see
+``docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md``. The
+``is_supabase_configured`` alias and the v1 RPC-string snapshots no
+longer apply. The successor coverage lives in
+``tests/unit/user_pricing/test_repository_v2_billing.py``. The golden
+SQL function body in ``supabase/website/_v2/06_billing_schema.sql`` is
+guarded separately by ``supabase/website/_v2/golden/pricing_consume_entitlement.md5``.
 """
 from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason=(
+        "v1 pricing surface retired in Phase 8.0.2 (2026-05-10); "
+        "replaced by tests/unit/user_pricing/test_repository_v2_billing.py"
+    )
+)
 
 import inspect
 from pathlib import Path
 
-from website.features.user_pricing.repository import (
-    PricingRepository,
-    is_supabase_configured,
-)
+# Import lazily inside test bodies — the v2-purge closeout removed the
+# ``is_supabase_configured`` alias from the repository module, so a top-level
+# import would fail at collection time even though all tests are skip-marked.
+try:  # pragma: no cover — collection-only safety
+    from website.features.user_pricing.repository import (
+        PricingRepository,
+        is_supabase_configured,
+    )
+except ImportError:  # pragma: no cover
+    PricingRepository = None  # type: ignore[assignment]
+    is_supabase_configured = None  # type: ignore[assignment]
 
 
 REPO_PATH = Path("website/features/user_pricing/repository.py")

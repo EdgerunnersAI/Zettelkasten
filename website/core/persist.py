@@ -30,7 +30,15 @@ from website.core.supabase_kg import KGNodeCreate, KGRepository, is_supabase_con
 from website.core.supabase_v2.models import CanonicalChunkCreate, CanonicalZettelCreate, WorkspaceZettelCreate
 from website.core.supabase_v2.repositories.content_repository import ContentRepository as V2ContentRepository
 from website.core.supabase_v2.repositories.core_repository import CoreRepository as V2CoreRepository
+from website.core.supabase_v2.client import get_v2_client as _get_v2_client
 from website.core.text_polish import polish, rewrite_tags, strip_caveats
+
+# Keep a forward reference to supabase Client only for typing; importing at
+# module top would force the supabase package even when v2 is disabled.
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from supabase import Client  # noqa: F401
 
 logger = logging.getLogger("website.core.persist")
 
@@ -189,6 +197,26 @@ def get_supabase_v2_scope(user_sub: str | None = None) -> tuple[V2ContentReposit
     except Exception as exc:
         logger.warning("Supabase v2 scope lookup failed, falling back: %s", exc)
         return None
+
+
+def get_billing_scope(user_sub: str | UUID) -> tuple["Client", UUID]:
+    """Return ``(v2 client, profile_id)`` for billing.* operations.
+
+    Hard-fails on non-UUID ``user_sub``: per operator decision (2026-05-10,
+    Phase 8.0 v2 purge), legacy non-UUID render_user_ids are not supported in
+    the v2 billing path. Both production users are UUID-authed; v1 fallback
+    branches in ``user_pricing/repository.py`` are dead code and have been
+    removed (closes H2 + H3). See
+    ``docs/db-v2/phase-9-pricing-enforcement-plan.md`` for the broader
+    pricing-enforcement plan that replaces v1's request-counter model.
+    """
+    try:
+        profile_id = user_sub if isinstance(user_sub, UUID) else UUID(str(user_sub))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"v2 billing requires a Supabase auth UUID; got {user_sub!r}"
+        ) from exc
+    return _get_v2_client(), profile_id
 
 
 # Internal sentinel tokens that must never leak to persisted surfaces.

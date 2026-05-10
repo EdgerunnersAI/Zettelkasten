@@ -1,13 +1,22 @@
-"""Persistence facade for pricing state.
+"""Persistence facade for pricing state (DB v2 billing schema only).
 
-The concrete production schema is provided by the Supabase migration
-(``supabase/website/user_pricing/schema.sql``). This facade stays small so
-route code can be tested without a live database and without leaking
-provider details into API handlers.
+The concrete production schema is provided by the v2 migrations under
+``supabase/website/_v2/06_billing_schema.sql`` and
+``supabase/website/_v2/30_billing_pricing_active_plan.sql``. This facade
+stays small so route code can be tested without a live database.
 
-In-memory dicts are used as a graceful fallback whenever Supabase is not
-configured or a write fails — entitlement checks "fail open" rather than
-blocking real users on infra hiccups.
+**v2-only since Phase 8.0.2 (2026-05-10).** Every previous "v2 first, then v1
+fallback" branch was deleted. Both production users authenticate as Supabase
+Auth UUIDs; the v1 ``public.pricing_*`` surface is unreachable. See
+``docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md`` for the
+purge plan and ``docs/db-v2/phase-9-pricing-enforcement-plan.md`` for the
+multi-period enforcement plan that will replace the current fail-open
+``check_entitlement`` / ``consume_entitlement`` stubs.
+
+In-memory dicts remain as a graceful fallback whenever the v2 client cannot
+be reached (network blip, missing UUID auth, scope-helper raises) so ingest
+never blocks real users on infra hiccups. Webhook-replay safety is handled
+by the unique-constraint guarantees on ``billing.pricing_*`` tables.
 """
 
 from __future__ import annotations
@@ -16,18 +25,33 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from website.core.db_version import use_supabase_v2
 from website.core.supabase_v2.client import is_v2_configured as is_supabase_configured
-from website.core.supabase_v2.repositories.billing_repository import BillingRepository as V2BillingRepository
 from website.features.user_pricing.models import Meter
+
+# ``is_supabase_configured`` is re-exported only for backward-compatibility
+# with the existing ``test_razorpay_routes`` fixture (Phase 3.2 alias).
+# The v2-only routing code path in this module does NOT consult it — the
+# ``_scope()`` helper below is the single gate. Tests that monkeypatch this
+# symbol to ``lambda: False`` get the in-memory mirror behaviour because
+# ``_scope()`` independently returns None when ``get_billing_scope`` raises.
+__all__ = (
+    "PricingRepository",
+    "get_pricing_repository",
+    "reset_memory_state_for_tests",
+    "is_supabase_configured",
+)
 
 logger = logging.getLogger(__name__)
 
 _MEMORY_PROFILES: dict[str, dict] = {}
 _MEMORY_PAYMENTS: dict[str, dict] = {}
 _MEMORY_BALANCES: dict[str, dict[str, int]] = {}
-_MEMORY_SUBSCRIPTIONS: dict[str, dict] = {}  # keyed by render_user_id (current sub)
-_MEMORY_SUBS_BY_RZP: dict[str, str] = {}      # razorpay_subscription_id -> render_user_id
+# In-memory mirrors keep the legacy ``render_user_id`` key name to preserve
+# the dict shape consumed by ``website/features/user_pricing/routes.py`` —
+# the v2 schema migration moved the SQL column to ``profile_id``, but the
+# Python-side dict is route-layer contract.
+_MEMORY_SUBSCRIPTIONS: dict[str, dict] = {}  # keyed by user_sub (= profile_id UUID string)
+_MEMORY_SUBS_BY_RZP: dict[str, str] = {}      # razorpay_subscription_id -> user_sub
 _MEMORY_EVENTS: dict[str, dict] = {}
 _MEMORY_REFUNDS: dict[str, dict] = {}         # razorpay_refund_id -> row
 _MEMORY_DISPUTES: dict[str, dict] = {}        # razorpay_dispute_id -> row
@@ -41,136 +65,117 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-class PricingRepository:
-    """Supabase-backed pricing repository with in-memory fallback."""
+def _scope(user_sub: str | None):
+    """Resolve (client, profile_id) or return None when v2 is unreachable.
 
-    def _v2_profile_id(self, user_sub: str) -> UUID | None:
-        if not use_supabase_v2():
-            return None
-        try:
-            return UUID(user_sub)
-        except (TypeError, ValueError):
-            return None
+    Hard-fails on non-UUID user_sub (operator-approved Phase 8.0 decision)
+    by catching the RuntimeError from get_billing_scope and returning None.
+    Callers fall back to the in-memory dict path on None.
+    """
+    if not user_sub:
+        return None
+    try:
+        from website.core.persist import get_billing_scope
+
+        return get_billing_scope(user_sub)
+    except RuntimeError:
+        # Non-UUID auth subject: v2 billing path not available.
+        return None
+    except Exception as exc:  # noqa: BLE001 — defensive: v2 client init may fail
+        logger.warning("billing scope acquisition failed for user_sub=%s: %s", user_sub, exc)
+        return None
+
+
+class PricingRepository:
+    """v2-only pricing repository (billing schema) with in-memory fallback."""
 
     # ────────────────────────── entitlements ──────────────────────────
 
     def check_entitlement(self, *, user_sub: str, meter: Meter, action_id: str | None) -> bool:
-        v2_profile_id = self._v2_profile_id(user_sub)
-        if v2_profile_id is not None:
-            try:
-                return V2BillingRepository().check_entitlement(
-                    profile_id=v2_profile_id,
-                    feature=str(meter),
-                    unit="request",
-                )
-            except Exception as exc:
-                logger.warning("Pricing v2 entitlement check failed open for user=%s meter=%s: %s", user_sub, meter, exc)
-                return True
+        """Currently fail-open per Phase 9 pricing-enforcement plan.
 
-        if not is_supabase_configured():
-            return True
+        Multi-period (day/week/month/total) caps require schema work +
+        operator-approved entitlement seeding per ``pricing1.md``. Until
+        Phase 9 lands ``billing.pricing_consume_entitlement_v3`` with
+        multi-period support + plan-row seeds, this returns True.
 
-        try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope(user_id_override=user_sub)
-            if not scoped:
-                return True
-            repo, _kg_user_id = scoped
-            response = repo._client.rpc(
-                "pricing_check_entitlement",
-                {"p_render_user_id": user_sub, "p_meter": str(meter), "p_action_id": action_id},
-            ).execute()
-            return bool(response.data)
-        except Exception as exc:
-            logger.warning("Pricing entitlement check failed open for user=%s meter=%s: %s", user_sub, meter, exc)
-            return True
+        See ``docs/db-v2/phase-9-pricing-enforcement-plan.md``.
+        """
+        logger.debug(
+            "pricing check_entitlement called; fail-open until Phase 9",
+            extra={"user_sub": user_sub, "meter": str(meter), "action_id": action_id},
+        )
+        return True
 
     def consume_entitlement(self, *, user_sub: str, meter: Meter, action_id: str | None) -> None:
-        v2_profile_id = self._v2_profile_id(user_sub)
-        if v2_profile_id is not None:
-            try:
-                V2BillingRepository().check_entitlement(
-                    profile_id=v2_profile_id,
-                    feature=str(meter),
-                    unit="request",
-                )
-            except Exception as exc:
-                logger.warning("Pricing v2 entitlement consume failed for user=%s meter=%s: %s", user_sub, meter, exc)
-            return
+        """Fail-open no-op per Phase 9 pricing-enforcement plan.
 
-        if not is_supabase_configured():
-            return
-
-        try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope(user_id_override=user_sub)
-            if not scoped:
-                return
-            repo, _kg_user_id = scoped
-            repo._client.rpc(
-                "pricing_consume_entitlement",
-                {"p_render_user_id": user_sub, "p_meter": str(meter), "p_action_id": action_id},
-            ).execute()
-        except Exception as exc:
-            logger.warning("Pricing entitlement consume failed for user=%s meter=%s: %s", user_sub, meter, exc)
+        Pairs with ``check_entitlement`` above. Will be replaced when
+        Phase 9 ships the v3 enforcement RPC; until then, request counters
+        remain unincremented and quota is effectively unlimited.
+        """
+        logger.debug(
+            "pricing consume_entitlement called; no-op until Phase 9",
+            extra={"user_sub": user_sub, "meter": str(meter), "action_id": action_id},
+        )
+        return None
 
     # ───────────────────────── billing profile ─────────────────────────
 
     def get_billing_profile(self, *, user_sub: str) -> dict | None:
-        if not is_supabase_configured():
+        scoped = _scope(user_sub)
+        if not scoped:
             return _MEMORY_PROFILES.get(user_sub)
 
+        client, profile_id = scoped
         try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope(user_id_override=user_sub)
-            if not scoped:
-                return None
-            repo, _kg_user_id = scoped
             response = (
-                repo._client.table("pricing_billing_profiles")
+                client.schema("billing")
+                .table("pricing_billing_profiles")
                 .select("*")
-                .eq("render_user_id", user_sub)
+                .eq("profile_id", str(profile_id))
                 .limit(1)
                 .execute()
             )
-            return response.data[0] if response.data else None
+            return response.data[0] if response.data else _MEMORY_PROFILES.get(user_sub)
         except Exception as exc:
             logger.warning("Billing profile lookup failed for user=%s: %s", user_sub, exc)
             return _MEMORY_PROFILES.get(user_sub)
 
     def upsert_billing_profile(self, *, user_sub: str, email: str, phone: str, name: str = "") -> dict:
-        row = {
+        # Memory mirror retains the legacy shape (phone, name) for tests +
+        # diagnostic surfaces; the v2 row stores only what the schema accepts.
+        memory_row = {
             "render_user_id": user_sub,
             "email": email,
             "phone": phone,
             "name": name,
             "updated_at": _now_iso(),
         }
-        if not is_supabase_configured():
-            _MEMORY_PROFILES[user_sub] = row
-            return row
+        _MEMORY_PROFILES[user_sub] = memory_row
 
+        scoped = _scope(user_sub)
+        if not scoped:
+            return memory_row
+
+        client, profile_id = scoped
+        v2_row = {
+            "profile_id": str(profile_id),
+            "email": email,
+            "name": name,
+            "updated_at": memory_row["updated_at"],
+        }
         try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope(user_id_override=user_sub)
-            if not scoped:
-                _MEMORY_PROFILES[user_sub] = row
-                return row
-            repo, _kg_user_id = scoped
             response = (
-                repo._client.table("pricing_billing_profiles")
-                .upsert(row, on_conflict="render_user_id")
+                client.schema("billing")
+                .table("pricing_billing_profiles")
+                .upsert(v2_row, on_conflict="profile_id")
                 .execute()
             )
-            return response.data[0] if response.data else row
+            return response.data[0] if response.data else v2_row
         except Exception as exc:
             logger.warning("Billing profile upsert failed for user=%s: %s", user_sub, exc)
-            _MEMORY_PROFILES[user_sub] = row
-            return row
+            return memory_row
 
     # ─────────────────────────── payments ────────────────────────────
 
@@ -206,8 +211,32 @@ class PricingRepository:
             "created_at": _now_iso(),
         }
         _MEMORY_PAYMENTS[payment_id] = row
-        if is_supabase_configured():
-            self._supabase_insert("pricing_orders", row)
+
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            v2_row = {
+                "profile_id": str(profile_id),
+                "kind": kind,
+                "amount": int(amount),
+                "amount_paise": int(amount),
+                "currency": currency,
+                "plan_id": plan_id,
+                "period_id": period_id,
+                "status": "created",
+                "razorpay_order_id": None,
+                "razorpay_subscription_id": None,
+                "razorpay_payment_id": None,
+                "provider_payload": {
+                    "payment_id": payment_id,
+                    "product_id": product_id,
+                    "meter": meter,
+                    "quantity": int(quantity) if quantity is not None else None,
+                },
+                "created_at": row["created_at"],
+                "updated_at": row["created_at"],
+            }
+            self._billing_insert(client, "pricing_orders", v2_row)
         return row
 
     def attach_provider_order(
@@ -223,20 +252,28 @@ class PricingRepository:
         if razorpay_subscription_id is not None:
             row["razorpay_subscription_id"] = razorpay_subscription_id
         row["updated_at"] = _now_iso()
-        if is_supabase_configured():
-            self._supabase_update(
-                "pricing_orders",
-                {
-                    k: v
-                    for k, v in {
-                        "razorpay_order_id": razorpay_order_id,
-                        "razorpay_subscription_id": razorpay_subscription_id,
-                        "updated_at": row["updated_at"],
-                    }.items()
-                    if v is not None
-                },
-                where=("payment_id", payment_id),
-            )
+
+        # v2 billing.pricing_orders has no payment_id column (uses provider_payload
+        # JSON for payment_id linkage). Update by razorpay_order_id when available;
+        # otherwise this is a memory-only update until the order is paid.
+        scoped = _scope(row.get("render_user_id"))
+        if scoped and razorpay_order_id:
+            client, _ = scoped
+            updates = {k: v for k, v in {
+                "razorpay_order_id": razorpay_order_id,
+                "razorpay_subscription_id": razorpay_subscription_id,
+                "updated_at": row["updated_at"],
+            }.items() if v is not None}
+            try:
+                (
+                    client.schema("billing")
+                    .table("pricing_orders")
+                    .update(updates)
+                    .eq("razorpay_order_id", razorpay_order_id)
+                    .execute()
+                )
+            except Exception as exc:
+                logger.warning("Billing order attach failed for %s: %s", razorpay_order_id, exc)
         return row
 
     def mark_payment_paid(
@@ -252,17 +289,25 @@ class PricingRepository:
         row["signature"] = signature
         row["paid_at"] = _now_iso()
         row["updated_at"] = row["paid_at"]
-        if is_supabase_configured():
-            self._supabase_update(
-                "pricing_orders",
-                {
-                    "razorpay_payment_id": razorpay_payment_id,
-                    "status": "paid",
-                    "paid_at": row["paid_at"],
-                    "updated_at": row["paid_at"],
-                },
-                where=("payment_id", payment_id),
-            )
+
+        scoped = _scope(row.get("render_user_id"))
+        if scoped and row.get("razorpay_order_id"):
+            client, _ = scoped
+            try:
+                (
+                    client.schema("billing")
+                    .table("pricing_orders")
+                    .update({
+                        "razorpay_payment_id": razorpay_payment_id,
+                        "status": "paid",
+                        "paid_at": row["paid_at"],
+                        "updated_at": row["paid_at"],
+                    })
+                    .eq("razorpay_order_id", row["razorpay_order_id"])
+                    .execute()
+                )
+            except Exception as exc:
+                logger.warning("Billing order mark-paid failed for %s: %s", payment_id, exc)
         return row
 
     def mark_payment_failed(self, *, payment_id: str, reason: str) -> dict:
@@ -270,63 +315,63 @@ class PricingRepository:
         row["status"] = "failed"
         row["failure_reason"] = reason
         row["updated_at"] = _now_iso()
-        if is_supabase_configured():
-            self._supabase_update(
-                "pricing_orders",
-                {"status": "failed", "failure_reason": reason, "updated_at": row["updated_at"]},
-                where=("payment_id", payment_id),
-            )
+
+        scoped = _scope(row.get("render_user_id"))
+        if scoped and row.get("razorpay_order_id"):
+            client, _ = scoped
+            try:
+                (
+                    client.schema("billing")
+                    .table("pricing_orders")
+                    .update({
+                        "status": "failed",
+                        "failure_reason": reason,
+                        "updated_at": row["updated_at"],
+                    })
+                    .eq("razorpay_order_id", row["razorpay_order_id"])
+                    .execute()
+                )
+            except Exception as exc:
+                logger.warning("Billing order mark-failed failed for %s: %s", payment_id, exc)
         return row
 
     def get_payment_record(self, *, payment_id: str) -> dict | None:
-        if payment_id in _MEMORY_PAYMENTS:
-            return _MEMORY_PAYMENTS[payment_id]
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
-
-                scoped = get_supabase_scope()
-                if not scoped:
-                    return None
-                repo, _ = scoped
-                response = (
-                    repo._client.table("pricing_orders")
-                    .select("*")
-                    .eq("payment_id", payment_id)
-                    .limit(1)
-                    .execute()
-                )
-                if response.data:
-                    _MEMORY_PAYMENTS[payment_id] = response.data[0]
-                    return response.data[0]
-            except Exception as exc:
-                logger.warning("Payment lookup failed for %s: %s", payment_id, exc)
-        return None
+        # billing.pricing_orders has no payment_id column — payment_id lives
+        # only in the in-memory mirror + provider_payload JSON. Memory hit
+        # is the canonical lookup path.
+        return _MEMORY_PAYMENTS.get(payment_id)
 
     def find_payment_by_razorpay_order(self, *, razorpay_order_id: str) -> dict | None:
         for row in _MEMORY_PAYMENTS.values():
             if row.get("razorpay_order_id") == razorpay_order_id:
                 return row
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
 
-                scoped = get_supabase_scope()
-                if not scoped:
-                    return None
-                repo, _ = scoped
+        # Best-effort: any UUID-authed user's scope works for this read since
+        # razorpay_order_id is globally unique. Try the first memory row that
+        # has a user_sub; otherwise we have no scope to query.
+        for row in _MEMORY_PAYMENTS.values():
+            user_sub = row.get("render_user_id")
+            if not user_sub:
+                continue
+            scoped = _scope(user_sub)
+            if not scoped:
+                continue
+            client, _ = scoped
+            try:
                 response = (
-                    repo._client.table("pricing_orders")
+                    client.schema("billing")
+                    .table("pricing_orders")
                     .select("*")
                     .eq("razorpay_order_id", razorpay_order_id)
                     .limit(1)
                     .execute()
                 )
                 if response.data:
-                    _MEMORY_PAYMENTS[response.data[0]["payment_id"]] = response.data[0]
                     return response.data[0]
             except Exception as exc:
-                logger.warning("Payment lookup by order failed for %s: %s", razorpay_order_id, exc)
+                logger.warning("Billing order lookup by razorpay_order_id failed: %s", exc)
+                return None
+            break
         return None
 
     # ─────────────────────────── balances ────────────────────────────
@@ -334,19 +379,21 @@ class PricingRepository:
     def add_pack_credits(self, *, user_sub: str, meter: str, quantity: int) -> dict[str, int]:
         wallet = _MEMORY_BALANCES.setdefault(user_sub, {})
         wallet[meter] = int(wallet.get(meter, 0)) + int(quantity)
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
 
-                scoped = get_supabase_scope(user_id_override=user_sub)
-                if scoped:
-                    repo, _ = scoped
-                    repo._client.rpc(
-                        "pricing_add_pack_credits",
-                        {"p_render_user_id": user_sub, "p_meter": meter, "p_quantity": int(quantity)},
-                    ).execute()
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            try:
+                client.schema("billing").rpc(
+                    "pricing_add_pack_credits",
+                    {
+                        "p_profile_id": str(profile_id),
+                        "p_meter": meter,
+                        "p_quantity": int(quantity),
+                    },
+                ).execute()
             except Exception as exc:
-                logger.warning("add_pack_credits supabase failed for user=%s meter=%s: %s", user_sub, meter, exc)
+                logger.warning("add_pack_credits billing failed for user=%s meter=%s: %s", user_sub, meter, exc)
         return dict(wallet)
 
     def get_balances(self, *, user_sub: str) -> dict[str, int]:
@@ -386,8 +433,23 @@ class PricingRepository:
         _MEMORY_SUBSCRIPTIONS[user_sub] = row
         if razorpay_subscription_id:
             _MEMORY_SUBS_BY_RZP[razorpay_subscription_id] = user_sub
-        if is_supabase_configured():
-            self._supabase_insert("pricing_subscriptions", row, upsert_on="render_user_id")
+
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            v2_row = {
+                "profile_id": str(profile_id),
+                "plan_id": plan_id,
+                "period_id": period_id,
+                "status": status,
+                "razorpay_subscription_id": razorpay_subscription_id,
+                "total_count": row["total_count"],
+                "paid_count": int(row["paid_count"] or 0),
+                "current_period_start": row["current_period_start"],
+                "current_period_end": row["current_period_end"],
+                "updated_at": row["updated_at"],
+            }
+            self._billing_insert(client, "pricing_subscriptions", v2_row, upsert_on="razorpay_subscription_id")
         return row
 
     def activate_subscription(
@@ -419,8 +481,23 @@ class PricingRepository:
         _MEMORY_SUBSCRIPTIONS[user_sub] = row
         if row["razorpay_subscription_id"]:
             _MEMORY_SUBS_BY_RZP[row["razorpay_subscription_id"]] = user_sub
-        if is_supabase_configured():
-            self._supabase_insert("pricing_subscriptions", row, upsert_on="render_user_id")
+
+        scoped = _scope(user_sub)
+        if scoped and row["razorpay_subscription_id"]:
+            client, profile_id = scoped
+            v2_row = {
+                "profile_id": str(profile_id),
+                "plan_id": plan_id,
+                "period_id": period_id,
+                "status": "active",
+                "razorpay_subscription_id": row["razorpay_subscription_id"],
+                "razorpay_payment_id": row.get("razorpay_payment_id"),
+                "paid_count": row["paid_count"],
+                "current_period_start": row["current_period_start"],
+                "current_period_end": row["current_period_end"],
+                "updated_at": row["updated_at"],
+            }
+            self._billing_insert(client, "pricing_subscriptions", v2_row, upsert_on="razorpay_subscription_id")
         return row
 
     def update_subscription_status(
@@ -451,18 +528,27 @@ class PricingRepository:
         if failure_reason:
             row["failure_reason"] = failure_reason
         row["updated_at"] = _now_iso()
-        if is_supabase_configured():
-            self._supabase_update(
-                "pricing_subscriptions",
-                {k: v for k, v in {
-                    "status": status,
-                    "current_period_end": current_period_end,
-                    "cancelled_at": cancelled_at,
-                    "failure_reason": failure_reason,
-                    "updated_at": row["updated_at"],
-                }.items() if v is not None},
-                where=("razorpay_subscription_id", razorpay_subscription_id),
-            )
+
+        scoped = _scope(user_sub)
+        if scoped:
+            client, _ = scoped
+            updates = {k: v for k, v in {
+                "status": status,
+                "current_period_end": current_period_end,
+                "cancelled_at": cancelled_at,
+                "failure_reason": failure_reason,
+                "updated_at": row["updated_at"],
+            }.items() if v is not None}
+            try:
+                (
+                    client.schema("billing")
+                    .table("pricing_subscriptions")
+                    .update(updates)
+                    .eq("razorpay_subscription_id", razorpay_subscription_id)
+                    .execute()
+                )
+            except Exception as exc:
+                logger.warning("Billing subscription update failed for %s: %s", razorpay_subscription_id, exc)
         return row
 
     def get_subscription(self, *, user_sub: str) -> dict | None:
@@ -483,33 +569,43 @@ class PricingRepository:
         key = f"{period_id}:{int(amount)}"
         if key in _MEMORY_PLAN_CACHE:
             return _MEMORY_PLAN_CACHE[key]
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
 
-                scoped = get_supabase_scope()
-                if scoped:
-                    repo, _ = scoped
-                    response = (
-                        repo._client.table("pricing_plan_cache")
-                        .select("razorpay_plan_id")
-                        .eq("cache_key", key)
-                        .limit(1)
-                        .execute()
-                    )
-                    if response.data:
-                        plan_id = response.data[0]["razorpay_plan_id"]
-                        _MEMORY_PLAN_CACHE[key] = plan_id
-                        return plan_id
+        # plan-cache is global (not per-user). Use any available scope; if no
+        # user_sub is in memory we cannot resolve a v2 client, so memory-only.
+        for user_sub in _MEMORY_PROFILES.keys():
+            scoped = _scope(user_sub)
+            if not scoped:
+                continue
+            client, _ = scoped
+            try:
+                response = (
+                    client.schema("billing")
+                    .table("pricing_plan_cache")
+                    .select("razorpay_plan_id")
+                    .eq("cache_key", key)
+                    .limit(1)
+                    .execute()
+                )
+                if response.data:
+                    plan_id = response.data[0]["razorpay_plan_id"]
+                    _MEMORY_PLAN_CACHE[key] = plan_id
+                    return plan_id
             except Exception as exc:
                 logger.warning("Plan cache lookup failed for %s: %s", key, exc)
+            return None
         return None
 
     def cache_plan_id(self, *, period_id: str, amount: int, razorpay_plan_id: str) -> None:
         key = f"{period_id}:{int(amount)}"
         _MEMORY_PLAN_CACHE[key] = razorpay_plan_id
-        if is_supabase_configured():
-            self._supabase_insert(
+
+        for user_sub in _MEMORY_PROFILES.keys():
+            scoped = _scope(user_sub)
+            if not scoped:
+                continue
+            client, _ = scoped
+            self._billing_insert(
+                client,
                 "pricing_plan_cache",
                 {
                     "cache_key": key,
@@ -519,6 +615,7 @@ class PricingRepository:
                 },
                 upsert_on="cache_key",
             )
+            return
 
     # ────────────────────────── refunds ──────────────────────────
 
@@ -534,11 +631,15 @@ class PricingRepository:
         speed: str | None = None,
         notes: dict | None = None,
     ) -> dict:
+        # render_user_id parameter name is preserved at the call-site contract
+        # (route layer), but stored as profile_id in v2. The argument is the
+        # user_sub from the auth claim — semantically the v2 profile_id UUID.
+        user_sub = render_user_id
         row = {
             "razorpay_refund_id": razorpay_refund_id,
             "razorpay_payment_id": razorpay_payment_id,
             "payment_id": payment_id,
-            "render_user_id": render_user_id,
+            "render_user_id": user_sub,
             "amount": int(amount),
             "currency": "INR",
             "status": status,
@@ -551,27 +652,44 @@ class PricingRepository:
             row["created_at"] = row["updated_at"]
         merged = {**existing, **row}
         _MEMORY_REFUNDS[razorpay_refund_id] = merged
-        if is_supabase_configured():
-            self._supabase_insert("pricing_refunds", merged, upsert_on="razorpay_refund_id")
+
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            v2_row = {
+                "razorpay_refund_id": razorpay_refund_id,
+                "razorpay_payment_id": razorpay_payment_id,
+                "payment_id": payment_id,
+                "profile_id": str(profile_id),
+                "amount": int(amount),
+                "currency": "INR",
+                "status": status,
+                "speed": speed,
+                "notes": notes or {},
+                "updated_at": merged["updated_at"],
+            }
+            self._billing_insert(client, "pricing_refunds", v2_row, upsert_on="razorpay_refund_id")
         return merged
 
     def deduct_pack_credits(self, *, user_sub: str, meter: str, quantity: int) -> dict[str, int]:
         wallet = _MEMORY_BALANCES.setdefault(user_sub, {})
         new_balance = max(0, int(wallet.get(meter, 0)) - int(quantity))
         wallet[meter] = new_balance
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
 
-                scoped = get_supabase_scope(user_id_override=user_sub)
-                if scoped:
-                    repo, _ = scoped
-                    repo._client.rpc(
-                        "pricing_deduct_pack_credits",
-                        {"p_render_user_id": user_sub, "p_meter": meter, "p_quantity": int(quantity)},
-                    ).execute()
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            try:
+                client.schema("billing").rpc(
+                    "pricing_deduct_pack_credits",
+                    {
+                        "p_profile_id": str(profile_id),
+                        "p_meter": meter,
+                        "p_quantity": int(quantity),
+                    },
+                ).execute()
             except Exception as exc:
-                logger.warning("deduct_pack_credits supabase failed for user=%s meter=%s: %s", user_sub, meter, exc)
+                logger.warning("deduct_pack_credits billing failed for user=%s meter=%s: %s", user_sub, meter, exc)
         return dict(wallet)
 
     # ────────────────────────── disputes ──────────────────────────
@@ -588,11 +706,14 @@ class PricingRepository:
         reason_code: str | None = None,
         payload: dict | None = None,
     ) -> dict:
+        # render_user_id parameter name preserved at route boundary; stored
+        # as profile_id in v2 (semantically the user_sub UUID).
+        user_sub = render_user_id
         row = {
             "razorpay_dispute_id": razorpay_dispute_id,
             "razorpay_payment_id": razorpay_payment_id,
             "payment_id": payment_id,
-            "render_user_id": render_user_id,
+            "render_user_id": user_sub,
             "amount": int(amount),
             "currency": "INR",
             "phase": phase,
@@ -605,14 +726,29 @@ class PricingRepository:
             row["created_at"] = row["updated_at"]
         merged = {**existing, **row}
         _MEMORY_DISPUTES[razorpay_dispute_id] = merged
-        if is_supabase_configured():
-            self._supabase_insert("pricing_disputes", merged, upsert_on="razorpay_dispute_id")
 
-        if render_user_id:
+        scoped = _scope(user_sub)
+        if scoped:
+            client, profile_id = scoped
+            v2_row = {
+                "razorpay_dispute_id": razorpay_dispute_id,
+                "razorpay_payment_id": razorpay_payment_id,
+                "payment_id": payment_id,
+                "profile_id": str(profile_id),
+                "amount": int(amount),
+                "currency": "INR",
+                "phase": phase,
+                "reason_code": reason_code,
+                "payload": payload or {},
+                "updated_at": merged["updated_at"],
+            }
+            self._billing_insert(client, "pricing_disputes", v2_row, upsert_on="razorpay_dispute_id")
+
+        if user_sub:
             if phase in {"created", "under_review", "action_required"}:
-                _DISPUTE_FROZEN.add(render_user_id)
+                _DISPUTE_FROZEN.add(user_sub)
             elif phase in {"won", "closed"}:
-                _DISPUTE_FROZEN.discard(render_user_id)
+                _DISPUTE_FROZEN.discard(user_sub)
         return merged
 
     def is_user_dispute_frozen(self, *, user_sub: str) -> bool:
@@ -623,16 +759,18 @@ class PricingRepository:
     def event_already_processed(self, *, event_id: str) -> bool:
         if event_id in _MEMORY_EVENTS:
             return True
-        if is_supabase_configured():
-            try:
-                from website.core.persist import get_supabase_scope
 
-                scoped = get_supabase_scope()
-                if not scoped:
-                    return False
-                repo, _ = scoped
+        # Webhook idempotency: any UUID scope works since event_id is globally
+        # unique. Fall through memory-only when no scope is reachable.
+        for user_sub in _MEMORY_PROFILES.keys():
+            scoped = _scope(user_sub)
+            if not scoped:
+                continue
+            client, _ = scoped
+            try:
                 response = (
-                    repo._client.table("pricing_payment_events")
+                    client.schema("billing")
+                    .table("pricing_payment_events")
                     .select("event_id")
                     .eq("event_id", event_id)
                     .limit(1)
@@ -643,6 +781,7 @@ class PricingRepository:
                     return True
             except Exception as exc:
                 logger.warning("Event idempotency check failed for %s: %s", event_id, exc)
+            return False
         return False
 
     def record_event(self, *, event_id: str, event_type: str, payment_id: str | None, payload: dict) -> dict:
@@ -654,39 +793,44 @@ class PricingRepository:
             "created_at": _now_iso(),
         }
         _MEMORY_EVENTS[event_id] = row
-        if is_supabase_configured():
-            self._supabase_insert("pricing_payment_events", row)
+
+        # Persist to billing.pricing_payment_events without a profile binding —
+        # the schema allows profile_id NULL (ON DELETE SET NULL). Try any
+        # reachable scope; on failure the in-memory mirror still de-dups.
+        for user_sub in _MEMORY_PROFILES.keys():
+            scoped = _scope(user_sub)
+            if not scoped:
+                continue
+            client, _ = scoped
+            v2_row = {
+                "event_id": event_id,
+                "event_type": event_type,
+                "payment_id": payment_id,
+                "payload": payload,
+                "created_at": row["created_at"],
+            }
+            self._billing_insert(client, "pricing_payment_events", v2_row)
+            break
         return row
 
-    # ─────────────────────── supabase helpers ───────────────────────
+    # ─────────────────────── billing helpers ───────────────────────
 
-    def _supabase_insert(self, table: str, row: dict, *, upsert_on: str | None = None) -> None:
+    def _billing_insert(
+        self,
+        client,
+        table: str,
+        row: dict,
+        *,
+        upsert_on: str | None = None,
+    ) -> None:
         try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope()
-            if not scoped:
-                return
-            repo, _ = scoped
+            tbl = client.schema("billing").table(table)
             if upsert_on:
-                repo._client.table(table).upsert(row, on_conflict=upsert_on).execute()
+                tbl.upsert(row, on_conflict=upsert_on).execute()
             else:
-                repo._client.table(table).insert(row).execute()
+                tbl.insert(row).execute()
         except Exception as exc:
-            logger.warning("Supabase insert into %s failed: %s", table, exc)
-
-    def _supabase_update(self, table: str, row: dict, *, where: tuple[str, str]) -> None:
-        try:
-            from website.core.persist import get_supabase_scope
-
-            scoped = get_supabase_scope()
-            if not scoped:
-                return
-            repo, _ = scoped
-            col, value = where
-            repo._client.table(table).update(row).eq(col, value).execute()
-        except Exception as exc:
-            logger.warning("Supabase update on %s failed: %s", table, exc)
+            logger.warning("Billing insert into %s failed: %s", table, exc)
 
 
 def get_pricing_repository() -> PricingRepository:
