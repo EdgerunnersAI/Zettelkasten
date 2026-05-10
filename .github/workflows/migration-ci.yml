@@ -44,3 +44,38 @@ jobs:
             psql -h localhost -U postgres -d kg_ci -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
+
+  lint-v2-sql:
+    # Phase 8.5.R1-1: Squawk lint for _v2/*.sql migrations.
+    # Catches lock-takeing operations (CREATE INDEX without CONCURRENTLY,
+    # NOT NULL on existing column without DEFAULT, volatile defaults, etc.)
+    # that the manifest gate cannot. Recommended in R1 research over Atlas
+    # (paywalled migrate-lint Oct 2025) for our scale + Supabase stack.
+    name: Squawk lint _v2 SQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Squawk
+        run: |
+          curl -fsSL https://github.com/sbdchd/squawk/releases/download/v2.0.0/squawk-linux-x86_64 -o /usr/local/bin/squawk
+          chmod +x /usr/local/bin/squawk
+          squawk --version
+      - name: Lint _v2 SQL
+        run: |
+          set -e
+          shopt -s nullglob
+          files=(supabase/website/_v2/*.sql)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no _v2 SQL files to lint"
+            exit 0
+          fi
+          # Lint each file individually so failures show one-per-file in CI logs
+          fail=0
+          for f in "${files[@]}"; do
+            echo "::group::squawk $f"
+            squawk "$f" || fail=$?
+            echo "::endgroup::"
+          done
+          exit $fail
