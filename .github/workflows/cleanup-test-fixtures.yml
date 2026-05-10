@@ -1,0 +1,36 @@
+name: Cleanup test fixtures (nightly)
+
+# Phase 7.3c: nightly safety net for the per-test cleanup +
+# pytest_sessionfinish hook. Sweeps any e2e-*@test.com user older than 24h.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'  # 03:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime deps
+        run: pip install -r ops/requirements.txt
+      - name: Run cleanup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          SUPABASE_V2_URL: ${{ secrets.SUPABASE_V2_URL }}
+          SUPABASE_V2_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_V2_SERVICE_ROLE_KEY }}
+          SUPABASE_V2_ANON_KEY: ${{ secrets.SUPABASE_V2_ANON_KEY }}
+          SUPABASE_V2_DATABASE_URL: ${{ secrets.SUPABASE_V2_DATABASE_URL }}
+          PYTHONIOENCODING: utf-8
+        run: python ops/scripts/purge_test_fixtures.py --age-hours 24

@@ -7,6 +7,8 @@ and cleans them up at teardown.
 """
 from __future__ import annotations
 
+import os
+import re
 import uuid
 import warnings
 from typing import AsyncIterator
@@ -19,6 +21,13 @@ import pytest_asyncio
 from tests.v2.fixtures import MintedUser, mint_test_user_with_workspaces
 from tests.v2.fixtures.users import delete_test_user
 from website.core.supabase_v2.client import get_v2_database_url
+
+# Phase 7.3b: end-of-session backstop. Per-test fixtures clean up via
+# created_auth_user_ids, but a hard crash (KeyboardInterrupt, segfault, OOM
+# on the worker) skips teardown and leaks e2e users. The mint pattern is
+# e2e-{uuid.uuid4().hex[:8]}@test.com; allow 6-12 hex chars for forward-
+# compat if the prefix length ever changes.
+_E2E_EMAIL_PATTERN = re.compile(r"^e2e-[0-9a-f]{6,12}@test\.com$")
 
 
 @pytest_asyncio.fixture
@@ -91,3 +100,63 @@ def mint_user(created_auth_user_ids: list[uuid.UUID]):
         created_auth_user_ids.append(user.auth_user_id)
         return user
     return _mint
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Sweep any leftover ``e2e-*@test.com`` users from this session.
+
+    Backstop for per-test cleanup (which already runs via
+    ``created_auth_user_ids``). When a test crashes hard or the runner is
+    killed, teardown is skipped and fixture users leak — this hook catches
+    them at session boundary. Set ``SKIP_TEST_FIXTURE_SWEEP=1`` to opt out
+    (e.g., when running across two parallel sessions sharing a project).
+
+    Best-effort only: errors here must NOT fail the session.
+    """
+    if os.environ.get("SKIP_TEST_FIXTURE_SWEEP"):
+        return
+
+    try:
+        from website.core.supabase_v2.client import get_v2_client
+    except Exception as exc:  # noqa: BLE001 — config missing → silently skip
+        print(
+            f"\n[pytest_sessionfinish] skip sweep "
+            f"({type(exc).__name__}: {exc})"
+        )
+        return
+
+    try:
+        client = get_v2_client()
+        leftover = []
+        page = 1
+        while True:
+            resp = client.auth.admin.list_users(page=page, per_page=200)
+            users = resp if isinstance(resp, list) else getattr(resp, "users", [])
+            if not users:
+                break
+            for u in users:
+                email = getattr(u, "email", None) or ""
+                if email and _E2E_EMAIL_PATTERN.match(email):
+                    leftover.append(u)
+            if len(users) < 200:
+                break
+            page += 1
+            if page > 50:  # hard safety cap (10k users)
+                break
+
+        for u in leftover:
+            try:
+                client.auth.admin.delete_user(u.id)
+            except Exception:  # noqa: BLE001 — best-effort
+                pass
+
+        if leftover:
+            print(
+                f"\n[pytest_sessionfinish] swept {len(leftover)} leftover "
+                f"test-fixture user(s)"
+            )
+    except Exception as exc:  # noqa: BLE001 — never fail the session
+        print(
+            f"\n[pytest_sessionfinish] cleanup error: "
+            f"{type(exc).__name__}: {exc}"
+        )
