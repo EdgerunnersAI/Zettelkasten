@@ -83,21 +83,19 @@ class _FakeSandboxes:
                 "updated_at": None,
             }
         ]
+        # v2 shape (Phase 8.0 H9): rag.list_kasten_zettels returns flat
+        # rows — workspace_zettel_id + canonical_zettel_id + title +
+        # source_type + user_tags + ai_summary + added_at — no nested
+        # ``kg_nodes`` embed.
         self.members = [
             {
-                "node_id": "node-1",
-                "added_via": "manual",
-                "added_filter": {},
+                "workspace_zettel_id": "node-1",
+                "canonical_zettel_id": "canonical-1",
+                "title": "Attention Is All You Need",
+                "source_type": "web",
+                "user_tags": ["transformers"],
+                "ai_summary": "Transformer primer",
                 "added_at": None,
-                "kg_nodes": {
-                    "id": "node-1",
-                    "name": "Attention Is All You Need",
-                    "source_type": "web",
-                    "url": "https://example.com/node-1",
-                    "summary": "Transformer primer",
-                    "tags": ["transformers"],
-                    "node_date": "2026-04-12",
-                },
             }
         ]
 
@@ -156,7 +154,9 @@ class _FakeSandboxes:
         removed = 0
         keep = []
         for member in self.members:
-            if member["node_id"] in node_ids:
+            # v2 shape uses workspace_zettel_id; fall back to v1 node_id for safety.
+            mid = member.get("workspace_zettel_id") or member.get("node_id")
+            if mid in node_ids:
                 removed += 1
             else:
                 keep.append(member)

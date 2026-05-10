@@ -223,20 +223,25 @@ def _serialize_sandbox(row: dict) -> dict:
 
 
 def _serialize_member(row: dict) -> dict:
-    node = row.get("kg_nodes") or {}
+    # v2 shape: rag.list_kasten_zettels returns a flat row with
+    # workspace_zettel_id, canonical_zettel_id, title, source_type,
+    # user_tags, ai_summary, added_at. The legacy nested ``kg_nodes``
+    # embed (Phase 8.0 H9) is gone; map flat columns into the
+    # response envelope clients still expect.
+    member_id = row.get("workspace_zettel_id") or row.get("node_id") or ""
     return {
-        "node_id": row["node_id"],
+        "node_id": member_id,
         "added_via": row.get("added_via", "manual"),
         "added_filter": row.get("added_filter") or {},
         "added_at": row.get("added_at"),
         "node": {
-            "id": node.get("id") or row["node_id"],
-            "name": node.get("name") or row["node_id"],
-            "source_type": node.get("source_type") or "web",
-            "url": node.get("url") or "",
-            "summary": node.get("summary") or "",
-            "tags": node.get("tags") or [],
-            "node_date": node.get("node_date"),
+            "id": member_id,
+            "name": row.get("title") or member_id,
+            "source_type": row.get("source_type") or "web",
+            "url": row.get("url") or "",
+            "summary": row.get("ai_summary") or "",
+            "tags": row.get("user_tags") or [],
+            "node_date": row.get("node_date"),
         },
     }
 
@@ -254,11 +259,15 @@ def _serialize_node(row) -> dict:
 
 
 def _member_matches_filters(row: dict, body: SandboxMemberRemoveRequest) -> bool:
-    if body.node_ids and row["node_id"] not in body.node_ids:
+    # v2: rag.list_kasten_zettels returns flat columns; the legacy
+    # nested ``kg_nodes`` embed (Phase 8.0 H9) is gone. Filters now
+    # match against workspace_zettel_id, user_tags, source_type
+    # directly off the row.
+    member_id = row.get("workspace_zettel_id") or row.get("node_id")
+    if body.node_ids and member_id not in body.node_ids:
         return False
 
-    node = row.get("kg_nodes") or {}
-    node_tags = {tag.lower() for tag in node.get("tags") or []}
+    node_tags = {tag.lower() for tag in row.get("user_tags") or []}
     requested_tags = [tag.lower() for tag in body.tags or []]
     if requested_tags:
         if body.tag_mode == "all":
@@ -269,7 +278,7 @@ def _member_matches_filters(row: dict, body: SandboxMemberRemoveRequest) -> bool
 
     if body.source_types:
         allowed = {item.value for item in body.source_types}
-        if (node.get("source_type") or "").lower() not in allowed:
+        if (row.get("source_type") or "").lower() not in allowed:
             return False
 
     return True
@@ -653,7 +662,14 @@ async def bulk_remove_members(
         raise HTTPException(status_code=400, detail="At least one filter is required")
 
     members = await runtime.sandboxes.list_members(sandbox_id, runtime.kg_user_id, limit=1000)
-    matched_node_ids = [member["node_id"] for member in members if _member_matches_filters(member, body)]
+    # v2 (Phase 8.0 H9): membership rows expose ``workspace_zettel_id``;
+    # fall back to legacy ``node_id`` if a future caller still emits it.
+    matched_node_ids = [
+        member.get("workspace_zettel_id") or member.get("node_id")
+        for member in members
+        if _member_matches_filters(member, body)
+    ]
+    matched_node_ids = [mid for mid in matched_node_ids if mid]
     removed_count = await runtime.sandboxes.remove_members(sandbox_id, runtime.kg_user_id, matched_node_ids)
     updated_members = await runtime.sandboxes.list_members(sandbox_id, runtime.kg_user_id, limit=1000)
     return {
