@@ -2,4 +2,5 @@
 asyncio_mode = "auto"
 markers = [
     "live: Run live API integration tests (requires real credentials)",
+    "destructive: Mutate shared state (delete users, drop data); opt-in via --destructive",
 ]
