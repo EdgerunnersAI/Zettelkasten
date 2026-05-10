@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 from website.api._citation_guard import check_cited_in_context
 from website.api._concurrency import QueueFull, acquire_rerank_slot
 from website.api.auth import get_current_user
+from website.core.supabase_v2.client import get_v2_client
 from website.features.rag_pipeline.service import get_rag_runtime, load_example_queries
 from website.features.rag_pipeline.types import ChatQuery, ScopeFilter, SourceType
 from website.features.user_pricing.entitlements import consume_entitlement, require_entitlement
@@ -561,4 +562,110 @@ async def adhoc_message(
     await consume_entitlement(Meter.RAG_QUESTION, user, action_id=action_id)
     payload["session"] = _serialize_session(session)
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Phase 8.5.B-5: retrieval feedback events endpoint
+# Frontend POSTs impression/click/dwell/cite/accept/reject/copy/expand/follow_up/
+# abandon events here. These feed rag.retrieval_feedback_events → MVs that
+# inform the RAG ranker boost (Phase 8.5.B-4) and /api/graph viz weights.
+# RLS rfe_self_insert policy gates user_id = auth.uid() AND workspace_id IN
+# core.workspace_members; we additionally validate workspace membership
+# server-side for clearer error responses.
+# ---------------------------------------------------------------------------
+
+EVENT_TYPES = (
+    "impression", "click", "dwell", "cite", "accept", "reject",
+    "copy", "expand", "follow_up", "abandon",
+)
+
+
+class FeedbackEventRequest(BaseModel):
+    event_type: Literal[
+        "impression", "click", "dwell", "cite", "accept", "reject",
+        "copy", "expand", "follow_up", "abandon",
+    ]
+    workspace_id: UUID
+    kasten_id: UUID | None = None
+    session_id: UUID | None = None
+    message_id: UUID | None = None
+    source_node_id: UUID | None = None
+    target_node_id: UUID | None = None
+    chunk_id: UUID | None = None
+    rank_at_render: int | None = Field(default=None, ge=0, le=10000)
+    propensity_weight: float | None = Field(default=None, ge=0.0)
+    weight_delta: float = Field(default=1.0, ge=-10.0, le=10.0)
+    attrs: dict[str, Any] | None = None
+
+
+@router.post("/feedback", status_code=201)
+async def post_retrieval_feedback(
+    body: FeedbackEventRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> dict:
+    """Append one retrieval feedback event for the authenticated user.
+
+    Phase 8.5.B-5. Returns ``{"event_id": <int>}`` on success.
+    """
+    user_sub = user.get("sub")
+    if not user_sub:
+        raise HTTPException(status_code=401, detail="missing user sub")
+    try:
+        user_id = UUID(str(user_sub))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="invalid user sub") from exc
+
+    client = get_v2_client()
+
+    # Server-side workspace-membership check (RLS would also enforce; this
+    # surfaces a 403 rather than a generic insert failure).
+    membership = (
+        client.schema("core")
+        .table("workspace_members")
+        .select("workspace_id")
+        .eq("workspace_id", str(body.workspace_id))
+        .eq("profile_id", str(user_id))
+        .limit(1)
+        .execute()
+    )
+    if not (membership.data or []):
+        raise HTTPException(
+            status_code=403, detail="not a member of workspace"
+        )
+
+    payload: dict[str, Any] = {
+        "workspace_id": str(body.workspace_id),
+        "user_id": str(user_id),
+        "event_type": body.event_type,
+        "weight_delta": body.weight_delta,
+        "attrs": body.attrs or {},
+    }
+    for field, value in (
+        ("kasten_id", body.kasten_id),
+        ("session_id", body.session_id),
+        ("message_id", body.message_id),
+        ("source_node_id", body.source_node_id),
+        ("target_node_id", body.target_node_id),
+        ("chunk_id", body.chunk_id),
+        ("rank_at_render", body.rank_at_render),
+        ("propensity_weight", body.propensity_weight),
+    ):
+        if value is not None:
+            payload[field] = str(value) if isinstance(value, UUID) else value
+
+    try:
+        response = (
+            client.schema("rag")
+            .table("retrieval_feedback_events")
+            .insert(payload)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("retrieval_feedback_insert_failed: %s", exc)
+        raise HTTPException(status_code=500, detail="failed to record event") from exc
+
+    rows = response.data or []
+    if not rows:
+        raise HTTPException(status_code=500, detail="empty insert response")
+    return {"event_id": int(rows[0]["event_id"])}
 
