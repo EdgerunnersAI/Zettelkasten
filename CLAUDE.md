@@ -378,3 +378,26 @@ Codex Desktop supports a plugin hook system with the same schema as Claude Code 
 ## Docker
 
 Multi-stage build (`ops/Dockerfile`): Stage 1 installs `ops/requirements.txt` into `/opt/venv` and pre-compiles `.pyc` files for cold-start optimization. Stage 2 copies only the venv and compiled code. Base image: `python:3.12-slim`. Exposes port 10000 (production default). Entry point: `python run.py`. Build with `docker build -f ops/Dockerfile -t zettelkasten-bot .` from the repo root.
+
+## DB v2 Purge — Phase 8 Closeout Complete (2026-05-11)
+
+The DB v2 schema purge Phase 8 closeout is complete (commits NOT yet pushed). All production code paths run on the v2 schemas (`core, content, kg, rag, pipelines, billing`); legacy `public.kg_*`, `public.rag_*`, `public.chat_*`, `public.summary_batch_*`, `public.nexus_*`, `public.kg_usage_edges*`, `public.kg_kasten_node_freq`, `public.recompute_runs`, `public._migrations_applied`, and 5 of 11 `public.pricing_*` tables are dropped (commit `e168b38` Phase 6).
+
+**Pending T15 verification → then operator-approved DROP:**
+- 6 retained `public.pricing_*` tables + 6 RPCs (T6, deferred per 2026-05-11 operator decision)
+- `website/core/supabase_kg/` directory delete (T7-dir-delete, paired with T6)
+
+**Test infrastructure:**
+- `tests/v2/fixtures/users.py` — `mint_test_user_with_workspaces` (now includes `email` field per Phase 8.0-TX)
+- `tests/integration/v2/conftest.py` — `asyncpg_pool`, `mint_user`, `pytest_sessionfinish` cleanup hook
+- 3 known not-live flakes documented (2× quantize_bge_int8, cascade_int8)
+- Cross-tenant denial tests hardened with UUID-leak assertions per OWASP API1:2023 BOLA pattern
+
+**Pricing module:**
+- v2 canonical = `billing.*` schema. `billing.pricing_consume_entitlement` body protected by golden md5.
+- Currently fail-open per operator-locked design; multi-period enforcement is Phase 9 (see `docs/db-v2/phase-9-pricing-enforcement-plan.md`).
+
+**kg_features:**
+- Partial cleanup landed (Phase 8.0-H7): `retrieval, nl_query, entity_extractor` deleted (referenced dropped v1 tables); `analytics, embeddings` retained as pure-compute helpers with CI guard allow-list.
+
+**Final acceptance test (queued):** `docs/db-v2/final-acceptance-test-plan.md` — Claude in Chrome on the live site, ingesting URLs from `docs/research/Chintan_Testing.md` as Naruto.

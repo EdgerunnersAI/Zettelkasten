@@ -136,3 +136,29 @@ queries that copy `public.* -> billing.*` (lines 132, 140, 145, 151, 161,
 cutover and (2) explicit operator authorisation. Surface as Phase 7-bis
 candidate.
 
+## Phase 8 closeout executed 2026-05-11
+
+**Scope:** 12 commits (8.0.1 through 8.0-H10 + TX cross-tenant fix — see PURGE-COMPLETE-2026-05-11.md).
+
+**Operator-approved overrides:**
+- B-pricing-migration: refactor pricing module to billing.* schema (per pricing_module_authority memory).
+- B+ atomic migration for T3: get_supabase_scope deleted; all 5 production callers (nexus + bulk_import + service.py) migrated in same task.
+- 6 retained public.pricing_* tables + 6 RPCs DROP — DEFERRED until T15 verification passes (operator decision 2026-05-11).
+- /api/me/avatar v1 → v2 port (closes operator-flagged H1 example) — done by other agent in 8704391.
+- /api/graph/query + /api/graph/search → 410 Gone — done in fd6e2fd + 481c0aa.
+- /api/graph/rebuild-links route deleted — done in 481c0aa.
+- service.py atomic factory swap; consumers receive v2 client via lazy default — done in ddfc2c8.
+- persist.py v1 helpers hard-deleted — done in ddfc2c8.
+- website/core/supabase_kg/ directory delete — DEFERRED with T6 (operator decision 2026-05-11).
+- T11 hybrid kg_features cleanup: 3 broken modules deleted; 2 pure-compute kept with CI allow-list (operator approved D-then-X scout).
+- TX cross-tenant test fixture fix + UUID-leak assertion hardening per OWASP API1:2023 BOLA.
+
+**Plan-amendment patches:**
+- `feedback_deferral_is_a_decision.md` saved 2026-05-10 — counterpart to `feedback_anything_beyond_plan_needs_approval.md`.
+
+**Post-closeout invariants (verified):**
+- `git grep "from website.core.supabase_kg" -- "website/" "tests/"` → only allow-listed 2 callers (verified by CI guard).
+- `pytest tests/ -m "not live"` → 3 known flakes only.
+- `pytest tests/integration/v2/ --live` → all pass (cross-tenant denial fixed in TX 73c2e35).
+- Login verification: Naruto + Zoro PASS (to be re-verified in T15).
+
