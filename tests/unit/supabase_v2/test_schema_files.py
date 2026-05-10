@@ -43,19 +43,22 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "27_drop_redundant_retrieval_idx.sql",
         "28_drop_legacy_rpcs.sql",
         "29_kasten_sharing_rls.sql",
+        "34_retrieval_feedback_events.sql",
     ]
 
 
 def test_v2_schema_declares_expected_tables() -> None:
     # Includes 0*.sql (canonical 39 tables) plus 22_kg_aliases_table.sql
-    # which adds kg.kg_node_aliases (Phase 1.D.4a).
+    # (kg.kg_node_aliases, Phase 1.D.4a) plus 34_retrieval_feedback_events.sql
+    # (rag.retrieval_feedback_events, Phase 8.5.B-1).
+    canonical_extras = {"22_kg_aliases_table.sql", "34_retrieval_feedback_events.sql"}
     combined = "\n".join(
         p.read_text(encoding="utf-8")
         for p in sorted(V2_DIR.glob("*.sql"))
-        if p.name.startswith("0") or p.name == "22_kg_aliases_table.sql"
+        if p.name.startswith("0") or p.name in canonical_extras
     )
     tables = re.findall(r"CREATE TABLE IF NOT EXISTS ([a-z_]+\.[a-z_]+)", combined)
-    assert len(set(tables)) == 40
+    assert len(set(tables)) == 41
 
 
 def test_jwt_workspace_ids_uses_safe_jsonb_array_cast() -> None:
