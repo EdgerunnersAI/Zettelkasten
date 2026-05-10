@@ -1,12 +1,11 @@
 """Bulk import orchestration for Nexus provider ingestion.
 
-Phase 3.5 of the v2 purge: rebases off the legacy
-``public.nexus_ingest_runs`` and ``public.nexus_ingested_artifacts``
-tables onto ``pipelines.pipeline_runs`` (with ``kind='nexus_ingest'``)
-and ``pipelines.pipeline_run_items``. The flat per-artifact fields
-(external_id, url, title, description, source_type, metadata) move into
-the ``result`` jsonb column on ``pipeline_run_items`` since the v2
-schema kept the run-items table generic across all pipeline kinds.
+V2 surface (Phase 8 of the v2 purge): writes ingest runs to
+``pipelines.pipeline_runs`` (with ``kind='nexus_ingest'``) and per-
+artifact rows to ``pipelines.pipeline_run_items``. Per-artifact fields
+(external_id, url, title, description, source_type, metadata) live on
+the ``result`` jsonb column of ``pipeline_run_items`` since the v2
+schema keeps the run-items table generic across all pipeline kinds.
 
 Workspace_id is NOT NULL on ``pipelines.pipeline_runs``, so every run
 insert resolves the profile's default workspace via
@@ -590,10 +589,10 @@ async def _invoke_ingest_handler(
 def _resolve_user_scope(auth_user_sub: str) -> str:
     """Resolve a v2 profile id (UUID-string) from a JWT auth subject.
 
-    Phase 8.0.3 B+: replaces the v1 ``get_supabase_scope`` lookup that
-    traversed render_user_id mappings via ``public.kg_users`` (dropped in
-    Phase 6). Under v2 the JWT ``sub`` IS the profile UUID; we just shape-
-    validate and 503 if Supabase is not configured.
+    Under v2 the JWT ``sub`` IS the ``core.profiles(id)`` UUID; this
+    helper just shape-validates the subject and raises if Supabase is not
+    configured. (Replaces the legacy render_user_id lookup retired in
+    Phase 6 of the v2 purge.)
     """
     if not is_v2_configured():
         raise RuntimeError("Supabase is required for Nexus imports")

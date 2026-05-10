@@ -1,29 +1,25 @@
 """Provider OAuth token store backed by ``pipelines.nexus_provider_tokens``.
 
-Phase 3.5 of the v2 purge: rebases off the legacy
-``public.nexus_provider_accounts`` table onto Phase-1.B's
+V2 surface (Phase 8 of the v2 purge): persists provider OAuth tokens to
 ``pipelines.nexus_provider_tokens``. PK = ``(profile_id, provider)``;
-``workspace_id`` is NOT NULL (RLS predicate target).
+``workspace_id`` is NOT NULL (RLS predicate target). Profile id refers to
+``core.profiles(id)``, which is the Supabase auth user UUID.
 
-Mapping notes:
-    * v1 ``user_id`` (uuid) → v2 ``profile_id`` (uuid). Semantically the
-      same UUID; v1 ``kg_users.id`` was provisioned 1:1 with the auth
-      profile, and v2 makes that explicit by referencing
-      ``core.profiles(id)``.
-    * v2 stores only ``encrypted_token``, ``refresh_token`` (both bytea),
-      ``expires_at``. v1's ``account_id``, ``account_username``,
-      ``scopes``, ``metadata``, ``last_refreshed_at``,
-      ``last_imported_at`` are NOT persisted in v2 — the v2 schema
-      deliberately keeps the table token-only. Callers that need those
-      fields receive None / [] / {} on roundtrip; this is a documented
-      v2 simplification, not a regression.
-    * Token encryption is unchanged: same Fernet key from
-      ``NEXUS_TOKEN_ENCRYPTION_KEY``, same ciphertext format. The bytea
-      column stores the same UTF-8 base64 token bytes the v1 text
-      column stored.
+Storage contract:
+    * Columns: ``profile_id`` (uuid), ``provider`` (text),
+      ``workspace_id`` (uuid, NOT NULL), ``encrypted_token`` (bytea),
+      ``refresh_token`` (bytea, nullable), ``expires_at`` (timestamptz,
+      nullable). The table is intentionally token-only; per-account
+      metadata (``account_id``, ``account_username``, ``scopes``,
+      ``metadata``, ``last_refreshed_at``, ``last_imported_at``) is NOT
+      persisted in v2. Callers that read those fields receive
+      ``None`` / ``[]`` / ``{}`` on roundtrip — this is a documented v2
+      simplification, not a regression.
+    * Token encryption uses Fernet with ``NEXUS_TOKEN_ENCRYPTION_KEY``;
+      the bytea column stores the UTF-8 base64 ciphertext bytes.
 
 Public class name (``ProviderTokenStore``) and method signatures are
-preserved byte-for-byte.
+preserved byte-for-byte across the v1→v2 migration.
 """
 from __future__ import annotations
 
