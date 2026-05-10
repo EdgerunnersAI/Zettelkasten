@@ -17,7 +17,7 @@ from website.api.auth import get_current_user, get_optional_user
 from website.core.db_version import get_db_schema_version, use_supabase_v2
 from website.core.pipeline import summarize_url
 from website.features.summarization_engine.core.errors import ExtractionConfidenceError
-from website.core.graph_store import _SOURCE_PREFIX, get_graph, delete_node as delete_graph_node
+from website.core.graph_store import _SOURCE_PREFIX, get_graph
 from website.core.graph_models import KGGraph
 from website.core.persist import (
     extract_summary_parts,
@@ -194,12 +194,12 @@ async def auth_config():
 async def me(user: Annotated[dict, Depends(get_current_user)]):
     """Return the authenticated user's profile.
 
-    Phase 4.2 dual-path: when DB v2 is on AND the JWT subject is a UUID with a
-    valid v2 scope, read profile fields from ``core.profiles`` via
-    :class:`CoreRepository`. Fall back to JWT metadata fields the same way v1
-    does. The v1 (``kg_users``-backed) path is preserved unchanged for users
-    without a v2 scope so callers on either schema see identical wire shapes:
-    ``{id, email, name, avatar_url}``.
+    v2-only: when the JWT subject is a UUID with a valid v2 scope, read profile
+    fields from ``core.profiles`` via :class:`CoreRepository`. On any miss
+    (no v2 scope, lookup failure, v2 not configured) fall back to the JWT
+    metadata claims so the wire shape ``{id, email, name, avatar_url}`` is
+    stable. Phase 8.0.4: v1 ``kg_users`` fallback removed (table dropped in
+    Phase 6).
     """
     metadata = user.get("user_metadata", {})
     avatar_url = metadata.get("avatar_url", "")
@@ -386,12 +386,11 @@ async def graph_data(
     limit = max(1, min(limit, 10000))
     offset = max(0, offset)
     now = time.time()
-    is_personal = view == "my" and user is not None
 
-    # v2 dual-path: when DB v2 is live AND the caller is a UUID-subject user
-    # with workspace memberships, assemble the graph from content/kg v2 tables.
+    # v2 path: when DB v2 is live AND the caller is a UUID-subject user with
+    # workspace memberships, assemble the graph from content/kg v2 tables.
     # On any miss (not configured, no scope, assembly failure) we fall through
-    # to the unmodified v1 behaviour below — v1 path remains untouched.
+    # to the file-store global graph (canonical public/anonymous surface).
     if use_supabase_v2() and user is not None:
         try:
             v2_graph = _v2_assemble_graph(
@@ -400,24 +399,16 @@ async def graph_data(
             if v2_graph is not None:
                 return _enrich_graph_with_analytics(v2_graph.model_dump())
         except Exception as exc:
-            logger.warning("v2 /api/graph assembly failed, falling back to v1: %s", exc)
+            logger.warning("v2 /api/graph assembly failed, serving file-store: %s", exc)
 
-    if is_personal:
-        # Phase 8.0.3 B+: v1 ``KGRepository.get_graph`` fallback removed —
-        # ``public.kg_nodes`` was dropped in Phase 6. Personal-graph reads
-        # now flow through the v2 assembler above; on miss we serve the
-        # file-store graph (anonymous-equivalent surface).
-        return _enrich_graph_with_analytics(get_graph())
-
-    # Global graph (default for all users including anonymous)
-    # Only use cache for default pagination (first page, standard limit)
+    # Phase 8.0.4: v1 ``KGRepository.get_graph`` fallback removed (Phase 6
+    # dropped ``public.kg_nodes``). Anonymous and v2-miss callers both serve
+    # the file-store graph — the canonical public/anonymous surface.
+    # Only use cache for default pagination (first page, standard limit).
     use_cache = offset == 0 and limit >= 5000
     if use_cache and _graph_cache_global is not None and (now - _graph_cache_global_ts) < _GRAPH_CACHE_TTL:
         return _graph_cache_global
 
-    # Phase 8.0.3 B+: v1 ``KGRepository.get_graph(user_id=None)`` fallback
-    # removed for the same reason as the personal branch. The file-store
-    # graph is the canonical anonymous surface.
     result = _enrich_graph_with_analytics(get_graph())
     if use_cache:
         _graph_cache_global = result
@@ -460,59 +451,43 @@ async def delete_zettel(
 ):
     """Delete a zettel from the authenticated user's graph.
 
-    Phase 4.3 dual-path: when DB v2 is on AND the auth subject is a UUID AND
-    the path parameter parses as a UUID (treated as ``workspace_zettel_id``),
-    soft-delete via :class:`ContentRepository` so the reaper trigger handles
-    canonical shred at last reference. Otherwise the v1 path is preserved
-    unchanged: try Supabase v1 ``KGRepository.delete_node`` then fall back to
-    the file-store. Hard delete is intentionally NEVER performed in this
-    handler — see audit fix A.3.
+    v2-only: requires DB v2 + UUID auth subject + UUID-shaped path parameter
+    (treated as ``workspace_zettel_id``). Soft-delete flows via
+    :class:`ContentRepository` so the reaper trigger handles canonical shred
+    at last reference. Hard delete is intentionally NEVER performed in this
+    handler (see audit fix A.3). Phase 8.0.4: v1 ``KGRepository.delete_node``
+    AND the file-store fallback both removed — ``public.kg_nodes`` was
+    dropped in Phase 6 and the file-store graph is the public/anonymous
+    surface, not a user-owned write target. Non-UUID path params get 400.
     """
     global _graph_cache, _graph_cache_ts, _graph_cache_global, _graph_cache_global_ts
     from uuid import UUID
 
-    # v2 dual-path: UUID subject + UUID-shaped path param + valid v2 scope.
-    if (
-        use_supabase_v2()
-        and user is not None
-        and _is_supabase_uuid(user.get("sub"))
-        and _is_supabase_uuid(node_id)
-    ):
-        scope = get_supabase_v2_scope(user["sub"])
-        if scope is not None:
-            content_repo, _profile_id, _workspace_id = scope
-            try:
-                # Phase 8.5.R3 SECURITY FIX: pass workspace_id so the repo's
-                # compound-key match gates B-from-A cross-tenant deletion.
-                ok = content_repo.soft_delete_workspace_zettel(
-                    UUID(node_id), workspace_id=_workspace_id,
-                )
-            except Exception as exc:
-                logger.warning("v2 soft-delete failed for %s: %s", node_id, exc)
-                ok = False
-            if not ok:
-                raise HTTPException(status_code=404, detail="Zettel not found")
-            _graph_cache = None
-            _graph_cache_ts = 0
-            _graph_cache_global = None
-            _graph_cache_global_ts = 0
-            return {"status": "ok", "workspace_zettel_id": node_id}
+    if not (use_supabase_v2() and _is_supabase_uuid(user.get("sub")) and _is_supabase_uuid(node_id)):
+        raise HTTPException(status_code=400, detail="Zettel delete requires v2 UUID path")
 
-    # Phase 8.0.3 B+: v1 ``KGRepository.delete_node`` fallback removed —
-    # ``public.kg_nodes`` was dropped in Phase 6. v2-shaped deletes flow
-    # through the SECURITY DEFINER soft-delete branch above; non-UUID
-    # node ids fall straight to the file-store path.
-    deleted = delete_graph_node(node_id)
+    scope = get_supabase_v2_scope(user["sub"])
+    if scope is None:
+        raise HTTPException(status_code=404, detail="No v2 workspace scope")
+    content_repo, _profile_id, _workspace_id = scope
 
-    if not deleted:
+    try:
+        # Phase 8.5.R3 SECURITY FIX: pass workspace_id so the repo's
+        # compound-key match gates B-from-A cross-tenant deletion.
+        ok = content_repo.soft_delete_workspace_zettel(
+            UUID(node_id), workspace_id=_workspace_id,
+        )
+    except Exception as exc:
+        logger.warning("v2 soft-delete failed for %s: %s", node_id, exc)
+        ok = False
+    if not ok:
         raise HTTPException(status_code=404, detail="Zettel not found")
 
     _graph_cache = None
     _graph_cache_ts = 0
     _graph_cache_global = None
     _graph_cache_global_ts = 0
-
-    return {"status": "ok", "node_id": node_id}
+    return {"status": "ok", "workspace_zettel_id": node_id}
 
 
 class ZettelUpdateRequest(BaseModel):
