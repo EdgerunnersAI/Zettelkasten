@@ -58,7 +58,7 @@ class EntityBlocklist:
             return False
         try:
             response = await rpc_call(
-                self._sb.table("kg_extraction_blocklist")
+                self._sb.schema("pipelines").table("extraction_blocklist")
                 .select("blocked_until")
                 .eq("sandbox_id", sandbox_id)
                 .eq("entity_text_norm", entity_norm)
@@ -103,7 +103,7 @@ class EntityBlocklist:
         try:
             # Fetch existing row
             response = await rpc_call(
-                self._sb.table("kg_extraction_blocklist")
+                self._sb.schema("pipelines").table("extraction_blocklist")
                 .select("consecutive_misses, blocked_until")
                 .eq("sandbox_id", sandbox_id)
                 .eq("entity_text_norm", entity_norm)
@@ -124,7 +124,7 @@ class EntityBlocklist:
                 "blocked_until": blocked_until,
             }
             await rpc_call(
-                self._sb.table("kg_extraction_blocklist")
+                self._sb.schema("pipelines").table("extraction_blocklist")
                 .upsert(payload, on_conflict="sandbox_id,entity_text_norm")
             )
         except Exception as exc:  # noqa: BLE001 — fail-open, never block a request
@@ -142,7 +142,7 @@ class EntityBlocklist:
             return
         try:
             await rpc_call(
-                self._sb.table("kg_extraction_blocklist")
+                self._sb.schema("pipelines").table("extraction_blocklist")
                 .delete()
                 .eq("sandbox_id", sandbox_id)
                 .eq("entity_text_norm", entity_norm)
