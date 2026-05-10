@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -39,6 +40,29 @@ _ANCHOR_BOOST_ENABLED = os.environ.get(
     "RAG_ANCHOR_BOOST_ENABLED", "true"
 ).lower() not in ("false", "0", "no", "off")
 _ANCHOR_BOOST_AMOUNT = float(os.environ.get("RAG_ANCHOR_BOOST_AMOUNT", "0.05"))
+
+# Phase 8.5.B-4: Kasten-scoped retrieval signal boost (raw-count formula, NOT bandit
+# math — see locked plan + mem-vault decision zrUWPShYIYieiXSXi1uzh-Ml).
+# Reads from rag.kasten_retrieval_edge_signals MV (Kasten-scope projection over
+# rag.retrieval_feedback_events). Cold-start guard: skip when Kasten total events
+# < threshold. Bandit posterior math (Beta-Bernoulli TS) is deferred per phase-
+# transition criterion; the env knobs RAG_ANCHOR_BANDIT_* stay in code, gated OFF.
+_KASTEN_SIGNAL_BOOST_ENABLED = os.environ.get(
+    "RAG_KASTEN_SIGNAL_BOOST_ENABLED", "true"
+).lower() not in ("false", "0", "no", "off")
+_KASTEN_SIGNAL_BOOST_SCALE = float(
+    os.environ.get("RAG_KASTEN_SIGNAL_BOOST_SCALE", "0.05")
+)
+_KASTEN_SIGNAL_COLD_START_THRESHOLD = int(
+    os.environ.get("RAG_KASTEN_SIGNAL_COLD_START_THRESHOLD", "50")
+)
+# Bandit posterior math (Beta-Bernoulli with hierarchical shrinkage) — DISABLED.
+# Flip ON only when phase-transition criterion fires (≥1k events per
+# (query_class, kasten_archetype) cell + golden-set plateau + offline counterfactual
+# replay shows ≥3% nDCG@10 lift + operator approval per protected-knob rule).
+_BANDIT_POSTERIOR_ENABLED = os.environ.get(
+    "RAG_ANCHOR_BANDIT_POSTERIOR_ENABLED", "false"
+).lower() in ("true", "1", "yes", "on")
 
 # iter-09 RES-7 / Q10: anchor-seed injection. Pulls best chunks for resolved
 # anchor zettels into the candidate pool with a floor rrf_score so the cross-
@@ -99,6 +123,21 @@ from website.core.supabase_v2.client import get_v2_client
 from website.features.rag_pipeline.scoring.registry_adapter import RegistryAdapter
 
 _log = logging.getLogger(__name__)
+
+# Phase 8.5.B-4: visibility on bandit-disabled state at startup.
+if _BANDIT_POSTERIOR_ENABLED:
+    _log.warning(
+        "RAG bandit posterior ENABLED — confirm phase-transition criterion fired "
+        "(≥1k events per cell, golden-set plateau, ≥3%% nDCG lift, operator approval)"
+    )
+else:
+    _log.info(
+        "RAG bandit disabled, sample threshold not met; "
+        "kasten_signal_boost=%s scale=%.3f cold_start_threshold=%d",
+        _KASTEN_SIGNAL_BOOST_ENABLED,
+        _KASTEN_SIGNAL_BOOST_SCALE,
+        _KASTEN_SIGNAL_COLD_START_THRESHOLD,
+    )
 
 _DEPTH_BY_CLASS = {
     QueryClass.LOOKUP: 1,
@@ -811,6 +850,14 @@ class HybridRetriever:
              if int(m["kg_node_id"]) in set(anchor_nodes)}
             if anchor_nodes else set()
         )
+        # Phase 8.5.B-4: best-effort kasten retrieval-signal fetch (silently
+        # no-ops on any failure; cold-start guard inside the helper).
+        kasten_signals, kasten_event_count = await self._fetch_kasten_signals(
+            workspace_id=workspace_id,
+            kasten_id=sandbox_id,
+            anchor_node_ids=anchor_nodes if anchor_nodes else None,
+        )
+
         fused = self._dedup_and_fuse(
             results,
             query_variants=query_variants,
@@ -827,6 +874,9 @@ class HybridRetriever:
             sem_weight=sem_w,
             fts_weight=fts_w,
             graph_weight=graph_w,
+            # Phase 8.5.B-4: kasten retrieval signal boost.
+            kasten_signals=kasten_signals,
+            kasten_event_count=kasten_event_count,
         )
 
         # iter-12 T31 R4: record bandit reward post-fuse.
@@ -889,6 +939,55 @@ class HybridRetriever:
             _log.debug("resolve_workspace_id failed for kasten=%s: %s", sandbox_id, exc)
             return None
 
+    async def _fetch_kasten_signals(
+        self,
+        workspace_id: UUID | None,
+        kasten_id: UUID | None,
+        anchor_node_ids: set[str] | None,
+    ) -> tuple[dict[tuple[str, str], tuple[float, float]], int]:
+        """Read (source, target) -> (positive, negative) from kasten_retrieval_edge_signals MV.
+
+        Phase 8.5.B-4: feeds raw-count boost in _apply_kasten_signal_boost.
+        Returns ({}, 0) on any failure — boost is best-effort, never blocks
+        retrieval. Cold-start guard runs in the consumer.
+        """
+        if not _KASTEN_SIGNAL_BOOST_ENABLED or not workspace_id or not kasten_id:
+            return {}, 0
+        if not anchor_node_ids:
+            return {}, 0
+        try:
+            count_resp = await rpc_call(
+                self._supabase.schema("rag")
+                .table("kasten_retrieval_edge_signals")
+                .select("event_count")
+                .eq("workspace_id", str(workspace_id))
+                .eq("kasten_id", str(kasten_id))
+            )
+            total = sum(int(r.get("event_count") or 0) for r in (count_resp.data or []))
+            if total < _KASTEN_SIGNAL_COLD_START_THRESHOLD:
+                return {}, total
+            sig_resp = await rpc_call(
+                self._supabase.schema("rag")
+                .table("kasten_retrieval_edge_signals")
+                .select("source_node_id,target_node_id,positive_signal,negative_signal")
+                .eq("workspace_id", str(workspace_id))
+                .eq("kasten_id", str(kasten_id))
+                .in_("source_node_id", [str(a) for a in anchor_node_ids])
+            )
+            signals: dict[tuple[str, str], tuple[float, float]] = {}
+            for row in (sig_resp.data or []):
+                src = row.get("source_node_id")
+                tgt = row.get("target_node_id")
+                if src is None or tgt is None:
+                    continue
+                pos = float(row.get("positive_signal") or 0.0)
+                neg = float(row.get("negative_signal") or 0.0)
+                signals[(str(src), str(tgt))] = (pos, neg)
+            return signals, total
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            _log.debug("kasten_signal_fetch_failed kasten=%s: %s", kasten_id, exc)
+            return {}, 0
+
     async def _resolve_nodes(
         self,
         user_id: UUID,
@@ -945,6 +1044,11 @@ class HybridRetriever:
         sem_weight: float = 0.5,
         fts_weight: float = 0.3,
         graph_weight: float = 0.2,
+        # Phase 8.5.B-4: kasten retrieval signal boost (raw counts from
+        # rag.kasten_retrieval_edge_signals MV). Cold-start guard skips boost
+        # when total_event_count is below threshold.
+        kasten_signals: dict[tuple[str, str], tuple[float, float]] | None = None,
+        kasten_event_count: int = 0,
     ) -> list[RetrievalCandidate]:
         # Phase 2.4.5-int: chunk-level dedup. The legacy v1 (kind, node_id,
         # chunk_id) tuple is collapsed to canonical_chunk_id since v2 ChunkCandidate
@@ -1234,6 +1338,16 @@ class HybridRetriever:
         if anchor_neighbours:
             _apply_anchor_boost(list(by_key.values()), anchor_neighbours)
 
+        # Phase 8.5.B-4: raw-count boost from kasten_retrieval_edge_signals MV.
+        # No-op when kasten_signals empty / cold-start gate / feature disabled.
+        if kasten_signals and anchor_nodes:
+            _apply_kasten_signal_boost(
+                list(by_key.values()),
+                kasten_signals,
+                anchor_node_ids=anchor_nodes,
+                total_event_count=kasten_event_count,
+            )
+
         # iter-10 P3: score-rank-correlation magnet gate. THEMATIC/STEP_BACK
         # only. Demotes candidates whose post-boost rank is disproportionate
         # to their base rrf percentile. Runs AFTER chunk-share + anchor-boost
@@ -1338,6 +1452,66 @@ def _apply_anchor_boost(
     for c in candidates:
         if c.node_id in neighbour_set:
             c.rrf_score += boost
+
+
+def _compute_kasten_signal_boost(positive: float, negative: float) -> float:
+    """Raw-count boost formula from locked spec 8.5.B-4 (NOT bandit math).
+
+    boost = clamp(log(1+pos) - 0.5*log(1+neg), 0, 1.5)
+
+    Pos contributors: cite, accept events on this (anchor → result) edge.
+    Neg contributors: reject events. Trivially debuggable; no popularity-collapse
+    risk because the cross-encoder remains the primary ranker. Industry-standard
+    sparse-feedback heuristic per Cohere/Voyage/Glean (none ship per-tenant
+    bandits at <10k events). Mem-vault decision zrUWPShYIYieiXSXi1uzh-Ml.
+    """
+    if positive <= 0 and negative <= 0:
+        return 0.0
+    raw = math.log1p(max(0.0, positive)) - 0.5 * math.log1p(max(0.0, negative))
+    return max(0.0, min(1.5, raw))
+
+
+def _apply_kasten_signal_boost(
+    candidates: list[RetrievalCandidate],
+    signals_by_pair: dict[tuple[str, str], tuple[float, float]],
+    *,
+    anchor_node_ids: set[str] | None,
+    total_event_count: int,
+    scale: float = _KASTEN_SIGNAL_BOOST_SCALE,
+    cold_start_threshold: int = _KASTEN_SIGNAL_COLD_START_THRESHOLD,
+) -> None:
+    """In-place additive rrf_score bump from kasten_retrieval_edge_signals MV.
+
+    signals_by_pair: {(source_node_id, target_node_id) -> (positive, negative)}.
+    anchor_node_ids: source-side filter (only edges from these anchors contribute).
+    total_event_count: Kasten-wide event count from the MV; cold-start guard skips
+    the boost when below threshold (avoids high-variance signals from sparse data).
+
+    No-op when feature disabled, MV empty, or under cold-start threshold. Boost is
+    additive on rrf_score (matches _apply_anchor_boost convention) and scaled by
+    `scale` so the per-edge contribution is comparable to the +0.05 anchor boost.
+    """
+    if (
+        not _KASTEN_SIGNAL_BOOST_ENABLED
+        or not signals_by_pair
+        or total_event_count < cold_start_threshold
+    ):
+        return
+    if not anchor_node_ids:
+        return
+    for c in candidates:
+        target_id = c.node_id
+        # We don't have anchor-of-this-candidate without traversing kg_edges; the
+        # signals MV already keys on (source, target), so we sum any (anchor, target)
+        # row whose anchor is in the resolved anchor set.
+        boost_sum = 0.0
+        for anchor in anchor_node_ids:
+            sig = signals_by_pair.get((anchor, target_id))
+            if sig is None:
+                continue
+            boost_sum += _compute_kasten_signal_boost(sig[0], sig[1])
+        if boost_sum > 0:
+            c.rrf_score += boost_sum * scale
 
 
 def _apply_chunk_share_normalization(
