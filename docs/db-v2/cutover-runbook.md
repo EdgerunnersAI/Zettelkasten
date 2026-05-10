@@ -67,3 +67,72 @@ applied_at 2026-05-10T06:42:01Z, runner `phase6_drop_legacy.py`).
 - `phase6_predrop_counts.objects` — kind+count for all 30 objects (e.g. `_migrations_applied`=21, `kg_users`=1, `pricing_usage_counters`=8, all others 0).
 - `phase6_predrop_counts.billing_baseline` — billing.* baseline for the post-DROP delta check.
 
+## Phase 7 hardening sweep (2026-05-10)
+
+### 7.1 — `idx_retrieval_signal_workspace_target` dropped
+Migration `_v2/27_drop_redundant_retrieval_idx.sql` applied. The 2-col index
+was a strict subset of the Phase-1.A 3-col superset
+`idx_retrieval_signal_workspace_class_target (workspace_id, query_class,
+target_canonical_chunk_id) INCLUDE (source_canonical_chunk_id, weight)`.
+Verified: `EXPLAIN` on `rag.search_signal_weights` workload picks
+`Index Only Scan` on the superset index (cost 0.15..2.37, width=40).
+
+### 7.2 — Legacy v1 RPC zombies dropped
+Migration `_v2/28_drop_legacy_rpcs.sql` applied. 7 RPCs in `public.*` that
+referenced Phase-6-dropped tables removed: `rag_resolve_entity_anchors`,
+`rag_one_hop_neighbours`, `rag_fetch_anchor_seeds`, `rag_dense_recall`,
+`rag_hybrid_search`, `rag_kasten_chunk_counts`, `rag_resolve_effective_nodes`.
+Signatures captured live from `pg_proc` (the plan's signature guesses were
+slightly wrong — `rag_dense_recall` takes `p_user_id`, not `p_workspace_id`).
+**Out of scope:** 7 other `rag_*` RPCs in `public` still exist
+(`rag_bandit_*`, `rag_bulk_add_to_sandbox`, `rag_kasten_node_frequencies`,
+`rag_kasten_record_node_hit`, `rag_replace_node_chunks`,
+`rag_subgraph_for_pagerank`) — touch only with explicit operator approval.
+
+### 7.3 — Test-fixture cleanup hardening
+- 7.3a (marker column): **SKIPPED** at current scale (~10-15 users). Email
+  pattern + per-test fixture cleanup + sessionfinish hook is sufficient.
+  Revisit at 1k users when fixture density makes pattern matching expensive.
+- 7.3b: `pytest_sessionfinish` hook added to
+  `tests/integration/v2/conftest.py`. End-of-session backstop sweeps any
+  `e2e-[0-9a-f]{6,12}@test.com` user the per-test cleanup left behind.
+  Best-effort; honours `SKIP_TEST_FIXTURE_SWEEP=1` opt-out.
+  Verified: ran one live test, hook printed `swept 2 leftover test-fixture
+  user(s)` (one from the failing teardown, one historical).
+- 7.3c: nightly cron `cleanup-test-fixtures.yml` (03:17 UTC) runs
+  `ops/scripts/purge_test_fixtures.py --age-hours 24`. Idempotent,
+  service-role, scans up to 10k users. Dry-run verified locally
+  (scanned=2, matched=0 with cutoff age=9999h).
+
+### 7.4 — Audit of 6 retained `public.pricing_*` tables (no DROP)
+
+Inspection of all six retained tables on 2026-05-10:
+
+| table | cols | rows | v2 equivalent | code refs |
+|---|---|---|---|---|
+| `pricing_balances` | 5 | 0 | `billing.pricing_balances` | `06_backfill_billing.py` (copy source) |
+| `pricing_disputes` | 12 | 0 | `billing.pricing_disputes` | `user_pricing/repository.py:609` (insert), backfill |
+| `pricing_payment_events` | 6 | 0 | `billing.pricing_payment_events` | `user_pricing/repository.py:635,658` (insert), backfill |
+| `pricing_plan_cache` | 6 | 0 | `billing.pricing_plan_cache` | `user_pricing/repository.py:494,513` (read+insert), backfill |
+| `pricing_refunds` | 12 | 0 | `billing.pricing_refunds` | `user_pricing/repository.py:555` (insert), backfill |
+| `pricing_webhook_events` | 9 | 0 | `billing.pricing_webhook_events` | backfill only |
+
+**Status:** all six are zero-row but **still actively written by Razorpay
+webhook code paths in `website/features/user_pricing/repository.py`**.
+The KGRepository client they use (`repo._client.table(...)`) defaults to
+the `public` schema with no explicit `.schema('billing')` selector. The
+v2 backfill script `ops/scripts/refactor_v2/06_backfill_billing.py`
+contains UNION queries against all six (lines 24-26) and INSERT-from
+queries that copy `public.* -> billing.*` (lines 132, 140, 145, 151, 161,
+171, 178), confirming the intended migration direction.
+
+**Migration path before any DROP:**
+1. Cut over the writer in `user_pricing/repository.py` to `.schema('billing').table(...)` (one-line change per call site, six call sites).
+2. Run `06_backfill_billing.py` to backfill any in-flight rows from public to billing (today both are zero-row, so this is a one-shot drain).
+3. Operator approval per occurrence (per CLAUDE.md "Pricing Module Authority" hard rules — pricing knobs are in the protected set).
+4. Drop `public.pricing_{balances,disputes,payment_events,plan_cache,refunds,webhook_events}` in a single atomic Phase-7-bis migration with archive snapshot identical to Phase 6.
+
+**Decision:** do NOT drop in Phase 7. Drops are gated on (1) the writer
+cutover and (2) explicit operator authorisation. Surface as Phase 7-bis
+candidate.
+
