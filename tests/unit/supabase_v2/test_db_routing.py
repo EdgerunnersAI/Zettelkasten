@@ -44,7 +44,9 @@ async def test_persist_routes_to_v2_when_scope_available(monkeypatch) -> None:
             UUID("00000000-0000-0000-0000-000000000002"),
         ),
     )
-    monkeypatch.setattr(persist, "get_supabase_scope", lambda user_sub=None: None)
+    # Phase 8.0.3 B+: get_supabase_scope was retired. The v1 fallback branch
+    # in persist_summarized_result was removed; this monkeypatch is no longer
+    # needed.
     monkeypatch.setattr(persist, "_file_graph_contains_url", lambda url: False)
     monkeypatch.setattr(persist, "_persist_file_node", lambda payload, skip_duplicate: None)
 

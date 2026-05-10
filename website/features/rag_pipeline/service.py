@@ -29,7 +29,7 @@ from website.features.rag_pipeline.retrieval.hybrid import HybridRetriever
 from website.features.rag_pipeline.retrieval.planner import RetrievalPlanner
 from website.features.rag_pipeline.scoring.runtime import get_registry_adapter
 from website.features.kg_features import retrieval as kg_retrieval
-from website.core.persist import get_supabase_scope
+from website.core.supabase_v2.client import get_v2_client
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _EXAMPLE_QUERIES = (
@@ -71,14 +71,22 @@ class RAGRuntime:
 
 @lru_cache(maxsize=16)
 def _build_runtime(user_sub: str | None) -> RAGRuntime:
-    scope = get_supabase_scope(user_sub)
-    if scope is None:
-        raise RuntimeError("Supabase-backed RAG is not configured")
+    # Phase 8.0.3 B+ atomic swap: v1 get_supabase_scope retired. Every
+    # consumer below accepts ``supabase=None`` and lazily defaults to
+    # ``get_v2_client()`` internally. We hard-fail on a non-UUID auth
+    # subject because v2 is profile-UUID-keyed end to end.
+    if not user_sub:
+        raise RuntimeError("Supabase-backed RAG requires an authenticated user_sub")
+    try:
+        kg_user_id = UUID(str(user_sub))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Supabase-backed RAG requires a UUID auth subject; got {user_sub!r}"
+        ) from exc
 
-    repo, kg_user_id = scope
-    client = repo._client
-    sessions = ChatSessionStore(supabase=client)
-    sandboxes = SandboxStore(supabase=client)
+    client = get_v2_client()
+    sessions = ChatSessionStore(supabase=None)
+    sandboxes = SandboxStore(supabase=None)
     embedder = ChunkEmbedder(pool=get_embedding_pool())
     # T20: bind the Supabase client to the kg_features module functions so the
     # RetrievalPlanner can call hybrid_search/expand_subgraph without each
@@ -92,10 +100,10 @@ def _build_runtime(user_sub: str | None) -> RAGRuntime:
         transformer=QueryTransformer(),
         retriever=HybridRetriever(
             embedder=embedder,
-            supabase=client,
+            supabase=None,
             registry_adapter=get_registry_adapter(),
         ),
-        graph_scorer=LocalizedPageRankScorer(supabase=client),
+        graph_scorer=LocalizedPageRankScorer(supabase=None),
         reranker=CascadeReranker(
             model_dir=os.environ.get("RAG_MODEL_DIR", "/app/models"),
             stage1_k=int(os.environ.get("RAG_CASCADE_STAGE1_K", "10")),
@@ -107,9 +115,11 @@ def _build_runtime(user_sub: str | None) -> RAGRuntime:
         metadata_extractor=QueryMetadataExtractor(key_pool=get_key_pool()),
         planner=planner,
     )
+    # ``repo`` is preserved on the runtime for back-compat with callers that
+    # treat it as an opaque handle; the v2 client is the operational object.
     return RAGRuntime(
-        repo=repo,
-        kg_user_id=UUID(str(kg_user_id)),
+        repo=client,
+        kg_user_id=kg_user_id,
         sessions=sessions,
         sandboxes=sandboxes,
         orchestrator=orchestrator,

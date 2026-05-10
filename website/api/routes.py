@@ -21,7 +21,6 @@ from website.core.graph_store import _SOURCE_PREFIX, get_graph, delete_node as d
 from website.core.graph_models import KGGraph
 from website.core.persist import (
     extract_summary_parts,
-    get_supabase_scope as _get_supabase,
     get_supabase_v2_scope,
     get_supabase_v2_scope_for_read,
     persist_summarized_result,
@@ -228,14 +227,10 @@ async def me(user: Annotated[dict, Depends(get_current_user)]):
                     "avatar_url": profile.get("avatar_url") or avatar_url or "",
                 }
 
-    # v1 path: prefer avatar from kg_users table (set via PUT /api/me/avatar)
-    sb = _get_supabase(user_id_override=user["sub"])
-    if sb:
-        repo, _ = sb
-        kg_user = repo.get_user_by_render_id(user["sub"])
-        if kg_user and kg_user.avatar_url:
-            avatar_url = kg_user.avatar_url
-
+    # Phase 8.0.3 B+: v1 ``kg_users``-backed avatar fallback removed —
+    # ``public.kg_users`` was dropped in Phase 6, the get_supabase_scope
+    # helper retired, and the live PUT /api/me/avatar handler writes to
+    # ``core.profiles.avatar_url`` (covered by the v2 branch above).
     return {
         "id": user["sub"],
         "email": user.get("email", ""),
@@ -408,16 +403,10 @@ async def graph_data(
             logger.warning("v2 /api/graph assembly failed, falling back to v1: %s", exc)
 
     if is_personal:
-        # Per-user graph — always fresh, no global cache
-        sb = _get_supabase(user_id_override=user["sub"])
-        if sb:
-            repo, user_id = sb
-            try:
-                from uuid import UUID
-                graph = repo.get_graph(UUID(user_id), limit=limit, offset=offset)
-                return _enrich_graph_with_analytics(graph.model_dump())
-            except Exception as exc:
-                logger.warning("Supabase user graph fetch failed, falling back: %s", exc)
+        # Phase 8.0.3 B+: v1 ``KGRepository.get_graph`` fallback removed —
+        # ``public.kg_nodes`` was dropped in Phase 6. Personal-graph reads
+        # now flow through the v2 assembler above; on miss we serve the
+        # file-store graph (anonymous-equivalent surface).
         return _enrich_graph_with_analytics(get_graph())
 
     # Global graph (default for all users including anonymous)
@@ -426,19 +415,9 @@ async def graph_data(
     if use_cache and _graph_cache_global is not None and (now - _graph_cache_global_ts) < _GRAPH_CACHE_TTL:
         return _graph_cache_global
 
-    sb = _get_supabase()
-    if sb:
-        repo, _ = sb
-        try:
-            graph = repo.get_graph(user_id=None, limit=limit, offset=offset)
-            result = _enrich_graph_with_analytics(graph.model_dump())
-            if use_cache:
-                _graph_cache_global = result
-                _graph_cache_global_ts = now
-            return result
-        except Exception as exc:
-            logger.warning("Supabase global graph fetch failed, falling back: %s", exc)
-
+    # Phase 8.0.3 B+: v1 ``KGRepository.get_graph(user_id=None)`` fallback
+    # removed for the same reason as the personal branch. The file-store
+    # graph is the canonical anonymous surface.
     result = _enrich_graph_with_analytics(get_graph())
     if use_cache:
         _graph_cache_global = result
@@ -519,18 +498,11 @@ async def delete_zettel(
             _graph_cache_global_ts = 0
             return {"status": "ok", "workspace_zettel_id": node_id}
 
-    deleted = False
-    sb = _get_supabase(user_id_override=user["sub"])
-    if sb:
-        repo, user_id = sb
-        try:
-            deleted = repo.delete_node(UUID(user_id), node_id)
-        except Exception as exc:
-            logger.warning("Supabase node delete failed, falling back to file store: %s", exc)
-
-    # Fallback for non-supabase mode
-    if not deleted:
-        deleted = delete_graph_node(node_id)
+    # Phase 8.0.3 B+: v1 ``KGRepository.delete_node`` fallback removed —
+    # ``public.kg_nodes`` was dropped in Phase 6. v2-shaped deletes flow
+    # through the SECURITY DEFINER soft-delete branch above; non-UUID
+    # node ids fall straight to the file-store path.
+    deleted = delete_graph_node(node_id)
 
     if not deleted:
         raise HTTPException(status_code=404, detail="Zettel not found")

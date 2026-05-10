@@ -270,6 +270,12 @@ async def test_ingest_node_chunks_swallows_upsert_failures(monkeypatch) -> None:
 # (duplicate ingest logic drifting from the canonical implementation).
 
 
+@pytest.mark.skip(
+    reason="v1 _persist_supabase_node + helpers retired in Phase 8.0.3 (B+ atomic "
+    "migration); v2 zettel persist runs through _persist_supabase_v2_zettel. "
+    "ingest_node_chunks coverage above is unaffected. See plan "
+    "docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md"
+)
 @pytest.mark.asyncio
 async def test_persist_supabase_node_invokes_ingest_when_flag_enabled(monkeypatch) -> None:
     from website.core import persist
@@ -337,6 +343,10 @@ async def test_persist_supabase_node_invokes_ingest_when_flag_enabled(monkeypatc
     assert ingest_calls["user_uuid"] == user_uuid
 
 
+@pytest.mark.skip(
+    reason="v1 _persist_supabase_node + helpers retired in Phase 8.0.3 (B+ atomic "
+    "migration). See plan docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md"
+)
 @pytest.mark.asyncio
 async def test_persist_supabase_node_skips_ingest_when_flag_disabled(monkeypatch) -> None:
     from website.core import persist

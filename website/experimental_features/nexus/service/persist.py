@@ -14,6 +14,7 @@ from website.core.persist import (  # noqa: F401
     _SENTINEL_TEXT_RE,
     _strip_sentinel_text,
     extract_summary_parts,
-    get_supabase_scope,
     persist_summarized_result,
 )
+# Phase 8.0.3 B+: ``get_supabase_scope`` was retired with the v1 KGRepository
+# fallback path. The legacy re-export is no longer offered from this shim.

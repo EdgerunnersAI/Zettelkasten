@@ -25,7 +25,6 @@ from website.experimental_features.nexus.service.bulk_import import (
     run_provider_import,
     upsert_provider_account,
 )
-from website.core.persist import get_supabase_scope
 from website.experimental_features.nexus.source_ingest.common.models import (
     ImportRequest,
     NexusProvider,
@@ -64,6 +63,25 @@ def _parse_provider(provider: str) -> NexusProvider:
         return NexusProvider(provider.lower())
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=f"Unsupported provider '{provider}'") from exc
+
+
+def _profile_uuid_from_sub(user_sub: str | None) -> UUID:
+    """Resolve a v2 profile UUID from a JWT auth subject.
+
+    Phase 8.0.3 B+: replaces the v1 ``get_supabase_scope(user_sub)`` lookup
+    that traversed render_user_id mappings via the dropped ``kg_users`` table.
+    Under v2, the JWT ``sub`` is already the profile UUID — we just validate
+    its shape and 503 on misconfiguration so the surface stays explicit.
+    """
+    if not user_sub:
+        raise HTTPException(status_code=400, detail="OAuth callback did not identify a user")
+    try:
+        return UUID(str(user_sub))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Nexus requires a Supabase auth UUID; legacy render IDs are not supported under v2.",
+        ) from exc
 
 
 def _oauth_module(provider: NexusProvider):
@@ -114,14 +132,7 @@ def _normalize_token_set(payload: Any) -> ProviderTokenSet | None:
 
 
 def _resolve_kg_user_id(auth_user_sub: str | None) -> UUID:
-    if not auth_user_sub:
-        raise HTTPException(status_code=400, detail="OAuth callback did not identify a user")
-
-    scope = get_supabase_scope(auth_user_sub)
-    if not scope:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
-    _repo, kg_user_id = scope
-    return UUID(kg_user_id)
+    return _profile_uuid_from_sub(auth_user_sub)
 
 
 def _build_account_from_token_set(
@@ -266,13 +277,9 @@ async def providers(user: Annotated[dict, Depends(get_current_user)]) -> dict[st
     if not is_supabase_configured():
         raise HTTPException(status_code=503, detail="Supabase not configured")
 
-    scope = get_supabase_scope(user["sub"])
-    if not scope:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
-
-    _repo, kg_user_id = scope
+    profile_id = _profile_uuid_from_sub(user.get("sub"))
     try:
-        connected_accounts = list_provider_accounts(kg_user_id)
+        connected_accounts = list_provider_accounts(str(profile_id))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -465,13 +472,9 @@ async def disconnect_provider(
 ) -> dict[str, Any]:
     parsed_provider = _parse_provider(provider)
 
-    scope = get_supabase_scope(user["sub"])
-    if not scope:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
-
-    _repo, kg_user_id = scope
+    profile_id = _profile_uuid_from_sub(user.get("sub"))
     try:
-        disconnected = disconnect_provider_account(kg_user_id, parsed_provider)
+        disconnected = disconnect_provider_account(str(profile_id), parsed_provider)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
@@ -548,10 +551,6 @@ async def runs(
     limit: int = 20,
     user: Annotated[dict, Depends(get_current_user)] = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    scope = get_supabase_scope(user["sub"])
-    if not scope:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
-
-    _repo, kg_user_id = scope
-    items = list_import_runs(kg_user_id, limit=limit)
+    profile_id = _profile_uuid_from_sub(user.get("sub"))
+    items = list_import_runs(str(profile_id), limit=limit)
     return {"runs": [item.model_dump() for item in items]}

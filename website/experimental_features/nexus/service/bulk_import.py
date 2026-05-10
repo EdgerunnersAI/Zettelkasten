@@ -26,7 +26,6 @@ from uuid import UUID
 from website.core.pipeline import summarize_url
 from website.core.persist import (
     PersistenceOutcome,
-    get_supabase_scope,
     persist_summarized_result,
 )
 from website.core.supabase_v2.client import get_v2_client, is_v2_configured
@@ -589,11 +588,24 @@ async def _invoke_ingest_handler(
 
 
 def _resolve_user_scope(auth_user_sub: str) -> str:
-    scope = get_supabase_scope(auth_user_sub)
-    if not scope:
+    """Resolve a v2 profile id (UUID-string) from a JWT auth subject.
+
+    Phase 8.0.3 B+: replaces the v1 ``get_supabase_scope`` lookup that
+    traversed render_user_id mappings via ``public.kg_users`` (dropped in
+    Phase 6). Under v2 the JWT ``sub`` IS the profile UUID; we just shape-
+    validate and 503 if Supabase is not configured.
+    """
+    if not is_v2_configured():
         raise RuntimeError("Supabase is required for Nexus imports")
-    _repo, kg_user_id = scope
-    return kg_user_id
+    if not auth_user_sub:
+        raise RuntimeError("Nexus imports require an authenticated user_sub")
+    try:
+        profile_uuid = UUID(str(auth_user_sub))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Nexus imports require a Supabase auth UUID; got {auth_user_sub!r}"
+        ) from exc
+    return str(profile_uuid)
 
 
 async def run_provider_import(
@@ -889,10 +901,7 @@ async def run_all_imports(
 ) -> list[BulkImportResult]:
     """Run imports across every connected provider account for the user."""
 
-    kg_scope = get_supabase_scope(auth_user_sub)
-    if not kg_scope:
-        raise RuntimeError("Supabase is required for Nexus imports")
-    _repo, profile_id = kg_scope
+    profile_id = _resolve_user_scope(auth_user_sub)
 
     accounts = list_provider_accounts(profile_id)
     if not accounts:

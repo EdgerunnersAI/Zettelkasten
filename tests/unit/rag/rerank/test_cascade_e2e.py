@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+
 from website.features.rag_pipeline.rerank.cascade import CascadeReranker
 from website.features.rag_pipeline import service
 
@@ -15,6 +17,12 @@ def test_cascade_reranker_importable_from_package() -> None:
     assert Imported is CascadeReranker
 
 
+@pytest.mark.skip(
+    reason="v1 get_supabase_scope retired in Phase 8.0.3 (B+ atomic migration); "
+    "callers migrated to v2 client direct. Replacement service-runtime test lives "
+    "in tests/unit/rag_pipeline/test_service_atomic_swap.py. See plan "
+    "docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md"
+)
 def test_service_runtime_builds_cascade_reranker(monkeypatch) -> None:
     class FakeCascade:
         def __init__(self, **kwargs):

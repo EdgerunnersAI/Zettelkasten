@@ -192,9 +192,8 @@ class TestAuthConfigEndpoint:
 class TestMeEndpoint:
     """GET /api/me returns user profile when authenticated."""
 
-    @patch("website.api.routes._get_supabase", return_value=None)
     @patch("website.api.auth._get_jwt_secret", return_value=TEST_SECRET)
-    def test_authenticated_returns_profile(self, mock_secret, mock_sb, auth_client):
+    def test_authenticated_returns_profile(self, mock_secret, auth_client):
         token = _make_jwt({
             "sub": "550e8400-e29b-41d4-a716-446655440000",
             "email": "user@example.com",
