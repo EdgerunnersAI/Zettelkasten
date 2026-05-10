@@ -29,6 +29,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "11_post_install.sql",
         "12_revert_unauthorized_pricing.sql",
         "13_v2_kasten_rpcs.sql",
+        "15_drop_legacy_tables.sql",
         "16_nexus_tokens.sql",
         "17_content_rpcs.sql",
         "19_enriched_search_rpc.sql",
@@ -39,6 +40,7 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "24_entities_to_anchor_chunks_rpc.sql",
         "25_search_chunks_enriched_kasten.sql",
         "26_hybrid_search_chunks_kasten.sql",
+        "27_drop_redundant_retrieval_idx.sql",
     ]
 
 
