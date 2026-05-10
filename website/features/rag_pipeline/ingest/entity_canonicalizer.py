@@ -1,20 +1,23 @@
-"""iter-12 Task 28 R5: LLM-driven entity canonicalization for kg_nodes.
+"""iter-12 Task 28 R5: LLM-driven entity canonicalization for kg.kg_nodes.
 
 Given a node title and summary, asks Gemini flash-lite to:
   - identify the primary named entity the node is about
   - produce a compact list of alternative name forms (aliases)
 
-Aliases are stored on kg_nodes.aliases and indexed for fuzzy matching by
-rag_resolve_entity_anchors so entity-anchor recall improves without hand-coded
-synonym lists.
+Aliases are written to ``kg.kg_node_aliases`` (Phase 1.D.4a — replaces the
+v1 ``public.kg_nodes.aliases`` array dropped in Phase 6) and indexed for
+fuzzy matching by ``rag_resolve_entity_anchors`` so entity-anchor recall
+improves without hand-coded synonym lists.
 
 Guard rails enforced here:
   - aliases capped at 8 (avoid polluting the index)
   - aliases that are pure substrings of the title are dropped (redundant — the
-    existing ILIKE '%entity%' path on kg_nodes.name already covers these)
+    existing ILIKE '%entity%' path on ``kg.kg_nodes.canonical_name`` already
+    covers these)
   - aliases that consist only of punctuation / whitespace are dropped
   - on any LLM failure: returns {"canonical": title, "aliases": []} so the
-    caller always gets a safe dict it can write directly to kg_nodes
+    caller always gets a safe dict it can persist into ``kg.kg_nodes`` +
+    ``kg.kg_node_aliases``
 """
 from __future__ import annotations
 
@@ -60,8 +63,9 @@ _SCHEMA: dict[str, Any] = {
 def summary_hash(summary: str) -> str:
     """Return the first 16 hex characters of the SHA-256 hash of *summary*.
 
-    Used as a cheap change-detector: if the stored hash on kg_nodes matches the
-    incoming summary's hash, canonicalize_node can be skipped entirely.
+    Used as a cheap change-detector: if the stored hash on ``kg.kg_nodes``
+    matches the incoming summary's hash, canonicalize_node can be skipped
+    entirely.
     """
     return hashlib.sha256(summary.encode("utf-8", errors="replace")).hexdigest()[:16]
 
@@ -77,7 +81,7 @@ async def canonicalize_node(
     Parameters
     ----------
     title:
-        The node's display name (kg_nodes.name).
+        The node's display name (``kg.kg_nodes.canonical_name``).
     summary:
         The node's stored summary text used to give context to the LLM.
     key_pool:
@@ -92,7 +96,8 @@ async def canonicalize_node(
         ``aliases``   — list[str], filtered + capped alternative forms
 
     Never raises — returns ``{"canonical": title, "aliases": []}`` on any
-    failure so callers can safely write the result to kg_nodes.
+    failure so callers can safely persist the result into ``kg.kg_nodes`` +
+    ``kg.kg_node_aliases``.
     """
     prompt = _PROMPT.format(
         title=title,

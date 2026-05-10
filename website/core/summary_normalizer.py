@@ -1,8 +1,11 @@
 """Airtight summary normalization at the API boundary.
 
 The zettel modal reads ``node.summary`` and expects a predictable shape. Over
-the life of this project three writer paths have landed rows in
-``kg_nodes.summary`` with four different shapes:
+the life of this project three writer paths have landed rows in the
+canonical-summary column (v1 ``kg_nodes.summary`` jsonb, dropped in Phase 6;
+now ``content.workspace_zettels.ai_summary`` text per Phase 3.1 of the v2
+purge — see ``website/features/summarization_engine/writers/supabase.py``)
+with four different shapes:
 
 1. Canonical JSON envelope with ``detailed_summary`` as a list of structured
    sections (``[{heading, bullets, sub_sections}, ...]``) — the post-fix
