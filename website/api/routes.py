@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
 from website.api.auth import get_current_user, get_optional_user
@@ -668,28 +669,38 @@ async def graph_query(
     request: Request,
     user: Annotated[dict | None, Depends(get_optional_user)] = None,
 ):
-    """Natural-language query against the knowledge graph (M4)."""
-    ip = request.client.host if request.client else "unknown"
-    if not _check_query_rate_limit(ip):
-        raise HTTPException(status_code=429, detail="Too many queries. Wait a minute.")
+    """RETIRED: NL→SQL surface. 410 Gone per Phase 8.5.C-defer.
 
-    sb = _get_supabase(user_id_override=user["sub"] if user else None)
-    if not sb:
-        raise HTTPException(status_code=503, detail="Supabase not configured")
+    The NL→SQL prompt vocabulary in `website.features.kg_features.nl_query`
+    references the v1 schema (`public.kg_users / kg_nodes / kg_links`) — every
+    table dropped in Phase 6 commit e168b38. Any successful prompt completion
+    would fail at psql execution against missing tables.
 
-    repo, user_id = sb
-    try:
-        from uuid import UUID
-        from website.features.kg_features.nl_query import NLGraphQuery, NLQueryError
+    Re-enable when the prompt is ported to the v2 schema (content.canonical_*,
+    kg.kg_* with proper RLS guardrails). Tracked in:
+      * docs/superpowers/plans/2026-05-10-phase-8.5-hardening-additions.md (8.5.C-defer)
+      * memory/project_kg_intelligence_remaining.md
 
-        query_engine = NLGraphQuery(repo._client, user_id=user_id)
-        result = await query_engine.ask(body.question, UUID(user_id))
-        return result.model_dump()
-    except Exception as exc:
-        if hasattr(exc, "status_code"):
-            raise HTTPException(status_code=exc.status_code, detail=exc.user_message)
-        logger.error("Graph query failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Query failed. Try rephrasing.")
+    Returns 410 with RFC 8594 Sunset header + IETF Deprecation draft-09 header
+    so clients can distinguish "intentionally retired" from "404 not found".
+    """
+    return JSONResponse(
+        status_code=410,
+        content={
+            "error": "gone",
+            "message": (
+                "/api/graph/query NL→SQL surface is retired pending v2 schema "
+                "port. Use /api/graph for the structured KG, or /api/rag/adhoc "
+                "for free-form questions over your Kasten content."
+            ),
+            "v2_endpoint": None,
+            "docs": "docs/db-v2/cutover-runbook.md",
+        },
+        headers={
+            "Sunset": "Sat, 10 May 2026 00:00:00 GMT",
+            "Deprecation": "@1715299200",
+        },
+    )
 
 
 @router.post("/graph/search")
