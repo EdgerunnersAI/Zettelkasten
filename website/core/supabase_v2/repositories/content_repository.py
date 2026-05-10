@@ -177,11 +177,21 @@ class ContentRepository:
         )
         return list(response.data or [])
 
-    def soft_delete_workspace_zettel(self, workspace_zettel_id: UUID) -> bool:
+    def soft_delete_workspace_zettel(
+        self,
+        workspace_zettel_id: UUID,
+        *,
+        workspace_id: UUID,
+    ) -> bool:
         """Set ``deleted_at = now()`` on the workspace overlay row.
 
+        Phase 8.5.R3 SECURITY FIX: ``workspace_id`` MUST match the row's owning
+        workspace. Without this, service-role bypassed RLS allowed any
+        authenticated user to soft-delete any workspace_zettel by id. Now the
+        compound-key match (id + workspace_id) gates the mutation.
+
         Returns ``True`` if a row was soft-deleted, ``False`` if no matching
-        non-deleted row exists. The reaper trigger
+        non-deleted row exists IN THE GIVEN WORKSPACE. The reaper trigger
         (``trg_workspace_zettel_after_softdelete``) handles canonical-shred
         enqueue at last-reference per audit fix A.3 — we never hard-delete
         from the API path.
@@ -192,6 +202,7 @@ class ContentRepository:
             .table("workspace_zettels")
             .update({"deleted_at": now_iso, "updated_at": now_iso})
             .eq("id", str(workspace_zettel_id))
+            .eq("workspace_id", str(workspace_id))
             .is_("deleted_at", "null")
             .execute()
         )
@@ -201,17 +212,24 @@ class ContentRepository:
         self,
         workspace_zettel_id: UUID,
         *,
+        workspace_id: UUID,
         user_tags: list[str] | None = None,
         user_note: str | None = None,
         pinned: bool | None = None,
     ) -> bool:
         """Partial update of user-editable workspace overlay fields.
 
+        Phase 8.5.R3 SECURITY FIX: ``workspace_id`` MUST match the row's
+        owning workspace (compound-key match). Service-role client bypasses
+        RLS; without this gate any authenticated user could mutate any
+        workspace_zettel by id.
+
         Only the three explicit kwargs are user-editable here. ``ai_summary``
         is engine-owned and intentionally NOT writable through this method —
         callers wanting to record user-authored prose should pass it as
         ``user_note``. Returns ``True`` when a row was updated, ``False``
-        otherwise (no matching id, or already soft-deleted).
+        otherwise (no matching id IN THE GIVEN WORKSPACE, or already
+        soft-deleted).
         """
         payload: dict = {}
         if user_tags is not None:
@@ -229,6 +247,7 @@ class ContentRepository:
             .table("workspace_zettels")
             .update(payload)
             .eq("id", str(workspace_zettel_id))
+            .eq("workspace_id", str(workspace_id))
             .is_("deleted_at", "null")
             .execute()
         )

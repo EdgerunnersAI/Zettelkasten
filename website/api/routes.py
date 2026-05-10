@@ -508,7 +508,11 @@ async def delete_zettel(
         if scope is not None:
             content_repo, _profile_id, _workspace_id = scope
             try:
-                ok = content_repo.soft_delete_workspace_zettel(UUID(node_id))
+                # Phase 8.5.R3 SECURITY FIX: pass workspace_id so the repo's
+                # compound-key match gates B-from-A cross-tenant deletion.
+                ok = content_repo.soft_delete_workspace_zettel(
+                    UUID(node_id), workspace_id=_workspace_id,
+                )
             except Exception as exc:
                 logger.warning("v2 soft-delete failed for %s: %s", node_id, exc)
                 ok = False
@@ -593,8 +597,11 @@ async def update_zettel(
         user_note = body.ai_summary
 
     try:
+        # Phase 8.5.R3 SECURITY FIX: workspace_id gates compound-key match so
+        # B's PATCH against A's zettel by id no longer succeeds.
         ok = content_repo.update_workspace_zettel(
             UUID(node_id),
+            workspace_id=_workspace_id,
             user_tags=body.user_tags,
             user_note=user_note,
             pinned=body.pinned,
