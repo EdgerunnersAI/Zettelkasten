@@ -69,6 +69,10 @@ DEFAULT_MIGRATIONS_DIR = (
     ROOT / "supabase" / "website" / "kg_public" / "migrations"
 )
 DEFAULT_V2_MIGRATIONS_DIR = ROOT / "supabase" / "website" / "_v2"
+# Phase 8.0 Rev+: Flyway-style repeatable migrations live under
+# ``_v2/repeatable/`` and are named ``R__<slug>.sql``. They re-run on every
+# deploy whenever their checksum changes, after all versioned migrations.
+_V2_REPEATABLE_SUBDIR = "repeatable"
 
 # Bootstrap placeholders that an operator may have inserted into
 # ``_migrations_applied.checksum`` to mark a migration as "already
@@ -144,11 +148,14 @@ def _checksum(text: str) -> str:
 
 _MIGRATION_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(_\d{2})?_[a-z0-9_]+\.sql$")
 _V2_MIGRATION_NAME_RE = re.compile(r"^\d{2}_[a-z0-9_]+\.sql$")
+_V2_REPEATABLE_NAME_RE = re.compile(r"^R__[a-z0-9_]+\.sql$")
 
 
 def _list_migrations(directory: Path, *, v2: bool = False) -> list[Path]:
     if not directory.is_dir():
         raise RuntimeError(f"Migrations directory not found: {directory}")
+    # Phase 8.0 Rev+: top-level *.sql only — repeatable/ subdir is handled
+    # separately by _list_repeatable_migrations().
     files = sorted(p for p in directory.glob("*.sql") if not p.name.endswith(".down.sql"))
     name_re = _V2_MIGRATION_NAME_RE if v2 else _MIGRATION_NAME_RE
     expected = "NN_slug.sql" if v2 else "YYYY-MM-DD[_NN]_<slug>.sql"
@@ -157,6 +164,32 @@ def _list_migrations(directory: Path, *, v2: bool = False) -> list[Path]:
         raise RuntimeError(
             f"Invalid migration filenames: {invalid}. "
             f"Expected: {expected}"
+        )
+    return files
+
+
+def _list_repeatable_migrations(directory: Path) -> list[Path]:
+    """Return sorted R__*.sql files under <directory>/repeatable/.
+
+    Phase 8.0 Rev+ (v2 only): repeatable migrations are tracked by name in
+    core._migrations_applied just like versioned migrations, but their
+    checksum is allowed to change. When the checksum on disk no longer
+    matches the recorded row, the migration runs again and the row is
+    updated. Used for idempotent CREATE OR REPLACE definitions whose
+    bodies legitimately evolve over time (e.g., diagnostic RPCs).
+    """
+    repeatable_dir = directory / _V2_REPEATABLE_SUBDIR
+    if not repeatable_dir.is_dir():
+        return []
+    files = sorted(
+        p for p in repeatable_dir.glob("*.sql")
+        if not p.name.endswith(".down.sql")
+    )
+    invalid = [p.name for p in files if not _V2_REPEATABLE_NAME_RE.match(p.name)]
+    if invalid:
+        raise RuntimeError(
+            f"Invalid repeatable migration filenames: {invalid}. "
+            f"Expected: R__<slug>.sql"
         )
     return files
 
@@ -244,6 +277,73 @@ def _apply_one(conn, path: Path, sql: str, checksum: str, hostname: str, *, v2: 
         conn.rollback()
         raise
     return (time.perf_counter() - t0) * 1000.0
+
+
+def _apply_repeatable(
+    conn,
+    path: Path,
+    sql: str,
+    checksum: str,
+    hostname: str,
+    prior_checksum: str | None,
+) -> tuple[str, float]:
+    """Apply a repeatable migration if its checksum changed.
+
+    Phase 8.0 Rev+ (v2 only). Returns (action, elapsed_ms) where action is
+    one of: ``applied``, ``updated``, ``skipped``. Keyed by filename in
+    core._migrations_applied; on checksum change we UPDATE the existing row
+    in the same transaction as the SQL re-application.
+    """
+    if prior_checksum == checksum:
+        return ("skipped", 0.0)
+
+    git_sha = os.environ.get("DEPLOY_GIT_SHA")
+    deploy_id = os.environ.get("DEPLOY_ID")
+    deploy_actor = os.environ.get("DEPLOY_ACTOR")
+    t0 = time.perf_counter()
+    table = _migration_table(v2=True)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            if prior_checksum is None:
+                cur.execute(
+                    f"INSERT INTO {table} "
+                    "(name, checksum, applied_by, deploy_git_sha, deploy_id, "
+                    "deploy_actor, runner_hostname) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (
+                        path.name,
+                        checksum,
+                        hostname,
+                        git_sha,
+                        deploy_id,
+                        deploy_actor,
+                        hostname,
+                    ),
+                )
+                action = "applied"
+            else:
+                cur.execute(
+                    f"UPDATE {table} SET checksum = %s, applied_at = now(), "
+                    "applied_by = %s, deploy_git_sha = %s, deploy_id = %s, "
+                    "deploy_actor = %s, runner_hostname = %s "
+                    "WHERE name = %s",
+                    (
+                        checksum,
+                        hostname,
+                        git_sha,
+                        deploy_id,
+                        deploy_actor,
+                        hostname,
+                        path.name,
+                    ),
+                )
+                action = "updated"
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return (action, (time.perf_counter() - t0) * 1000.0)
 
 
 def _run_rollback(conn, directory: Path, name: str, hostname: str, *, v2: bool = False) -> int:
@@ -621,6 +721,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "[migration] applied %s in %.0fms", path.name, elapsed
             )
             applied_count += 1
+
+        # Phase 8.0 Rev+: repeatable migrations run AFTER versioned ones so any
+        # versioned file (e.g., 41_migrate_39_to_repeatable.sql) that cleans up
+        # a prior manifest row lands before the R__ runner re-inserts it under
+        # the new name. v2-only — the legacy migrations layout has none.
+        if rc == 0 and args.v2 and not args.dry_run:
+            repeatable_files = _list_repeatable_migrations(directory)
+            for path in repeatable_files:
+                sql = path.read_text(encoding="utf-8")
+                checksum = _checksum(sql)
+                prior = applied.get(path.name)
+                try:
+                    action, elapsed = _apply_repeatable(
+                        conn, path, sql, checksum, hostname, prior
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "[migration] FAILED repeatable %s — rolled back. Error: %s",
+                        path.name,
+                        exc,
+                    )
+                    rc = 1
+                    break
+                if action == "skipped":
+                    logger.info("[migration] skip %s (repeatable, checksum match)", path.name)
+                    skipped_count += 1
+                else:
+                    logger.info(
+                        "[migration] %s %s (repeatable) in %.0fms",
+                        action,
+                        path.name,
+                        elapsed,
+                    )
+                    applied_count += 1
+                total_count += 1
 
         # iter-03 §1C.5 (hardened): post-apply manifest gate.
         #

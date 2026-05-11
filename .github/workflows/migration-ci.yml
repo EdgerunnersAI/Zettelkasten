@@ -87,7 +87,9 @@ jobs:
         run: |
           set -e
           shopt -s nullglob
-          files=(supabase/website/_v2/*.sql)
+          # Phase 8.0 Rev+: include repeatable/R__*.sql so the R__ runner's
+          # bodies are lint-checked the same way as versioned migrations.
+          files=(supabase/website/_v2/*.sql supabase/website/_v2/repeatable/*.sql)
           if [ ${#files[@]} -eq 0 ]; then
             echo "no _v2 SQL files to lint"
             exit 0
