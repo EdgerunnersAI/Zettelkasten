@@ -4,7 +4,7 @@
       "id": "yt-attention",
       "name": "Attention Is All You Need — Paper Explained",
       "group": "youtube",
-      "summary": "Visual walkthrough of the Transformer architecture: self-attention, multi-head attention, positional encoding, and why it replaced RNNs for sequence modelling.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Visual walkthrough of the Transformer architecture: self-attention, multi-head attention, positional encoding, and why it replaced RNNs for sequence modelling.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "machine-learning",
         "transformers",
@@ -12,13 +12,17 @@
         "nlp"
       ],
       "url": "https://www.youtube.com/watch?v=XowwKOAWYoQ",
-      "date": "2026-03-15"
+      "date": "2026-03-15",
+      "pagerank": 0.030341710198313672,
+      "community": 3,
+      "betweenness": 0.0007692307692307692,
+      "closeness": 0.2136752136752137
     },
     {
       "id": "yt-second-brain",
       "name": "Building a Second Brain with Obsidian",
       "group": "youtube",
-      "summary": "Tiago Forte's PARA method adapted for Obsidian: capture, organise, distil, express — with live vault walkthrough and template demos.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Tiago Forte's PARA method adapted for Obsidian: capture, organise, distil, express — with live vault walkthrough and template demos.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "pkm",
         "obsidian",
@@ -26,13 +30,17 @@
         "productivity"
       ],
       "url": "https://www.youtube.com/watch?v=OP3dA2GcAh8",
-      "date": "2026-03-12"
+      "date": "2026-03-12",
+      "pagerank": 0.03952569169960474,
+      "community": 1,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "yt-fastapi",
       "name": "FastAPI Full Course — Modern Python APIs",
       "group": "youtube",
-      "summary": "End-to-end FastAPI tutorial covering async endpoints, Pydantic models, dependency injection, middleware, background tasks, and deployment with Docker.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"End-to-end FastAPI tutorial covering async endpoints, Pydantic models, dependency injection, middleware, background tasks, and deployment with Docker.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "python",
         "fastapi",
@@ -40,13 +48,17 @@
         "async"
       ],
       "url": "https://www.youtube.com/watch?v=7t2alSnE2-I",
-      "date": "2026-03-10"
+      "date": "2026-03-10",
+      "pagerank": 0.04628890256942733,
+      "community": 2,
+      "betweenness": 0.0025641025641025637,
+      "closeness": 0.1641025641025641
     },
     {
       "id": "yt-zettelkasten",
       "name": "The Art of Note-Taking — Zettelkasten Method",
       "group": "youtube",
-      "summary": "Deep dive into Niklas Luhmann's slip-box method: atomic notes, unique IDs, bidirectional linking, and emergence of unexpected connections.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Deep dive into Niklas Luhmann's slip-box method: atomic notes, unique IDs, bidirectional linking, and emergence of unexpected connections.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "zettelkasten",
         "pkm",
@@ -54,13 +66,17 @@
         "knowledge-graph"
       ],
       "url": "https://www.youtube.com/watch?v=rOSZOCoqOo8",
-      "date": "2026-03-08"
+      "date": "2026-03-08",
+      "pagerank": 0.03952569169960474,
+      "community": 1,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "yt-gpt4",
       "name": "GPT-4 Architecture Deep Dive",
       "group": "youtube",
-      "summary": "Technical breakdown of GPT-4's mixture-of-experts design, training at scale, RLHF alignment, and benchmark comparisons with Claude and Gemini.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Technical breakdown of GPT-4's mixture-of-experts design, training at scale, RLHF alignment, and benchmark comparisons with Claude and Gemini.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "llm",
         "ai",
@@ -68,13 +84,17 @@
         "deep-learning"
       ],
       "url": "https://www.youtube.com/watch?v=bZQun8Y4L2A",
-      "date": "2026-03-05"
+      "date": "2026-03-05",
+      "pagerank": 0.04600370589154417,
+      "community": 3,
+      "betweenness": 0.015384615384615385,
+      "closeness": 0.2403846153846154
     },
     {
       "id": "rd-async-python",
       "name": "r/Python — Best Practices for Async Programming",
       "group": "reddit",
-      "summary": "Community thread on asyncio patterns: structured concurrency with TaskGroups, avoiding callback hell, when to use threads vs async, and real-world pitfalls.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Community thread on asyncio patterns: structured concurrency with TaskGroups, avoiding callback hell, when to use threads vs async, and real-world pitfalls.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "python",
         "async",
@@ -82,13 +102,17 @@
         "best-practices"
       ],
       "url": "https://www.reddit.com/r/Python/comments/abc123",
-      "date": "2026-03-20"
+      "date": "2026-03-20",
+      "pagerank": 0.03558646600165084,
+      "community": 2,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "rd-obsidian-workflow",
       "name": "r/ObsidianMD — My Zettelkasten Workflow After 2 Years",
       "group": "reddit",
-      "summary": "Detailed breakdown of a mature Obsidian vault: folder structure, daily notes, MOCs, Dataview queries, and lessons learned from 3,000+ notes.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Detailed breakdown of a mature Obsidian vault: folder structure, daily notes, MOCs, Dataview queries, and lessons learned from 3,000+ notes.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "obsidian",
         "zettelkasten",
@@ -96,13 +120,17 @@
         "workflow"
       ],
       "url": "https://www.reddit.com/r/ObsidianMD/comments/def456",
-      "date": "2026-03-18"
+      "date": "2026-03-18",
+      "pagerank": 0.03952569169960474,
+      "community": 1,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "rd-rag-vs-ft",
       "name": "r/MachineLearning — RAG vs Fine-Tuning: When to Use What",
       "group": "reddit",
-      "summary": "Heated debate on retrieval-augmented generation vs fine-tuning for domain-specific tasks. Consensus: RAG for dynamic knowledge, fine-tuning for style/format.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Heated debate on retrieval-augmented generation vs fine-tuning for domain-specific tasks. Consensus: RAG for dynamic knowledge, fine-tuning for style/format.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "llm",
         "rag",
@@ -110,13 +138,17 @@
         "ai"
       ],
       "url": "https://www.reddit.com/r/MachineLearning/comments/ghi789",
-      "date": "2026-03-16"
+      "date": "2026-03-16",
+      "pagerank": 0.04533436968198343,
+      "community": 3,
+      "betweenness": 0.005384615384615384,
+      "closeness": 0.2136752136752137
     },
     {
       "id": "rd-docker-compose",
       "name": "r/selfhosted — Docker Compose Best Practices",
       "group": "reddit",
-      "summary": "Community-curated guide: named volumes vs bind mounts, health checks, restart policies, .env files, multi-stage builds, and security hardening.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Community-curated guide: named volumes vs bind mounts, health checks, restart policies, . env files, multi-stage builds, and security hardening.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "docker",
         "devops",
@@ -124,13 +156,17 @@
         "best-practices"
       ],
       "url": "https://www.reddit.com/r/selfhosted/comments/jkl012",
-      "date": "2026-03-14"
+      "date": "2026-03-14",
+      "pagerank": 0.029971759742101346,
+      "community": 2,
+      "betweenness": 0.0,
+      "closeness": 0.14479638009049775
     },
     {
       "id": "rd-rust-replacing-cpp",
       "name": "r/programming — Why Rust Is Replacing C++ in Systems Work",
       "group": "reddit",
-      "summary": "Analysis of Rust adoption at Microsoft, Google, and Linux kernel: memory safety guarantees, zero-cost abstractions, and the borrow checker learning curve.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Analysis of Rust adoption at Microsoft, Google, and Linux kernel: memory safety guarantees, zero-cost abstractions, and the borrow checker learning curve.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "rust",
         "systems-programming",
@@ -138,13 +174,17 @@
         "programming-languages"
       ],
       "url": "https://www.reddit.com/r/programming/comments/mno345",
-      "date": "2026-03-11"
+      "date": "2026-03-11",
+      "pagerank": 0.018853727634305744,
+      "community": 0,
+      "betweenness": 0.0,
+      "closeness": 0.1282051282051282
     },
     {
       "id": "gh-langchain",
       "name": "langchain/langchain — LLM Application Framework",
       "group": "github",
-      "summary": "Python framework for building LLM-powered apps: chains, agents, tools, vector stores, and retrieval pipelines. 80K+ stars, rapid ecosystem growth.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Python framework for building LLM-powered apps: chains, agents, tools, vector stores, and retrieval pipelines. 80K+ stars, rapid ecosystem growth.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "llm",
         "ai",
@@ -152,13 +192,17 @@
         "rag"
       ],
       "url": "https://github.com/langchain-ai/langchain",
-      "date": "2026-03-22"
+      "date": "2026-03-22",
+      "pagerank": 0.04587533078954424,
+      "community": 3,
+      "betweenness": 0.012307692307692308,
+      "closeness": 0.2403846153846154
     },
     {
       "id": "gh-obsidian",
       "name": "obsidianmd/obsidian-releases — Obsidian Release Notes",
       "group": "github",
-      "summary": "Official release tracker for Obsidian: Canvas improvements, Properties editor, new plugin API hooks, and performance optimizations in v1.7+.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Official release tracker for Obsidian: Canvas improvements, Properties editor, new plugin API hooks, and performance optimizations in v1.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "obsidian",
         "pkm",
@@ -166,13 +210,17 @@
         "knowledge-graph"
       ],
       "url": "https://github.com/obsidianmd/obsidian-releases",
-      "date": "2026-03-21"
+      "date": "2026-03-21",
+      "pagerank": 0.03952569169960474,
+      "community": 1,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "gh-fastapi",
       "name": "tiangolo/fastapi — Modern Python Web Framework",
       "group": "github",
-      "summary": "High-performance async Python framework: auto-generated OpenAPI docs, Pydantic validation, dependency injection, WebSocket support. 75K+ stars.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"High-performance async Python framework: auto-generated OpenAPI docs, Pydantic validation, dependency injection, WebSocket support. 75K+ stars.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "python",
         "fastapi",
@@ -180,13 +228,17 @@
         "async"
       ],
       "url": "https://github.com/tiangolo/fastapi",
-      "date": "2026-03-19"
+      "date": "2026-03-19",
+      "pagerank": 0.04628890256942733,
+      "community": 2,
+      "betweenness": 0.0025641025641025637,
+      "closeness": 0.1641025641025641
     },
     {
       "id": "gh-vscode",
       "name": "microsoft/vscode — Visual Studio Code Editor",
       "group": "github",
-      "summary": "Open-source code editor built on Electron: extension marketplace, integrated terminal, Git support, remote development, and Copilot integration.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Open-source code editor built on Electron: extension marketplace, integrated terminal, Git support, remote development, and Copilot integration.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "dev-tools",
         "editor",
@@ -194,13 +246,17 @@
         "productivity"
       ],
       "url": "https://github.com/microsoft/vscode",
-      "date": "2026-03-17"
+      "date": "2026-03-17",
+      "pagerank": 0.030407285471670455,
+      "community": 0,
+      "betweenness": 0.027692307692307693,
+      "closeness": 0.18315018315018314
     },
     {
       "id": "gh-transformers",
       "name": "huggingface/transformers — ML Model Hub",
       "group": "github",
-      "summary": "State-of-the-art NLP/vision/audio models: 200K+ pretrained models, AutoModel API, training pipelines, and ONNX/TensorRT export for production.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"State-of-the-art NLP/vision/audio models: 200K+ pretrained models, AutoModel API, training pipelines, and ONNX/TensorRT export for production.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "machine-learning",
         "transformers",
@@ -208,13 +264,17 @@
         "python"
       ],
       "url": "https://github.com/huggingface/transformers",
-      "date": "2026-03-13"
+      "date": "2026-03-13",
+      "pagerank": 0.05967691947205534,
+      "community": 3,
+      "betweenness": 0.06256410256410257,
+      "closeness": 0.27472527472527475
     },
     {
       "id": "ss-pragmatic-engineer",
       "name": "The Pragmatic Engineer — System Design at Scale",
       "group": "substack",
-      "summary": "Gergely Orosz on designing distributed systems: load balancing strategies, database sharding, caching layers, and real-world post-mortems from Big Tech.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Gergely Orosz on designing distributed systems: load balancing strategies, database sharding, caching layers, and real-world post-mortems from Big Tech.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "system-design",
         "architecture",
@@ -222,13 +282,17 @@
         "engineering"
       ],
       "url": "https://newsletter.pragmaticengineer.com/p/system-design",
-      "date": "2026-03-25"
+      "date": "2026-03-25",
+      "pagerank": 0.06649411550702956,
+      "community": 2,
+      "betweenness": 0.05333333333333333,
+      "closeness": 0.2237762237762238
     },
     {
       "id": "ss-ai-snake-oil",
       "name": "AI Snake Oil — LLM Limitations Nobody Talks About",
       "group": "substack",
-      "summary": "Arvind Narayanan on LLM failure modes: hallucination rates, evaluation gaming, benchmark saturation, and the gap between demos and production reliability.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Arvind Narayanan on LLM failure modes: hallucination rates, evaluation gaming, benchmark saturation, and the gap between demos and production reliability.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "llm",
         "ai",
@@ -236,13 +300,17 @@
         "critical-thinking"
       ],
       "url": "https://www.aisnakeoil.com/p/llm-limitations",
-      "date": "2026-03-23"
+      "date": "2026-03-23",
+      "pagerank": 0.04505212428986978,
+      "community": 3,
+      "betweenness": 0.0041025641025641026,
+      "closeness": 0.2136752136752137
     },
     {
       "id": "ss-lenny",
       "name": "Lenny's Newsletter — Product Metrics That Matter",
       "group": "substack",
-      "summary": "Framework for choosing North Star metrics: leading vs lagging indicators, engagement ratios, cohort analysis, and common metric anti-patterns.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Framework for choosing North Star metrics: leading vs lagging indicators, engagement ratios, cohort analysis, and common metric anti-patterns.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "product-management",
         "metrics",
@@ -250,13 +318,17 @@
         "startups"
       ],
       "url": "https://www.lennysnewsletter.com/p/metrics-that-matter",
-      "date": "2026-03-20"
+      "date": "2026-03-20",
+      "pagerank": 0.017233654419119792,
+      "community": 2,
+      "betweenness": 0.0,
+      "closeness": 0.13675213675213677
     },
     {
       "id": "ss-bytebytego",
       "name": "ByteByteGo — API Design Patterns for Scale",
       "group": "substack",
-      "summary": "Alex Xu on REST vs GraphQL vs gRPC trade-offs, pagination strategies, rate limiting, versioning, and idempotency patterns for high-traffic APIs.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Alex Xu on REST vs GraphQL vs gRPC trade-offs, pagination strategies, rate limiting, versioning, and idempotency patterns for high-traffic APIs.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "api-design",
         "system-design",
@@ -264,13 +336,17 @@
         "web-framework"
       ],
       "url": "https://blog.bytebytego.com/p/api-design-patterns",
-      "date": "2026-03-18"
+      "date": "2026-03-18",
+      "pagerank": 0.036906541121907166,
+      "community": 2,
+      "betweenness": 0.012307692307692308,
+      "closeness": 0.18934911242603553
     },
     {
       "id": "ss-the-batch",
       "name": "The Batch by Andrew Ng — AI Industry Trends 2026",
       "group": "substack",
-      "summary": "Weekly AI roundup: agentic workflows outperforming chain-of-thought, multimodal models closing the gap, and the shift from pre-training to post-training.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Weekly AI roundup: agentic workflows outperforming chain-of-thought, multimodal models closing the gap, and the shift from pre-training to post-training.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "ai",
         "machine-learning",
@@ -278,13 +354,17 @@
         "deep-learning"
       ],
       "url": "https://www.deeplearning.ai/the-batch/ai-trends-2026",
-      "date": "2026-03-15"
+      "date": "2026-03-15",
+      "pagerank": 0.0382970072592902,
+      "community": 3,
+      "betweenness": 0.00923076923076923,
+      "closeness": 0.22624434389140274
     },
     {
       "id": "md-clean-arch",
       "name": "Clean Architecture in Python — Hexagonal Patterns",
       "group": "medium",
-      "summary": "Applying Uncle Bob's Clean Architecture to Python: ports and adapters, dependency inversion with protocols, and testing strategies for layered apps.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Applying Uncle Bob's Clean Architecture to Python: ports and adapters, dependency inversion with protocols, and testing strategies for layered apps.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "python",
         "architecture",
@@ -292,13 +372,17 @@
         "best-practices"
       ],
       "url": "https://medium.com/@author/clean-architecture-python",
-      "date": "2026-03-26"
+      "date": "2026-03-26",
+      "pagerank": 0.04698912362367794,
+      "community": 2,
+      "betweenness": 0.024615384615384615,
+      "closeness": 0.20512820512820512
     },
     {
       "id": "md-knowledge-graphs",
       "name": "Knowledge Graphs for Personal Use — Beyond Enterprise",
       "group": "medium",
-      "summary": "How individuals can build personal knowledge graphs: tools (Obsidian, Logseq, Roam), graph schemas, emergent structure, and the power of bidirectional links.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"How individuals can build personal knowledge graphs: tools (Obsidian, Logseq, Roam), graph schemas, emergent structure, and the power of bidirectional links.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "knowledge-graph",
         "pkm",
@@ -306,13 +390,17 @@
         "note-taking"
       ],
       "url": "https://medium.com/@author/personal-knowledge-graphs",
-      "date": "2026-03-24"
+      "date": "2026-03-24",
+      "pagerank": 0.03952569169960474,
+      "community": 1,
+      "betweenness": 0.0,
+      "closeness": 0.15384615384615385
     },
     {
       "id": "md-vector-db",
       "name": "Vector Databases Explained — From Embeddings to Search",
       "group": "medium",
-      "summary": "How vector databases work: embedding models, HNSW indexing, cosine similarity, and when to choose Pinecone vs Weaviate vs Chroma for RAG pipelines.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"How vector databases work: embedding models, HNSW indexing, cosine similarity, and when to choose Pinecone vs Weaviate vs Chroma for RAG pipelines.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "vector-database",
         "rag",
@@ -320,13 +408,17 @@
         "embeddings"
       ],
       "url": "https://medium.com/@author/vector-databases-explained",
-      "date": "2026-03-22"
+      "date": "2026-03-22",
+      "pagerank": 0.029888303717205415,
+      "community": 3,
+      "betweenness": 0.0030769230769230765,
+      "closeness": 0.2136752136752137
     },
     {
       "id": "md-local-first",
       "name": "The Rise of Local-First Software",
       "group": "medium",
-      "summary": "Why local-first is gaining traction: CRDTs for sync, offline capability, data ownership, and the architectural shift from cloud-centric to edge-centric apps.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Why local-first is gaining traction: CRDTs for sync, offline capability, data ownership, and the architectural shift from cloud-centric to edge-centric apps.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "architecture",
         "local-first",
@@ -334,13 +426,17 @@
         "self-hosting"
       ],
       "url": "https://medium.com/@author/local-first-software",
-      "date": "2026-03-19"
+      "date": "2026-03-19",
+      "pagerank": 0.029971759742101346,
+      "community": 2,
+      "betweenness": 0.0,
+      "closeness": 0.14479638009049775
     },
     {
       "id": "md-prompt-eng",
       "name": "Prompt Engineering Best Practices for Production",
       "group": "medium",
-      "summary": "Battle-tested prompting patterns: system prompts, few-shot examples, chain-of-thought, output parsing, guardrails, and version control for prompt templates.",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Battle-tested prompting patterns: system prompts, few-shot examples, chain-of-thought, output parsing, guardrails, and version control for prompt templates.\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [
         "prompt-engineering",
         "llm",
@@ -348,28 +444,69 @@
         "best-practices"
       ],
       "url": "https://medium.com/@author/prompt-engineering-production",
-      "date": "2026-03-16"
+      "date": "2026-03-16",
+      "pagerank": 0.04505212428986978,
+      "community": 3,
+      "betweenness": 0.0041025641025641026,
+      "closeness": 0.2136752136752137
     },
     {
       "id": "web-test-title",
       "name": "Test Title",
       "group": "medium",
-      "summary": "Brief",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"Brief\", \"detailed_summary\": [], \"closing_remarks\": \"\"}",
       "tags": [],
       "url": "https://example.com",
-      "date": "2026-03-29"
+      "date": "2026-03-29",
+      "pagerank": 0.005928853754940712,
+      "community": 4,
+      "betweenness": 0.0,
+      "closeness": 0.0
     },
     {
       "id": "web-persist-meta-probe-17770",
       "name": "persist-meta-probe-1777028264",
       "group": "web",
-      "summary": "{\"brief_summary\": \"probe brief\", \"detailed_summary\": \"probe detailed body.\"}",
+      "summary": "{\"mini_title\": \"\", \"brief_summary\": \"probe brief\", \"detailed_summary\": [{\"heading\": \"Overview\", \"bullets\": [\"probe detailed body.\"], \"sub_sections\": {}}], \"closing_remarks\": \"\"}",
       "tags": [
         "probe",
         "persist-meta"
       ],
       "url": "https://example.test/persist-meta-probe-1777028264",
-      "date": "2026-04-24"
+      "date": "2026-04-24",
+      "pagerank": 0.005928853754940712,
+      "community": 5,
+      "betweenness": 0.0,
+      "closeness": 0.0
+    },
+    {
+      "id": "yt-yt-title",
+      "name": "YT Title",
+      "group": "youtube",
+      "summary": "{\"brief_summary\": \"Brief\", \"detailed_summary\": \"Brief\"}",
+      "tags": [],
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "date": "2026-05-10"
+    },
+    {
+      "id": "web-python-3-12-release-over",
+      "name": "Python 3.12 Release Overview",
+      "group": "web",
+      "summary": "{\"brief_summary\": \"Python 3.12, released on October 2, 2023, introduces significant changes to the language and standard library. Key focus areas include enhanced usability through f-string improvements and new generic type syntax, substantial performance gains from interpreter optimizations and module-specific speedups, and a cleanup of deprecated APIs, alongside security and C-API advancements.\", \"detailed_summary\": \"## Python 3.12 Release Highlights\\n- Stable release date: October 2, 2023.\\n- Focus areas: usability, performance, and cleanup of deprecated APIs. ### Major Language Changes\\n- Removal of many f-string limitations (PEP 701).\\n- New, ergonomic syntax for generic types and type aliases (PEP 695). ### Interpreter Improvements\\n- Per-interpreter GIL available via the C-API (PEP 684).\\n- Low-impact monitoring for tools (PEP 669).\\n- Inlining of comprehensions for up to 2x speedup (PEP 709). ### Standard Library Changes\\n- Removal of the `distutils` package (PEP 632).\\n- `venv` no longer pre-installs `setuptools`. ### Performance Enhancements\\n- `isinstance()` checks against runtime-checkable protocols are 2 to 20 times faster.\\n- Some `asyncio` benchmarks are 75% faster.\\n- The `tokenize` module is up to 64% faster. ### Security Enhancements\\n- Builtin `hashlib` implementations (SHA1, SHA3, SHA2, MD5) replaced with formally verified code from HACL*. ### Key Removals\\n- The `asynchat`, `asyncore`, and `imp` modules.\\n- PEP 623 removes `wstr` from C-API Unicode objects, reducing their size by at least 8 bytes. ## Detailed New Features (PEPs) ### PEP 695: Generic Types and Type Aliases\\n- Introduces compact syntax for generic classes (`class list[T]:.`) and functions (`def max[T](.):.`).\\n- Adds a `type` statement for creating type aliases (`type Point = tuple[float, float]`).\\n- Supports generic aliases, `TypeVarTuple`, `ParamSpec`, bounds, and constraints.\\n- Uses lazy evaluation and a new \\\"annotation scope\\\". ### PEP 701: F-string Formalization\\n- Allows any valid Python expression inside f-strings, including quote reuse, multi-line expressions, comments, backslashes, and Unicode escape sequences.\\n- Enables arbitrary nesting and provides more precise error messages. ### PEP 684: Per-Interpreter GIL\\n- Allows creating sub-interpreters with a unique GIL via the C-API function `Py_NewInterpreterFromConfig()`.\\n- Enables programs to use multiple CPU cores.\\n- A Python API is anticipated for Python 3.13. ### PEP 669: Low-Impact Monitoring\\n- Defines a new API in `sys.monitoring` for profilers and debuggers to monitor events like calls, returns, and exceptions with near-zero overhead. ### PEP 688: Buffer Protocol from Python\\n- Makes the buffer protocol accessible from Python.\\n- Classes with a `__buffer__()` method are usable as buffer types.\\n- The new `collections.abc.Buffer` ABC is provided. ### PEP 709: Inlined Comprehensions\\n- Inlines dictionary, list, and set comprehensions, speeding up execution by up to two times.\\n- Changes behavior in tracebacks and for `locals()`. ## Other Notable Language & Library Changes\\n- Improved error messages: `NameError` can suggest importing a standard library module or using `self.attribute`; `SyntaxError` can suggest `from. import.`; and `ImportError` can suggest correct names from the target module.\\n- `slice` objects are now hashable.\\n- `sum()` uses Neumaier summation for improved float accuracy.\\n- `tarfile` and `shutil.unpack_archive()` have a new `filter` argument to limit dangerous features, with the default set to change to `'data'` in Python 3.14. ### Module Improvements\\n- `asyncio`: Writing to sockets is faster, and eager task execution can be enabled for a 2x-5x speedup in some cases.\\n- `itertools`: Added `itertools.batched()`.\\n- `math`: Added `math.sumprod()`.\\n- `os` and `pathlib`: Gained support for junctions on Windows, and `pathlib.Path` now supports subclassing and has a `walk()` method.\\n- `sqlite3` and `uuid`: Added command-line interfaces.\\n- `typing`: `isinstance()` checks against runtime-checkable protocols are faster and no longer evaluate descriptors or `__getattr__` methods.\\n- `unittest`: Added a `--durations=N` command-line option to show the N slowest tests. ## Deprecations, Removals, and Porting Notes\\n- Deprecated modules scheduled for removal in Python 3.13 (per PEP 594) include `aifc`, `cgi`, `crypt`, `nntplib`, and `telnetlib`.\\n- `datetime.utcnow()` and `datetime.utcfromtimestamp()` are deprecated; timezone-aware objects should be used instead.\\n- The `distutils` package was removed (PEP 632). `setuptools` is no longer pre-installed in virtual environments created with `venv`.\\n- The `asynchat`, `asyncore`, and `imp` modules were removed, along with many deprecated `unittest.TestCase` method aliases.\\n- Porting may be required for code that relied on old `randrange()` behavior with floats, `shlex.split()` with a `None` argument, or the specific token output of the `tokenize` module for f-strings. ## C API Enhancements and Removals\\n- Introduced an Unstable tier (PEP 697).\\n- Introduced immortal objects (PEP 683).\\n- Removed the legacy Unicode APIs based on `Py_UNICODE*` (PEP 623).\"}",
+      "tags": [
+        "python",
+        "release",
+        "python-3.12",
+        "language-features",
+        "performance",
+        "standard-library",
+        "c-api",
+        "deprecations",
+        "type-hinting",
+        "f-strings"
+      ],
+      "url": "https://docs.python.org/3/whatsnew/3.12.html",
+      "date": "2026-05-11"
     }
   ],
   "links": [
@@ -602,6 +739,41 @@
       "source": "md-vector-db",
       "target": "gh-transformers",
       "relation": "embeddings"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "yt-fastapi",
+      "relation": "python"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "rd-async-python",
+      "relation": "python"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "gh-langchain",
+      "relation": "python"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "gh-fastapi",
+      "relation": "python"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "gh-transformers",
+      "relation": "python"
+    },
+    {
+      "source": "web-python-3-12-release-over",
+      "target": "md-clean-arch",
+      "relation": "python"
     }
-  ]
+  ],
+  "meta": {
+    "communities": 6,
+    "components": 5,
+    "computed_at": "2026-05-10T07:40:06.445627+00:00"
+  }
 }

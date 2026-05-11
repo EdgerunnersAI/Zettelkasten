@@ -1,91 +1,121 @@
-# Website Features
+# Website Feature Layer
 
-This website is the web interface for the Zettelkasten system: it lets someone paste a URL, turn it into a structured AI summary, store that result inside a personal knowledge graph, and then work with that knowledge through browsing, filtering, curation, and grounded question-answering. The public side is useful even without signing in because it can summarize content on demand and expose the shared graph view. Once a user signs in, the product becomes a personal knowledge workspace with saved zettels, curated kastens, avatar-backed profile state, and retrieval-augmented chat over their own notes. Under the hood, the website also includes its own v2 summarization engine, knowledge-graph intelligence layer, browser-side UX safeguards, and Gemini key-routing logic so the experience remains usable as volume and complexity grow. In short, the site is not just a landing page; it is a full capture, storage, exploration, and reasoning surface for a second-brain workflow.
+`website/features/` owns feature-specific UI assets, domain services, and feature routers used by the FastAPI website. It is the layer where product capabilities live; `website/app.py`, `website/api/`, and `website/core/` compose those capabilities into the running app.
 
-## summarization_engine
+## What This Folder Owns
 
-- This is the core web summarization engine that accepts URLs from multiple source types and turns them into structured Zettelkasten-style outputs rather than loose freeform text.
-- From an end-user perspective, the best part is that one workflow can handle very different inputs such as YouTube, GitHub, newsletters, Reddit-style links, and generic web pages without making the user think about the extraction details.
-- It now has a v2 API layer for both single-URL and batch summarization, so the website is not limited to one-at-a-time manual usage.
-- Writers are composable, which means summaries can be routed to places like Supabase, Obsidian-style markdown, or GitHub-backed storage depending on the deployment mode.
-- The current limitation is that source support and output quality still depend on extractor maturity, live upstream availability, and configured AI credentials.
+- Feature-owned static pages and browser assets mounted by `website/app.py`, including the knowledge graph, auth callback, signed-in home, zettels, kastens, RAG chat, shared header, browser-cache helper, pricing launcher assets, and the summarization-engine dashboard.
+- Feature-owned Python packages for summarization, Gemini key pooling, KG analytics/embeddings, RAG retrieval/chat, pricing/payments/entitlements, and Slack-backed web monitoring.
+- Registries and extension points inside the summarization engine: source ingestors, source-specific summarizers, batch processors, writers, evaluator helpers, and v2 API models/routes.
+- RAG runtime components: query rewrite/routing, retrieval, reranking, context assembly, LLM backends, sessions, kastens/sandboxes, ingestion/chunking, evaluation, and observability.
+- Feature-local docs and guardrails in sibling `CLAUDE.md` / `About.md` files.
 
-## knowledge_graph
+## What This Folder Does Not Own
 
-- This is the interactive graph viewer that turns saved zettels into connected nodes and links so the knowledge base can be explored spatially rather than only through lists.
-- The strongest end-user advantage is discoverability: people can search notes, inspect relationships, filter by source, and move between clusters of related ideas visually.
-- It supports both a broader graph view and a user-scoped "My Graph" mode, which makes the same interface useful for public exploration and private knowledge work.
-- The detail panel helps the graph feel practical instead of ornamental because a node can become an entry point into the actual note and its metadata.
-- Its current limitation is that the value of the graph depends heavily on how rich the stored nodes, tags, and links already are; sparse data will naturally make the graph feel less insightful.
+- FastAPI app assembly, global middleware, route mounting, and HTML shell injection; those are in `website/app.py`.
+- The legacy/public API route definitions for `/api/summarize`, `/api/graph`, zettel mutation, graph query/search, RAG chat, and kasten CRUD; most of those handlers live in `website/api/`, although they call feature services.
+- Core persistence, graph file-store behavior, Supabase v2 repository clients, auth dependencies, settings, and database schema ownership; those live under `website/core/`, `website/api/auth.py`, and `supabase/`.
+- Mobile routes/assets, footer about/pricing pages, experimental Nexus features, deployment configuration, and root project documentation.
+- Secret storage. Feature code reads configured environment variables, but this folder must not contain real `.env` material or committed credentials.
 
-## kg_features
+## Key Files And Subfolders
 
-- This is the intelligence layer on top of the raw graph, adding entity extraction, embeddings, graph analytics, natural-language querying, traversal helpers, and hybrid retrieval.
-- For end users, the biggest win is that the graph can move beyond simple tag links and start surfacing semantic and structural relationships that are harder to see manually.
-- It improves future experiences such as better auto-linking, more meaningful graph neighborhoods, smarter retrieval, and richer answers inside graph-aware search or chat.
-- The natural-language-to-SQL and retrieval features show that the graph is being treated as a real queryable knowledge system, not just a visual artifact.
-- The limitation today is that these capabilities are more infrastructure-heavy than the visible graph page itself, so some benefits are indirect until more UI surfaces expose them explicitly.
+- `api_key_switching/` - `GeminiKeyPool`, key discovery, retry/cooldown behavior, embedding calls, and content-routing helpers used by summarization, KG embeddings, and RAG.
+- `browser_cache/` - small browser-side helper for safe auth/return-path state in `localStorage` and `sessionStorage`; it is not an auth source of truth.
+- `header/` - shared header fragment plus CSS/JS. `website/app.py` injects `header.html` through `_render_with_shell`.
+- `knowledge_graph/` - static graph page, CSS/JS, modal JS, and `content/graph.json`, which remains the public/file-store graph fallback served through `/kg/*` and `/api/graph`.
+- `kg_features/` - graph analytics and embedding utilities. `/api/graph` enriches graph responses with `compute_graph_metrics`; persistence can use `generate_embedding`.
+- `rag_pipeline/` - authenticated RAG runtime and support modules: query, retrieval, rerank, context, generation, memory, ingest, scoring, observability, evaluation, and adapters.
+- `summarization_engine/` - v2 URL summarization engine, including config, API routes, batch handling, source ingestion, summarizers, writers, evaluator tooling, dashboard assets, and feature-local tests.
+- `user_auth/` - auth callback page plus client CSS/JS for Supabase-backed login state handling.
+- `user_home/`, `user_zettels/`, `user_kastens/`, `user_rag/` - signed-in static UI surfaces. Their APIs are mostly in `website/api/`, backed by RAG and persistence services.
+- `user_pricing/` - pricing catalog, entitlement checks, Razorpay client, repository access, payment/subscription routes, models, config, docs, and checkout launcher assets.
+- `web_monitor/` - Slack notification helpers and routers for application errors, DigitalOcean alerts, user activity, pricing visits, and payment notifications.
 
-## rag_pipeline
+## Entry Points And Public Interfaces
 
-- This is the retrieval-augmented generation pipeline that prepares queries, retrieves context, builds citations, generates answers, and verifies the answer quality before returning it.
-- The best user-facing outcome is grounded chat: answers are meant to come back tied to actual saved notes rather than generic model memory alone.
-- It supports scoped retrieval using sandboxes, source filters, tags, sessions, and quality modes, which makes the system useful for both quick lookup and deeper research conversations.
-- Citation building and answer criticism are especially important because they push the chat experience toward trustworthiness instead of just fluency.
-- The limitation is that this path is only as good as the indexed notes and retrieval coverage available for the user, so empty or weakly curated datasets will reduce answer quality.
+- `website/app.py:create_app()` includes feature routers from `summarization_engine.api`, `user_pricing.routes`, and `web_monitor`; it also mounts feature static assets under `/kg/*`, `/auth/*`, `/browser-cache/*`, `/home/*`, `/user-pricing/*`, `/header/*`, and `/summarization-engine/*`.
+- `website/api/routes.py` exposes `/api/summarize`, `/api/graph`, `/api/zettels/{node_id}`, `/api/graph/query`, and `/api/graph/search`; it calls `website.core.pipeline`, `website.core.persist`, `kg_features.analytics`, and `user_pricing.entitlements`.
+- `website/api/chat_routes.py` exposes `/api/rag/*` chat/session endpoints and streams answers through `rag_pipeline.service.get_rag_runtime()`.
+- `website/api/sandbox_routes.py` exposes `/api/rag/nodes` and `/api/rag/sandboxes*` kasten/sandbox endpoints backed by `rag_pipeline.memory` plus Supabase v2 repository calls.
+- `summarization_engine.api.routes` exposes `/api/v2/summarize`, `/api/v2/batch`, `/api/v2/batch/upload`, and `/api/v2/batch/stream`.
+- `user_pricing.routes` exposes pricing catalog, billing profile, payment order/subscription, verification, webhook, subscription status, and payment status endpoints.
+- `web_monitor.__init__` exports an aggregate router plus `notify_app_error`, `notify_new_signup`, `notify_pricing_visit`, and `notify_payment`.
+- `api_key_switching.__init__` exports `init_key_pool()` and `get_key_pool()` as the shared Gemini key-pool singleton accessors.
+- `summarization_engine.source_ingest` and `summarization_engine.summarization` expose `register_*`, `get_*`, and `list_*` registry functions for ingestors and summarizers.
 
-## user_auth
+## Representative Runtime Flows
 
-- This feature handles website authentication through Supabase Auth with Google OAuth and the supporting browser behavior needed for login, redirect, and profile hydration.
-- For users, the best part is that the website can transition from a public summarizer into a personal workspace without forcing a separate product or complicated account flow.
-- It also supports a stable signed-in UI state with avatar rendering and protected API access, which makes the rest of the personalized features possible.
-- The auth flow is intentionally paired with minimal browser persistence so convenience does not require storing sensitive session material in custom client-side caches.
-- The practical limitation is that the richer parts of the website depend on Supabase being configured correctly; without that setup, signed-in features are naturally unavailable.
+1. Public or signed-in URL capture:
+   `/api/summarize` validates and rate-limits the URL, checks a zettel entitlement, calls `website.core.pipeline.summarize_url()`, then persists through `website.core.persist.persist_summarized_result()`. The pipeline delegates to `summarization_engine.core.orchestrator`, which validates the URL, detects source type, runs the registered ingestor, rejects near-empty extraction, runs the registered summarizer, and returns a legacy-compatible result.
 
-## user_home
+2. Public graph read:
+   `/api/graph` tries Supabase v2 assembly for an authenticated UUID user. If v2 is unavailable or misses, it serves the file-store graph and enriches it through `kg_features.analytics.compute_graph_metrics()`. The default first page is cached in memory for 30 seconds.
 
-- This is the signed-in dashboard that acts as the entry point to the personal workspace after login.
-- Its best user-facing quality is orientation: instead of dropping someone into raw infrastructure, it gives them a recognizable home for profile access, note creation, and navigation to zettels, kastens, RAG chat, and related tools.
-- It also handles avatar setup and lightweight personalization, which helps the product feel like an owned workspace rather than a temporary demo surface.
-- The ability to add new zettels directly from the home area shortens the distance between capture and organization.
-- The limitation is that it is mainly a hub, so its value depends on the surrounding features already being populated and working.
+3. Signed-in RAG chat:
+   `/home/rag` serves the static UI. The browser talks to `/api/rag/sessions`, `/api/rag/sessions/{id}/messages`, and `/api/rag/adhoc`. The route layer creates a user-scoped runtime with `get_rag_runtime(user_sub)`, which requires a UUID auth subject and wires sessions, kastens/sandboxes, chunk embedding, hybrid retrieval, graph scoring, cascade reranking, context assembly, LLM routing, answer criticism, and metadata extraction.
 
-## user_zettels
+4. Kasten management:
+   `/home/kastens` serves the UI. `/api/rag/sandboxes*` handles list/create/update/delete/share/member operations. The v2 path uses Supabase v2 kasten tables/RPCs when available; some tag/source-filtered member operations intentionally keep a compatibility path because the v2 bulk-add RPC accepts explicit workspace zettel IDs.
 
-- This is the per-user zettel management view for browsing the notes a signed-in user has already captured.
-- From the user side, the best part is control: notes can be searched, filtered, sorted, opened in a summary view, and managed from one dedicated place instead of being scattered across the graph or hidden behind APIs.
-- It gives the personal knowledge base a library-like surface, which is important for people who want direct access to individual notes before moving into curation or chat.
-- The add-zettel flow inside this area makes it possible to keep expanding the vault without leaving the management screen.
-- The current limitation is that this view is still centered on note operations rather than deeper synthesis, so users usually step into kastens, graph, or RAG when they want higher-level reasoning.
+5. Pricing and entitlements:
+   `user_pricing.routes` serves catalog/billing/payment APIs. Summarize, RAG, and kasten routes call `require_entitlement()` before work and `consume_entitlement()` after accepted work. Razorpay webhook handling is the canonical payment/subscription truth path and verifies signatures before dispatch.
 
-## user_kastens
+6. Monitoring:
+   `web_monitor` routers expose health/webhook endpoints and post Slack messages when configured. `website/app.py` schedules pricing-visit notifications and uses `notify_app_error()` from the global exception handler without letting alert failures break the response path.
 
-- This feature lets users create curated "kasten" workspaces by selecting exactly which zettels belong to a given line of thought.
-- The strongest end-user benefit is focus: instead of querying the whole vault every time, a user can build a smaller, intentional context pack for a topic, project, or research question.
-- It supports creating, editing, and deleting these curated collections, reviewing their members, and sending a chosen kasten directly into the chat flow.
-- The search-and-add workflow makes the curation step feel practical, not theoretical, because users can assemble context from their real saved notes.
-- The limitation is that the usefulness of a kasten still depends on the quality and coverage of the zettels inside it; a weak collection will produce a weak scoped chat.
+## Dependencies And External Contracts
 
-## user_rag
+- Gemini / Google GenAI: `api_key_switching`, summarizers, embeddings, and RAG generation/metadata extraction use configured Gemini keys through the shared pool.
+- Supabase v2: authenticated RAG, kasten/sandbox storage, user-scoped graph assembly, billing/profile lookup, and persisted zettels rely on the v2 client/repositories in `website/core/supabase_v2`.
+- Razorpay: `user_pricing` creates/verifies orders and subscriptions, exposes the public key ID to the client, and keeps secrets server-side.
+- Slack incoming webhooks: `web_monitor` posts app errors, user activity, DigitalOcean alerts, pricing visits, and payment events when the matching webhook variables are configured.
+- Browser storage: selected UI helpers use `localStorage` or `sessionStorage` for UI hints, return paths, avatar URL fallback, and graph view preference. Server auth and entitlement checks still come from API dependencies.
+- Local model/runtime files: RAG reranking reads model/runtime settings from environment and model paths; failures can surface as memory pressure or unavailable-reranker behavior in API routes.
+- Network extractors: summarization ingestors may call upstream services such as YouTube metadata/transcript tiers, GitHub APIs, newsletter/web pages, Reddit/PullPush, arXiv, Twitter/Nitter, Hacker News, and podcast sources depending on source type.
 
-- This is the user-facing chat interface built on top of the RAG pipeline, where saved knowledge can be interrogated through conversational queries.
-- The best part for end users is that answers are scoped and inspectable: they can choose a kasten, adjust quality mode, narrow by tags or source, and review citation-rich responses.
-- Session history and example queries lower the barrier to repeated use, so the feature behaves more like a working research assistant than a one-off demo box.
-- It is especially valuable when someone wants synthesis across many saved notes without manually opening and comparing them all.
-- The limitation is that it is still bounded by retrieval quality and available context, so it will perform best when the underlying notes are already clean, relevant, and well-curated.
+## How To Extend Safely
 
-## api_key_switching
+- For a new source type, update the summarization-engine model/router/config path, add a `source_ingest/<source>` ingestor, add a `summarization/<source>` summarizer, register both through the existing registry pattern, and add unit coverage under `tests/unit/summarization_engine` or `website/features/summarization_engine/tests`.
+- Keep extraction confidence meaningful. The orchestrator rejects low-content results before Gemini summarization to reduce hallucinated summaries.
+- For new authenticated UI pages, add only the feature assets here, then wire routes/static mounts in `website/app.py` and API handlers in `website/api/` or a feature-owned router as appropriate.
+- For RAG changes, preserve the authenticated UUID subject requirement, bounded rerank/admission behavior, SSE heartbeat behavior, citation checks, and entitlement preflight/consume pattern.
+- For pricing changes, keep Razorpay verification, webhook idempotency, and entitlement accounting together. Do not move secret-bearing data into browser JS.
+- For browser storage changes, store only non-sensitive hints or cached display data; never make client storage authoritative for auth, billing, or permissions.
+- For UI work, follow the project color rule: no purple/violet/lavender anywhere; Knowledge Graph accent stays amber/gold and main site accents stay teal.
 
-- This is the Gemini API routing and key-pool layer that keeps the website usable under quota pressure by rotating keys and shifting between model tiers.
-- The best user-facing part is invisible reliability: users get fewer hard failures because the site can retry with another key or a lighter model before giving up.
-- It also enables more cost-aware routing, helping simple requests avoid consuming the highest-value model capacity unnecessarily.
-- Backward compatibility is preserved because the system can still fall back to a single legacy key when multi-key configuration is not available.
-- The limitation is that this is resilience logic, not magic; if every configured key and model path is exhausted, quality must degrade or the request must fail gracefully.
+## Testing And Debugging Notes
 
-## browser_cache
+- Summarization engine has feature-local tests in `website/features/summarization_engine/tests/` plus broader coverage in `tests/unit/summarization_engine/`.
+- API key pooling is covered by `tests/test_key_pool.py`, `tests/test_api_key_pool_env.py`, `tests/test_routing.py`, and `tests/unit/api_key_switching/`.
+- KG analytics/embeddings have tests under `tests/kg_intelligence/` and `tests/unit/test_kg_features_unreachable.py`.
+- RAG coverage is spread across `tests/unit/rag/`, `tests/unit/rag_pipeline/`, `tests/integration/rag_pipeline/`, `tests/integration/v2/`, and API route tests such as `tests/test_rag_api_routes.py`.
+- Pricing coverage lives under `tests/unit/user_pricing/` plus v2 integration guards such as `tests/integration/v2/test_phase_8_pricing.py`.
+- For docs-only edits to this file, a diff review is usually enough. For code changes in this folder, run the narrow tests for the touched feature and avoid live tests unless credentials and `--live` are intentionally in scope.
 
-- This is a deliberately tiny browser-side cache used mainly to stabilize the public auth and redirect experience.
-- For users, the best part is smoother navigation: the site can remember safe, non-sensitive hints such as return paths and lightweight state without exposing tokens or profile payloads.
-- The feature matters because it helps the landing page, login flow, and post-login redirection feel consistent even across reloads.
-- Its security posture is a strength in itself: it is explicitly designed to avoid treating local browser storage as trusted auth state.
-- The limitation is intentional minimalism, which means it should not be expected to behave like full offline storage, a user profile cache, or a persistence layer for sensitive data.
+## Invariants, Gotchas, And Known Risks
+
+- `website/features/About.md` is documentation only; changing it must not imply runtime ownership that the code does not have.
+- `knowledge_graph/content/graph.json` is a feature asset but graph persistence and mutation are owned by `website/core/graph_store.py`, `website/core/persist.py`, and API routes.
+- `/api/graph` anonymous/public fallback is file-store based even when authenticated v2 graph assembly fails.
+- `rag_pipeline.service.get_rag_runtime()` fails without an authenticated UUID subject.
+- RAG and summarization paths are sensitive to environment configuration, external API quota, upstream extractor availability, and local model memory pressure.
+- Several browser features read from `localStorage` for convenience, but server APIs must remain authoritative.
+- The `web_monitor` package intentionally keeps one self-contained file per Slack channel; add sibling files rather than creating a shared base unless the pattern changes deliberately.
+- Do not edit `website/features/AGENTS.md`; there is no such canonical file. Folder-local rules are in the existing `CLAUDE.md` files.
+
+## Related Docs
+
+- `AGENTS.md` / `CLAUDE.md` at the repo root for global project rules, deployment constraints, and secret handling.
+- `website/features/summarization_engine/About.md`
+- `website/features/browser_cache/About.md`
+- `website/features/rag_pipeline/CLAUDE.md`
+- `website/features/summarization_engine/core/CLAUDE.md`
+- `website/features/summarization_engine/summarization/CLAUDE.md`
+- `website/features/api_key_switching/CLAUDE.md`
+- `website/features/user_home/CLAUDE.md`
+- `website/features/user_zettels/CLAUDE.md`
+- `website/features/user_kastens/CLAUDE.md`
+- `website/features/user_rag/CLAUDE.md`
+- `website/features/header/CLAUDE.md`
+- `website/features/user_pricing/PRICING.md`

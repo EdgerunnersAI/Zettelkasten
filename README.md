@@ -1,181 +1,152 @@
 # Zettelkasten
 
-A web app that captures URLs from five content sources (Reddit, YouTube, GitHub, newsletters, and generic web articles) and produces AI-summarized entries in a Supabase-backed knowledge graph. Paste any URL into the web UI; get a structured summary with tags.
+Turn links into connected notes you can revisit, search, and explore as a knowledge graph.
 
----
+[Open the live product](https://zettelkasten.in) | [Explore the code map](#project-structure) | [Builder docs](#for-builders)
 
-## Features
+Zettelkasten is a hosted web app for turning useful URLs into "zettels": compact, source-grounded knowledge objects with a title, key takeaways, a detailed summary, tags, source metadata, and graph connections to related notes. It is built for the moment when ordinary bookmarks stop being enough. Instead of saving a link and hoping you remember why it mattered, Zettelkasten extracts the source, summarizes the ideas, files the result into your knowledge stream, and makes the relationships visible.
 
-- **Auto-detect source type** - paste any URL and the engine picks the right extractor automatically
-- **Five extractors**: Reddit threads (with top comments), YouTube videos (transcript + metadata), GitHub repos/issues/PRs, newsletter articles (Substack, Beehiiv, Buttondown, Mailchimp), and generic web pages
-- **AI summarization** - Google Gemini produces a title, summary, and multi-dimensional tags for every capture
-- **More reliable Gemini usage** - supports a comma-separated API key pool (`GEMINI_API_KEYS`) with key rotation plus a model fallback chain (graceful degradation to raw content when needed)
-- **Web UI** - FastAPI-powered frontend with a URL summarizer and an interactive 3D knowledge graph (desktop + mobile)
-- **Knowledge graph analytics** - enriches nodes with metrics (PageRank, communities, centrality) for better exploration
-- **Graph search and Q&A (Supabase-backed)** - hybrid search and natural-language querying when Supabase is configured
-- **Accounts (optional)** - Supabase Auth-backed user profiles (including avatar), plus a personal home page and zettels view
-- **SSRF protection** - URL validation blocks private/reserved IPs; tracking params are stripped for dedup consistency
-- **Zero-downtime deploys** - production is designed around a blue/green Docker Compose stack with TLS termination, health checks, and rollback
+## What It Does
 
----
+Paste a URL into the summarizer and the app detects what kind of source it is, extracts the useful content, summarizes it with Gemini, stores the result, and links it into the graph by tags and related concepts.
 
-## Quick Start
-
-```bash
-# 1. Clone
-git clone https://github.com/chintanmehta21/Zettelkasten_KG.git
-cd Zettelkasten_KG
-
-# 2. Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r ops/requirements.txt
-pip install -r ops/requirements-dev.txt
-
-# 4. Configure
-cp ops/.env.example .env
-# Open .env and fill in GEMINI_API_KEYS (preferred) or GEMINI_API_KEY
-
-# 5. Run (dev mode)
-ENV=dev python run.py
+```mermaid
+flowchart LR
+    A["URL"] --> B["Source router"]
+    B --> C["Source ingestor"]
+    C --> D["Structured summary"]
+    D --> E["Tags and metadata"]
+    E --> F["Zettel"]
+    F --> G["Knowledge graph"]
+    G --> H["Search, filter, chat, and explore"]
 ```
 
-The web app starts on `http://localhost:10000`. Paste any URL on the home page to test.
+## Why Zettels Beat Bookmarks
 
----
+A bookmark remembers where something was. A zettel remembers what mattered.
 
-## Configuration
+Each capture becomes a durable note that can stand on its own: the original source stays linked, but the useful ideas are extracted into a readable form. Over time, those notes become more valuable because the graph shows repeated topics, source clusters, and unexpected connections across videos, posts, papers, repositories, and articles.
 
-Copy `ops/.env.example` to `.env` and fill in your credentials. Settings are loaded from env vars > `.env` > `ops/config.yaml`. See `ops/.env.example` for the canonical list.
+## A Capture Example
 
----
+| Input | Output |
+|---|---|
+| A YouTube talk, GitHub repository, Reddit thread, newsletter post, arXiv paper, podcast page, Hacker News item, LinkedIn post, X/Twitter post, or generic web article | A zettel with a title, one-line summary, key takeaways, detailed summary, normalized tags, source URL, capture metadata, and graph links |
 
----
+Example transformation:
 
-## Web UI
+```text
+URL: https://github.com/fastapi/fastapi
 
-The FastAPI web frontend serves all traffic, with mobile routes under `/m/`:
-
-| Page | URL | Description |
-|---|---|---|
-| **Summarizer** | `/` | Paste any URL, get an AI summary with tags |
-| **Knowledge Graph** | `/knowledge-graph` | Interactive 3D graph of all summarized nodes |
-| **Home (optional)** | `/home` | Signed-in home page (Supabase Auth) |
-| **Zettels (optional)** | `/home/zettels` | Your captured notes view |
-| **Nexus (optional)** | `/home/nexus` | Provider connections and bulk imports (experimental, Supabase required) |
-
-### API Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/summarize` | Summarize a URL (rate-limited: 10 req/min per IP) |
-| `GET` | `/api/graph` | Return the current knowledge graph as JSON |
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/auth/config` | Public Supabase config for client-side auth init |
-| `GET` | `/api/me` | Current user profile (auth required) |
-| `POST` | `/api/graph/search` | Hybrid search (Supabase required) |
-| `POST` | `/api/graph/query` | Natural-language Q&A over your graph (Supabase required) |
-
----
-
-## Deployment
-
-This repo includes several ways to run it locally, plus a production-oriented DigitalOcean droplet setup.
-
-### Local Compose (recommended)
-
-Dev mode (fast iteration):
-
-```bash
-docker compose -f ops/docker-compose.dev.yml up --build
+Zettel:
+Title: FastAPI framework overview
+Key takeaways:
+- FastAPI is a Python web framework centered on type hints and OpenAPI.
+- Its design emphasizes async support, validation, and automatic docs.
+- The repository structure and docs make it useful as both a library and a learning reference.
+Tags: python, web-framework, api-design, openapi
+Graph: linked to other notes tagged python, backend, async, and api-design
 ```
 
-Production-parity rehearsal (Caddy + blue/green + local TLS):
+## Capabilities
 
-```bash
-docker build -f ops/Dockerfile -t zettelkasten-kg-website:local .
-docker compose -f ops/docker-compose.prod-local.yml up
+| Area | What the product supports |
+|---|---|
+| Capture | URL intake, redirect resolution, URL normalization, source detection, source-specific extraction, and graceful handling when content is too thin to summarize safely |
+| Understand | Gemini-backed summaries with brief and detailed sections, source metadata, extraction confidence, model fallback telemetry, and source-specific summarization paths |
+| Organize | Zettels, tags, personal zettel views, Kastens, graph nodes, graph links, and file-store fallback for the public graph |
+| Explore | Interactive 3D knowledge graph, graph search/filter controls, graph analytics enrichment, personal/global graph modes, and citation-oriented RAG chat over signed-in content |
+| Accounts | Supabase Auth-backed login, profile/avatar support, personal zettel and Kasten surfaces, pricing/entitlement checks, and payment integration |
+| Import experiments | Nexus provider connection and bulk-import flows for selected external providers when the experimental feature is enabled |
+
+## Product Tour
+
+The committed repository does not currently include fresh product screenshots that are safe to present as canonical. The durable tour below mirrors the live product surfaces from the current FastAPI routes and static pages.
+
+```mermaid
+flowchart TD
+    Home["/ - Summarize any link"] --> Result["Structured zettel result"]
+    Result --> Graph["/knowledge-graph - Global or personal graph"]
+    Graph --> Detail["Node details, tags, connected notes"]
+    Home --> Auth["Supabase sign in"]
+    Auth --> Zettels["/home/zettels - Personal zettel stream"]
+    Auth --> Kastens["/home/kastens - Curated collections"]
+    Kastens --> Chat["/home/rag - Ask questions with citations"]
+    Auth --> Nexus["/home/nexus - Experimental provider imports"]
 ```
-
-### Docker (single container)
-
-Build the production image:
-
-```bash
-docker build -f ops/Dockerfile -t zettelkasten-kg-website .
-```
-
-Run (web UI + API on port 10000):
-
-```bash
-docker run -p 10000:10000 --env-file .env zettelkasten-kg-website
-```
-
-### Production: DigitalOcean Droplet (blue/green)
-
-The canonical production environment runs on a DigitalOcean Premium Intel droplet (2 GB RAM / 1 vCPU / 70 GB NVMe SSD) with a Reserved IP, fronted by Cloudflare DNS for the apex `zettelkasten.in`. A Caddy 2 container terminates TLS (Let's Encrypt) and reverse-proxies to whichever Docker Compose color is live: blue binds `127.0.0.1:10000`, green binds `127.0.0.1:10001`.
-
-Deploys are automated from GitHub Actions. On pushes to `master`, `.github/workflows/deploy-droplet.yml` runs the mocked pytest suite, builds `ops/Dockerfile`, pushes `ghcr.io/chintanmehta21/zettelkasten-kg-website:<git-sha>`, then SSHes into the droplet and runs `/opt/zettelkasten/deploy/deploy.sh <git-sha>` to flip colors with a graceful Caddy reload (zero dropped connections).
-
----
-
-## Running Tests
-
-```bash
-# All tests
-pytest
-
-# Unit tests only (no network)
-pytest tests/ -m "not live"
-
-# A specific test module
-pytest tests/unit/website/test_settings.py -v
-
-# With coverage
-pytest --cov=website --cov-report=term-missing
-
-# Live integration tests (requires real API creds in .env)
-pytest --live
-```
-
----
-
-## Adding a New Source
-
-Source ingestion lives in `website/features/summarization_engine/source_ingest/`. The orchestrator (`summarize_url_bundle`) selects an ingestor from `router.py` based on the resolved URL.
-
-1. Add a new ingestor module under `website/features/summarization_engine/source_ingest/` implementing the ingestor protocol (`ingest(url) -> SourceBundle`).
-2. Register the URL pattern in `website/features/summarization_engine/source_ingest/router.py`.
-3. Add targeted tests under `tests/unit/website/`.
-
----
 
 ## Project Structure
 
-```
-|-- run.py                     # Entry point (delegates to website.main)
-|-- pyproject.toml             # Project metadata + pytest config
-|-- website/                   # FastAPI web application
-|   |-- api/                   # REST API routes (/api/*)
-|   |-- core/                  # Web pipeline, graph store, Supabase KG integration
-|   |-- features/              # Knowledge graph, auth, home, zettels, etc.
-|   |-- mobile/                # Mobile UI (/m/*)
-|   `-- static/                # Summarizer page assets
-|-- ops/                       # Deployment + operations
-|   |-- Dockerfile             # Multi-stage Docker build
-|   |-- caddy/                 # Caddy TLS / reverse-proxy config
-|   |-- deploy/                # Blue/green deploy, healthcheck, rollback scripts
-|   |-- host/                  # Droplet bootstrap, firewall, sysctl, logrotate
-|   |-- systemd/               # Service units
-|   `-- requirements*.txt      # Runtime vs dev/test dependencies
-|-- tests/                     # Unit + integration tests
-|   `-- integration_tests/     # Live API tests (--live flag)
-|-- supabase/                  # Supabase schema definitions
-`-- docs/                      # Additional documentation
+```text
+.
+|-- run.py                     # Application process entry point
+|-- pyproject.toml             # Pytest config and project metadata
+|-- website/                   # FastAPI app, static pages, APIs, core services, features
+|   |-- app.py                 # App factory, route mounting, static asset mounting
+|   |-- api/                   # Public API, auth, RAG chat, sandbox/Kasten, Nexus routes
+|   |-- core/                  # Pipeline adapter, persistence, settings, graph store, Supabase v2 clients
+|   |-- features/              # Product feature packages and UI assets
+|   |-- experimental_features/ # Live-gated experiments such as Nexus and local PageIndex RAG
+|   |-- mobile/                # Mobile summarizer and graph pages
+|   |-- static/                # Public summarizer page assets
+|   `-- artifacts/             # Logos, icons, avatars, and committed visual assets
+|-- supabase/                  # SQL schema assets, especially the active website/_v2 migrations
+|-- ops/                       # Operations, migration, maintenance, and packaging scripts
+|-- tests/                     # Unit, integration, live, RAG, pricing, and migration tests
+|-- docs/                      # Runbooks, system reports, design specs, eval artifacts, DB v2 docs
+`-- models/                    # Shared capture-era models kept for compatibility
 ```
 
----
+## Architecture Snapshot
 
+```mermaid
+flowchart TB
+    Browser["Browser UI"] --> FastAPI["website/app.py"]
+    FastAPI --> Routes["website/api/*"]
+    Routes --> Pipeline["website/core/pipeline.py"]
+    Pipeline --> Engine["features/summarization_engine"]
+    Engine --> Ingestors["source_ingest/*"]
+    Engine --> Summarizers["summarization/*"]
+    Summarizers --> Gemini["Gemini key pool"]
+    Routes --> Persist["website/core/persist.py"]
+    Persist --> FileGraph["features/knowledge_graph/content/graph.json"]
+    Persist --> Supabase["Supabase v2 repositories"]
+    Routes --> RAG["features/rag_pipeline"]
+    Routes --> Pricing["features/user_pricing"]
+    Routes --> Monitor["features/web_monitor"]
+```
 
+The public `/api/summarize` path keeps a legacy response shape for the web UI, but it delegates extraction and summarization to the v2 summarization engine. Persistence is composed outside the engine: current code writes through Supabase v2 when a user/workspace scope is available and keeps the file graph as the public fallback surface.
+
+## For Builders
+
+This root README is intentionally a front door, not the operations manual. Use the scoped docs below when you need implementation detail:
+
+| Need | Start here |
+|---|---|
+| Repository-wide rules, commands, testing expectations, and secret handling | [`AGENTS.md`](AGENTS.md) |
+| FastAPI feature layer and product surfaces | [`website/features/About.md`](website/features/About.md) |
+| Summarization engine internals and source extension path | [`website/features/summarization_engine/About.md`](website/features/summarization_engine/About.md) |
+| Browser-side cache behavior | [`website/features/browser_cache/About.md`](website/features/browser_cache/About.md) |
+| Experimental Nexus and PageIndex RAG surfaces | [`website/experimental_features/About.md`](website/experimental_features/About.md) |
+| Supabase schema assets and DB v2 migration rules | [`supabase/About.md`](supabase/About.md) |
+| DB v2 cutover, rollback, and closeout context | [`docs/db-v2/`](docs/db-v2/) |
+| Production runbooks and operational procedures | [`docs/runbooks/`](docs/runbooks/) and [`ops/`](ops/) |
+| Evaluation and quality-loop artifacts | [`docs/summary_eval/`](docs/summary_eval/) and [`docs/rag_eval/`](docs/rag_eval/) |
+
+## Source Coverage
+
+The current summarization engine routes these source families:
+
+| Source family | Examples |
+|---|---|
+| Code | GitHub repositories and related GitHub URLs |
+| Video/audio | YouTube, podcast pages |
+| Social/discussion | Reddit, Hacker News, LinkedIn, X/Twitter |
+| Publishing | Newsletters, Substack-like posts, Medium/dev-style articles |
+| Research | arXiv and ar5iv pages |
+| Web | Generic web pages that do not match a more specific route |
+
+## Status
+
+Zettelkasten is a production web app with a live hosted interface, a FastAPI backend, Supabase v2 persistence for authenticated product paths, and a file-backed public graph fallback. Operational details are documented outside this README.

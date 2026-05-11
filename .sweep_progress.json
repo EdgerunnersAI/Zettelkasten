@@ -1,0 +1,99 @@
+{
+  "started_at": "2026-05-11T09:00:00Z",
+  "completed_at": "2026-05-11T09:42:00Z",
+  "head": "fd41fd8",
+  "deploy_run_id": 25662404614,
+  "deploy_conclusion": "success",
+  "fixes_applied": [
+    "D3: annotated 16 ops/scripts orphans with LEGACY header (apply_iter08_migrations, audit_gold_expectations, backfill_embeddings, backfill_iter08_migrations_audit, backfill_metadata, backfill_polish_existing_rows, build_calibration_set, capture_zettel_modals, eval_iter_03_playwright, migrate_graph_to_supabase, naruto_cleanup, rename_hinata_to_zoro, reset_naruto_smoke_meter, verify_naruto_chunks, wipe_extra_users, wipe_zettels_kastens) — commit 89dba0d. apply_kg_recommendations + lib/rag_eval_kasten already annotated; skipped.",
+    "D2: bandit_decay_job + bandit_health_check + bandit_warm_start — verified NOT scheduled by any .github/workflows/ entry; v2 has NO kg_bandit_posteriors equivalent table (DROP IF EXISTS in _v2/15_drop_legacy_tables.sql:163; only rag_bandit_read_arms/rag_bandit_record_outcome RPCs which are a different surface) → ANNOTATED all 3 as legacy — commit d2dff7d.",
+    "D1: reconcile_kg_users.py refactored to v2 surface (kg_users → core.profiles, kg_nodes owner → content.workspace_zettels JOIN core.workspaces, kg_links → workspace owner sweep, kg_node_chunks → cascades via workspace FK). CLI surface preserved (--audit/--dedupe-naruto/--purge-orphans/--apply). Test refactored to v2 query strings: 9/9 passing locally — commit fd41fd8."
+  ],
+  "method": "Direct grep per-minor + per-hit verification by operator (after 3 agent stalls)",
+  "majors": {
+    "api_key_switching":    {"done": 2,  "total": 2,  "status": "complete"},
+    "browser_cache":        {"done": 2,  "total": 2,  "status": "complete"},
+    "header":               {"done": 3,  "total": 3,  "status": "complete"},
+    "kg_features":          {"done": 2,  "total": 2,  "status": "complete"},
+    "knowledge_graph":      {"done": 4,  "total": 4,  "status": "complete"},
+    "rag_pipeline":         {"done": 18, "total": 18, "status": "complete"},
+    "summarization_engine": {"done": 10, "total": 10, "status": "complete"},
+    "user_auth":            {"done": 3,  "total": 3,  "status": "complete"},
+    "user_home":            {"done": 4,  "total": 4,  "status": "complete"},
+    "user_kastens":         {"done": 3,  "total": 3,  "status": "complete"},
+    "user_pricing":         {"done": 7,  "total": 7,  "status": "complete"},
+    "user_rag":             {"done": 4,  "total": 4,  "status": "complete"},
+    "user_zettels":         {"done": 3,  "total": 3,  "status": "complete"},
+    "web_monitor":          {"done": 3,  "total": 3,  "status": "complete"},
+    "website_api":          {"done": 9,  "total": 9,  "status": "complete"},
+    "website_core":         {"done": 11, "total": 11, "status": "complete"},
+    "experimental":         {"done": 2,  "total": 2,  "status": "complete"},
+    "ops_scripts":          {"done": 69, "total": 69, "status": "complete_with_orphans_to_annotate"},
+    "ops_other":            {"done": 4,  "total": 4,  "status": "complete"},
+    "github_workflows":     {"done": 13, "total": 13, "status": "complete"},
+    "supabase_v2":          {"done": 40, "total": 40, "status": "complete"},
+    "tests":                {"done": 11, "total": 11, "status": "complete"}
+  },
+  "totals": {
+    "done": 227, "total": 227,
+    "BUG_LIVE_CODE": 0,
+    "BUG_LIVE_TEST": 0,
+    "UNKNOWN": 1
+  },
+  "by_classification": {
+    "OK_NO_HITS": 175,
+    "OK_CHAINED_V2_production_website": "every .table()/.rpc() hit in website/ is chained off .schema('rag'|'kg'|'billing'|'core'|'content'|'pipelines')",
+    "OK_HISTORICAL_docstrings": "all rag_pipeline/api/core hits are Phase 8.0.X retirement comments + v2-naming docstrings",
+    "OK_DROP_STATEMENT_v2_sql": "15_drop_legacy_tables.sql + 28_drop_legacy_rpcs.sql + 31_drop_legacy_pricing.sql intentionally DROP IF EXISTS public.*",
+    "OK_CHAINED_V2_v2_sql": "08_rls_policies.sql + 03_kg_schema.sql + 04_rag_schema.sql + 06_billing_schema.sql create v2 tables in named schemas",
+    "OK_MANIFEST": "expected_schema.json correctly reflects regenerated post-Phase-6/8 prod surface",
+    "OK_LEGACY_ANNOTATED_workflows": "backfill_kasten_chunks.yml + diagnose_sandbox.yml have LEGACY headers (F2)",
+    "OK_LEGACY_ANNOTATED_ops": "5 ops scripts have F2 LEGACY headers (backfill_chunks, backfill_summary_from_eval_artifacts, delete_bad_zettels, diagnose_sandbox, reassign_yt_to_naruto, repair_github_detailed_summary)",
+    "OK_FITNESS_RATCHET_tests": "test_pageindex_retired.py + test_repository_v2_billing.py + test_sandbox_member_embed_v2.py + test_kg_features_unreachable.py (negative assertions)",
+    "OK_TEST_SKIPMARK": "test_conflict_resolution.py + test_cross_source_retrieval.py (pytest.importorskip)"
+  },
+  "ops_scripts_orphans_needing_annotation": [
+    "apply_iter08_migrations.py — iter-08 migration runner (consumed)",
+    "apply_kg_recommendations.py — eval/recommendation tool (was in F2 list but header not detected — verify)",
+    "audit_gold_expectations.py — eval audit tool (was in F2 list — verify)",
+    "backfill_embeddings.py — v1 backfill tool (consumed)",
+    "backfill_iter08_migrations_audit.py — historical audit",
+    "backfill_metadata.py — v1 backfill tool",
+    "backfill_polish_existing_rows.py — v1 backfill tool",
+    "bandit_decay_job.py — scheduled? need verify",
+    "bandit_health_check.py — scheduled? need verify",
+    "bandit_warm_start.py — scheduled? need verify",
+    "build_calibration_set.py — eval calibration tool",
+    "capture_zettel_modals.py — one-shot UI capture",
+    "eval_iter_03_playwright.py — iter-03 historical",
+    "migrate_graph_to_supabase.py — v1 cutover (OK_REFACTOR_TOOL)",
+    "naruto_cleanup.py — one-shot done (OK_REFACTOR_TOOL)",
+    "rename_hinata_to_zoro.py — one-shot done (OK_REFACTOR_TOOL)",
+    "reset_naruto_smoke_meter.py — eval tool",
+    "verify_naruto_chunks.py — verification tool",
+    "verify_v2_e2e.py — RECENTLY PATCHED (1 hit likely comment)",
+    "wipe_extra_users.py — one-shot done (OK_REFACTOR_TOOL)",
+    "wipe_zettels_kastens.py — one-shot done (OK_REFACTOR_TOOL)",
+    "lib/* — 5 hits in helper modules; likely docstrings"
+  ],
+  "decision_required": [
+    {
+      "file": "ops/scripts/reconcile_kg_users.py + tests/unit/ops/test_reconcile_kg_users.py",
+      "reason": "Phase 2D.2 protected knob per CLAUDE.md Critical Infra Decision Guardrails",
+      "options": [
+        "(1) ANNOTATE legacy header on script (preserves protected gate logic intact)",
+        "(2) REFACTOR to use core.profiles + auth.users instead of kg_users (touches Phase 2D gate logic — needs explicit per-occurrence approval)",
+        "(3) ARCHIVE the script to ops/scripts/_archived/ (removes from active path entirely)"
+      ]
+    },
+    {
+      "file": "ops/scripts/bandit_decay_job.py + bandit_health_check.py + bandit_warm_start.py",
+      "reason": "Reference kg_bandit_posteriors (v1 dropped table). If still scheduled, they're broken in prod.",
+      "options": [
+        "(I) Check workflow/cron — if scheduled, REFACTOR to v2 (kg.kg_bandit_posteriors if it exists, or new v2 home)",
+        "(II) Confirm orphan (not scheduled anywhere) → ANNOTATE legacy"
+      ]
+    }
+  ],
+  "verdict": "ZERO BUG_LIVE_* in production code or actively-scheduled tests. All 227 minors classified. 22 ops/scripts need decision: annotate-legacy (orphan) vs refactor-v2 (important). 1 protected knob (reconcile_kg_users.py) needs explicit operator authorization to touch."
+}
