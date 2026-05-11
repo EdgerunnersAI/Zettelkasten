@@ -31,4 +31,44 @@ if git diff --cached --name-only | grep -qx 'CLAUDE.md'; then
   git add AGENTS.md
 fi
 
+# Phase 8 prevention guard: if any supabase/website/_v2/*_drop_*.sql is staged,
+# require expected_schema.json to be staged in the SAME commit. Phase 8 deploys
+# broke 3 times because the manifest wasn't auto-regenerated after destructive
+# migrations. This is a defense-in-depth gate — the deploy schema-drift check
+# (apply_migrations.py rc=3) is the runtime backstop, but catching it at commit
+# time saves an entire deploy cycle. Bypass with --no-verify only when you have
+# a documented reason in db-direct-touch.log.
+DROP_STAGED=$(git diff --cached --name-only | grep -E 'supabase/website/_v2/.*_drop_.*\.sql$' || true)
+if [ -n "$DROP_STAGED" ]; then
+  MANIFEST_STAGED=$(git diff --cached --name-only | grep -E 'supabase/website/_v2/expected_schema\.json$' || true)
+  if [ -z "$MANIFEST_STAGED" ]; then
+    cat >&2 <<EOF
+[pre-commit] BLOCKED — destructive v2 migration staged without manifest regen.
+
+Staged drop files:
+$(echo "$DROP_STAGED" | sed 's/^/  /')
+
+Phase 8 deploys broke 3 times in May 2026 because the manifest wasn't
+regenerated after destructive migrations. To unblock:
+
+  1. Apply locally / against staging:
+     python ops/scripts/apply_migrations.py --v2
+
+  2. Regenerate the manifest:
+     python ops/scripts/apply_migrations.py --v2 --bootstrap-manifest
+
+  3. Stage the updated manifest alongside your drop:
+     git add supabase/website/_v2/expected_schema.json
+
+  4. Re-commit.
+
+If you genuinely need to bypass (e.g. shipping the drop + manifest in
+separate commits with a documented rationale), log the touch in
+ops/runbooks/db-direct-touch.log and commit with --no-verify. The
+deploy schema-drift gate (apply_migrations rc=3) remains the runtime backstop.
+EOF
+    exit 1
+  fi
+fi
+
 exit 0
