@@ -1,7 +1,14 @@
-.pricing-shell {
+.pricing-container {
   max-width: 1120px;
   margin: 0 auto;
   padding: 0.75rem 1.25rem 1.5rem;
+}
+
+.pricing-shell {
+  /* Width + horizontal padding moved to .pricing-container so the shared
+     <!--ZK_HEADER--> shell aligns with the page body, matching user_zettels
+     and user_kastens. */
+  padding: 0;
 }
 
 .pricing-hero {
@@ -327,11 +334,22 @@
   color: var(--text-primary);
 }
 
+/* "Current Plan" is a status label, not an action — render it as plain
+   accent-coloured text so it doesn't read as a clickable CTA. The red X
+   cancel button beside it (paid plans only) carries the action affordance. */
 .price-cta.current {
-  border-color: hsla(172, 66%, 42%, 0.55);
-  background: hsla(172, 66%, 42%, 0.18);
+  border-color: transparent;
+  background: transparent;
   color: var(--accent);
   cursor: default;
+  padding-left: 0;
+  padding-right: 0.4rem;
+  min-width: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
 }
 
 .current-plan-row {

@@ -11,12 +11,14 @@
   <link rel="stylesheet" href="/css/style.css?v=20260407a">
   <link rel="stylesheet" href="/header/css/header.css?v=20260418f">
   <link rel="stylesheet" href="/user-pricing/css/purchase_launcher.css?v=20260501a">
-  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260502s">
+  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260511a">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <!--ZK_HEADER-->
+  <div class="pricing-container">
+    <!--ZK_HEADER-->
 
-  <main class="pricing-shell">
+    <main class="pricing-shell">
     <section class="pricing-hero">
       <p class="pricing-kicker">Pricing</p>
       <h1>Fuel your knowledge system without breaking your flow.</h1>
@@ -39,12 +41,13 @@
     <section class="pricing-panel" id="adhoc-panel" role="tabpanel" aria-labelledby="adhoc-tab">
       <div class="pack-groups" id="pack-groups" aria-live="polite"></div>
     </section>
-  </main>
+    </main>
+  </div>
 
   <!--ZK_FOOTER-->
 
   <script src="/header/js/header.js?v=20260428b"></script>
   <script src="/user-pricing/js/purchase_launcher.js?v=20260502o"></script>
-  <script src="/pricing/js/pricing.js?v=20260502j"></script>
+  <script src="/pricing/js/pricing.js?v=20260511a"></script>
 </body>
 </html>

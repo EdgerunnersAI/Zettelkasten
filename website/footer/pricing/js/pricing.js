@@ -427,6 +427,40 @@
     } catch (_) { return null; }
   }
 
+  // Supabase client with autoRefreshToken so a user sitting on /pricing past
+  // the JWT exp doesn't silently 401 every checkout call. Mirrors the init in
+  // user_home.js / user_zettels.js so the same localStorage 'zk-auth-token'
+  // entry is the single shared session across pages.
+  var _supabase = null;
+  async function initSupabase() {
+    if (_supabase) return _supabase;
+    if (typeof supabase === 'undefined' || !supabase.createClient) return null;
+    try {
+      var resp = await fetch('/api/auth/config');
+      if (!resp.ok) return null;
+      var config = await resp.json();
+      if (!config.supabase_url || !config.supabase_anon_key) return null;
+      _supabase = supabase.createClient(config.supabase_url, config.supabase_anon_key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          storage: window.localStorage,
+          storageKey: 'zk-auth-token',
+        },
+      });
+      // Touch the session so a stale (but still refresh-eligible) token gets
+      // exchanged before the user clicks a buy button.
+      try { await _supabase.auth.getSession(); } catch (_) { /* fall through */ }
+      return _supabase;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function redirectToLogin() {
+    window.location.href = '/?auth=login&return=' + encodeURIComponent(window.location.pathname);
+  }
+
   async function bootSharedHeader() {
     // Hand the access token to the shared ZKHeader module so it can fetch
     // /api/me + render the user's avatar and dropdown — same as user_home
@@ -439,6 +473,9 @@
   }
 
   async function loadCatalog() {
+    // initSupabase runs before catalog so a refreshable-but-expired access
+    // token gets exchanged before refreshCurrentSubscription / first buy click.
+    await initSupabase();
     var response = await fetch('/api/pricing/catalog');
     catalog = await response.json();
     await Promise.all([bootSharedHeader(), refreshCurrentSubscription()]);
@@ -495,6 +532,10 @@
         onResume: function () {
           refreshCurrentSubscription().then(renderSubscriptions);
         }
+      }).catch(function (err) {
+        // Surface session expiry as a redirect — without this the rejection
+        // becomes an unhandled console error and the user sees nothing.
+        if (err && err.status === 401) redirectToLogin();
       });
       return;
     }
