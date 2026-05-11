@@ -280,6 +280,12 @@
         handleSession(event, session);
       });
 
+      // Resolve the public ready Promise so pricing.js (and any other peer)
+      // can grab the client now instead of constructing a duplicate.
+      if (window.ZKAuth && typeof window.ZKAuth.__signalReady === 'function') {
+        window.ZKAuth.__signalReady();
+      }
+
       var result = await _supabaseClient.auth.getSession();
       await handleSession('RESTORE', result.data.session);
 
@@ -441,6 +447,20 @@
 
   window.signInWithGoogle = function () { signInWithProvider('google'); };
   window.signOut = signOut;
+
+  // Expose the Supabase client (and a Promise that resolves to it after init)
+  // so peer scripts on the same page — e.g. pricing.js — can reuse this
+  // singleton instead of calling supabase.createClient again. Sharing avoids
+  // the "Multiple GoTrueClient instances detected" warning, halves the
+  // auth/config fetches on page load, and ensures both modules see the same
+  // session refreshes.
+  var _readyResolve;
+  window.ZKAuth = window.ZKAuth || {};
+  window.ZKAuth.ready = new Promise(function (resolve) { _readyResolve = resolve; });
+  window.ZKAuth.getClient = function () { return _supabaseClient; };
+  window.ZKAuth.__signalReady = function () {
+    if (_readyResolve) { _readyResolve(_supabaseClient); _readyResolve = null; }
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {

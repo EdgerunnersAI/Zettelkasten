@@ -437,6 +437,20 @@
 
   async function initSupabase() {
     if (_supabase) return _supabase;
+
+    // Prefer the singleton client created by auth.js (loaded on this page)
+    // — sharing avoids the "Multiple GoTrueClient instances detected" console
+    // warning and skips a second auth/config fetch on page load.
+    if (window.ZKAuth && window.ZKAuth.ready) {
+      try {
+        _supabase = await window.ZKAuth.ready;
+        if (_supabase) {
+          installAuthListener();
+          return _supabase;
+        }
+      } catch (_) { /* fall through to local construction */ }
+    }
+
     if (typeof supabase === 'undefined' || !supabase.createClient) return null;
     try {
       var resp = await fetch('/api/auth/config');
@@ -455,27 +469,30 @@
       // exchanged before the user clicks a buy button.
       try { await _supabase.auth.getSession(); } catch (_) { /* fall through */ }
 
-      if (!_authListenerInstalled) {
-        _supabase.auth.onAuthStateChange(function (event) {
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            closeLoginModal();
-            refreshCurrentSubscription().then(renderSubscriptions);
-            // Replay the buy intent the user clicked before being asked to sign in.
-            if (_pendingPurchase) {
-              var pending = _pendingPurchase;
-              _pendingPurchase = null;
-              window.ZKPricing.openPurchase(pending).catch(function (err) {
-                if (err && err.status === 401) openLoginModal(pending);
-              });
-            }
-          }
-        });
-        _authListenerInstalled = true;
-      }
+      installAuthListener();
       return _supabase;
     } catch (_) {
       return null;
     }
+  }
+
+  function installAuthListener() {
+    if (_authListenerInstalled || !_supabase) return;
+    _supabase.auth.onAuthStateChange(function (event) {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        closeLoginModal();
+        refreshCurrentSubscription().then(renderSubscriptions);
+        // Replay the buy intent the user clicked before being asked to sign in.
+        if (_pendingPurchase) {
+          var pending = _pendingPurchase;
+          _pendingPurchase = null;
+          window.ZKPricing.openPurchase(pending).catch(function (err) {
+            if (err && err.status === 401) openLoginModal(pending);
+          });
+        }
+      }
+    });
+    _authListenerInstalled = true;
   }
 
   function openLoginModal(pendingPurchase) {
@@ -513,16 +530,58 @@
     var cancelBtn = modal.querySelector('[data-phone-cancel]');
     var overlay = modal.querySelector('[data-phone-overlay]');
 
+    var submitBtn = form.querySelector('.login-submit');
+    var submitDefaultLabel = submitBtn ? submitBtn.textContent : '';
+
+    function setSubmitting(on) {
+      if (!submitBtn) return;
+      submitBtn.disabled = !!on;
+      submitBtn.classList.toggle('is-loading', !!on);
+      submitBtn.innerHTML = on
+        ? '<span class="zk-spinner" aria-hidden="true"></span><span>Processing…</span>'
+        : submitDefaultLabel;
+      if (input) input.disabled = !!on;
+      if (cancelBtn) cancelBtn.disabled = !!on;
+    }
+
+    // Razorpay injects a <div class="razorpay-container"> at body root once
+    // the modal is ready. Watching for it lets us keep the phone modal's
+    // spinner on screen across the ~1.5-2s window between phone submit and
+    // the payment modal becoming visible.
+    function waitForRazorpayContainer(timeoutMs) {
+      return new Promise(function (resolve) {
+        if (document.querySelector('.razorpay-container')) { resolve(true); return; }
+        var done = false;
+        var observer = new MutationObserver(function () {
+          if (done) return;
+          if (document.querySelector('.razorpay-container')) {
+            done = true;
+            observer.disconnect();
+            resolve(true);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function () {
+          if (done) return;
+          done = true;
+          observer.disconnect();
+          resolve(false);
+        }, timeoutMs || 8000);
+      });
+    }
+
     window.ZKPricing.promptForPhone = function () {
       return new Promise(function (resolve) {
-        function cleanup(result) {
-          modal.classList.remove('open');
-          document.body.style.overflow = '';
+        function teardownListeners() {
           form.removeEventListener('submit', onSubmit);
           if (cancelBtn) cancelBtn.removeEventListener('click', onCancel);
           if (overlay) overlay.removeEventListener('click', onCancel);
           document.removeEventListener('keydown', onKey);
-          resolve(result);
+        }
+        function closeModalNow() {
+          modal.classList.remove('open');
+          document.body.style.overflow = '';
+          setSubmitting(false);
         }
         function onSubmit(e) {
           e.preventDefault();
@@ -533,13 +592,24 @@
             errEl.style.display = 'block';
             return;
           }
-          cleanup(digitsOnly);
+          // Tear down user-input listeners so cancel paths don't fire while
+          // the payment flow is mid-flight, but keep the modal visible with
+          // a spinner — closed only when Razorpay paints or after a timeout.
+          teardownListeners();
+          setSubmitting(true);
+          waitForRazorpayContainer().then(closeModalNow);
+          resolve(digitsOnly);
         }
-        function onCancel() { cleanup(null); }
+        function onCancel() {
+          teardownListeners();
+          closeModalNow();
+          resolve(null);
+        }
         function onKey(e) { if (e.key === 'Escape') onCancel(); }
 
         if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
         if (input) input.value = '';
+        setSubmitting(false);
         form.addEventListener('submit', onSubmit);
         if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
         if (overlay) overlay.addEventListener('click', onCancel);

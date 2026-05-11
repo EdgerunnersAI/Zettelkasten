@@ -4,6 +4,25 @@
   padding: 0.75rem 1.25rem 1.5rem;
 }
 
+/* Inline spinner shown on the phone modal's submit button while the
+   PUT billing-profile + POST subscriptions + Razorpay-load roundtrip
+   (~2 s on India→DO) is in flight. Replaces "Continue to payment" with
+   "Processing…" so the user gets visible feedback during the wait. */
+.zk-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  vertical-align: -2px;
+  animation: zk-spin 0.7s linear infinite;
+}
+@keyframes zk-spin { to { transform: rotate(360deg); } }
+.login-submit.is-loading { cursor: progress; opacity: 0.85; }
+.login-submit.is-loading > span:last-child { letter-spacing: 0.01em; }
+
 .pricing-shell {
   /* Width + horizontal padding moved to .pricing-container so the shared
      <!--ZK_HEADER--> shell aligns with the page body, matching user_zettels
