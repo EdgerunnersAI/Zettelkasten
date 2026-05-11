@@ -35,9 +35,11 @@ def _razorpay_env(monkeypatch):
     monkeypatch.setenv("RAZORPAY_KEY_SECRET", TEST_KEY_SECRET)
     monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET)
     # Force in-memory repo path even if a developer .env has live Supabase
-    # creds — these tests must not touch any external DB.
-    from website.core.supabase_kg import client as sb_client
-    monkeypatch.setattr(sb_client, "is_supabase_configured", lambda: False)
+    # creds — these tests must not touch any external DB. Phase 8.0.6 retired
+    # supabase_kg.client; repository now re-exports v2's is_v2_configured as
+    # is_supabase_configured for backward compatibility (see repository.py).
+    from website.core.supabase_v2 import client as sb_client
+    monkeypatch.setattr(sb_client, "is_v2_configured", lambda: False)
     monkeypatch.setattr(repository, "is_supabase_configured", lambda: False)
     razorpay_client.reset_client_cache()
     repository.reset_memory_state_for_tests()

@@ -12,9 +12,14 @@ from uuid import UUID
 
 import pytest
 
-from website.core.supabase_kg.client import get_supabase_client, is_supabase_configured
-from website.features.rag_pipeline.service import get_rag_runtime
-from website.features.rag_pipeline.types import ChatQuery, ScopeFilter
+# Phase 8.0.6 retired website.core.supabase_kg. This live test exercises v1 KG
+# semantics (kg_users) that no longer exist on v2; importorskip keeps the test
+# discoverable for a future v2 port without breaking pytest collection.
+pytest.importorskip("website.core.supabase_kg.client")
+
+from website.core.supabase_kg.client import get_supabase_client, is_supabase_configured  # noqa: E402
+from website.features.rag_pipeline.service import get_rag_runtime  # noqa: E402
+from website.features.rag_pipeline.types import ChatQuery, ScopeFilter  # noqa: E402
 
 
 NARUTO_KG_USER_ID = UUID("8842e563-ee10-4b8b-bbf2-8af4ba65888e")
