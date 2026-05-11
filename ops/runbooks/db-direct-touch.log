@@ -1,0 +1,8 @@
+# DB-direct-touch log
+
+Append-only record of any direct DB manipulations outside the normal migration
+pipeline. NIST SP 800-53 AU-2/AU-12 + SOC 2 CC7.2 compliance.
+
+Format: ISO_TIMESTAMP | operator | target | statement | before | after | reason | ticket
+
+(No entries — Phase 8.0 closeout used git-revert / manifest-regen patterns instead of direct UPDATE.)

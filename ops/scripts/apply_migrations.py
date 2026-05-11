@@ -35,8 +35,10 @@ Behaviour summary
 
 Exit codes
 ----------
-``0`` success, ``1`` migration error / checksum mismatch / SQL failure,
-``2`` configuration error (missing env vars, bad args).
+``0`` success, ``1`` generic migration / SQL failure, ``2`` configuration error
+(missing env vars, bad args), ``3`` drift detected (checksum mismatch on a
+previously-applied versioned migration — distinct so ``deploy.sh`` and humans
+can branch on the cause).
 """
 from __future__ import annotations
 
@@ -73,6 +75,13 @@ DEFAULT_V2_MIGRATIONS_DIR = ROOT / "supabase" / "website" / "_v2"
 # ``_v2/repeatable/`` and are named ``R__<slug>.sql``. They re-run on every
 # deploy whenever their checksum changes, after all versioned migrations.
 _V2_REPEATABLE_SUBDIR = "repeatable"
+
+# Rev++ (Phase 8.0): distinct exit code for checksum-mismatch drift so
+# ``deploy.sh`` and operators can branch on cause. ``1`` remains generic SQL /
+# migration failure; ``2`` remains config error. The migration-drift runbook
+# (ops/runbooks/migration-drift.md) walks the operator through the three
+# resolution paths (revert, repeatable-promotion, new versioned migration).
+EXIT_DRIFT_DETECTED = 3
 
 # Bootstrap placeholders that an operator may have inserted into
 # ``_migrations_applied.checksum`` to mark a migration as "already
@@ -691,15 +700,63 @@ def main(argv: Sequence[str] | None = None) -> int:
                     logger.info("[migration] skip %s (already applied)", path.name)
                     skipped_count += 1
                     continue
+                # Rev++: structured diagnostic + copy-pasteable runbook block.
+                # Look up the applied_at timestamp for the diagnostic header so
+                # the operator can see WHEN the row was first written.
+                applied_at: str | None = None
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            f"SELECT applied_at FROM {_migration_table(args.v2)} "
+                            "WHERE name = %s",
+                            (path.name,),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0] is not None:
+                            applied_at = row[0].isoformat()
+                except Exception:  # pragma: no cover - diagnostic only
+                    pass
+
                 logger.error(
-                    "[migration] CHECKSUM MISMATCH for %s — applied=%s "
-                    "current=%s. Refusing to run. An already-applied migration "
-                    "was edited; investigate and reconcile manually.",
+                    "[migration] DRIFT DETECTED — checksum mismatch for %s",
                     path.name,
-                    prior,
-                    checksum,
                 )
-                rc = 1
+                diag = [
+                    "",
+                    "================================================================",
+                    "  DRIFT DETECTED -- checksum mismatch on applied migration",
+                    "================================================================",
+                    f"  file        : {path}",
+                    f"  stored sha  : {prior}",
+                    f"  computed sha: {checksum}",
+                    f"  applied_at  : {applied_at or '(unknown — pre-provenance row)'}",
+                    "",
+                    "  Refusing to auto-reconcile. Operator decision required:",
+                    "",
+                    "  [a] REVERT the edit (unintentional / rebase artifact):",
+                    f"        git log --oneline -- {path}",
+                    f"        git checkout <good-sha> -- {path}",
+                    "        git commit -m 'fix(ops): revert accidental edit to applied migration'",
+                    "",
+                    "  [b] PROMOTE to repeatable (code-object — function/view/RLS/trigger using",
+                    "      CREATE OR REPLACE; v2 _v2/ tree only):",
+                    f"        git mv {path} {path.parent / 'repeatable' / ('R__' + path.name)}",
+                    "        # add a one-shot versioned migration to DELETE the old manifest row",
+                    "        # keyed by the original filename, then re-deploy.",
+                    "",
+                    "  [c] NEW versioned migration (table/column/constraint change — DDL is",
+                    "      immutable once applied; never edit the body):",
+                    "        # leave the applied file untouched; add a new NN_<slug>.sql file",
+                    "        # that issues the additional ALTER/CREATE you need.",
+                    "",
+                    "  Runbook: ops/runbooks/migration-drift.md",
+                    "  Audit  : ops/runbooks/db-direct-touch.log (log any DB-direct fix)",
+                    "================================================================",
+                    "",
+                ]
+                sys.stderr.write("\n".join(diag) + "\n")
+                sys.stderr.flush()
+                rc = EXIT_DRIFT_DETECTED
                 break
 
             if args.dry_run:
