@@ -61,14 +61,13 @@ COPY --chown=appuser:appuser pyproject.toml ./
 # before the blue/green flip. Also includes ops/scripts/backfill_metadata.py
 # and the existing post-cutover backfill scripts referenced by deploy.sh.
 #
-# Phase 8.5 v2-purge (2026-05-11): deploy now runs `apply_migrations.py --v2`
+# Phase 8.5 v2-purge (2026-05-11): deploy runs `apply_migrations.py --v2`
 # against supabase/website/_v2/*.sql + expected_schema.json. The legacy
-# kg_public/migrations/ tree is unrunnable post-Phase-6 (every file references
-# public.kg_* tables that were dropped) but is still copied for now so
-# ops scripts that reference its files don't hard-fail at import time.
+# kg_public/migrations/ tree was archived to migrations_archived_2026-05-11/
+# and is no longer copied into the image — it's unrunnable (every file
+# references dropped public.kg_* tables) and not referenced by any runtime
+# script with --v2.
 COPY --chown=appuser:appuser ops/scripts/ ops/scripts/
-COPY --chown=appuser:appuser supabase/website/kg_public/migrations/ \
-     supabase/website/kg_public/migrations/
 COPY --chown=appuser:appuser supabase/website/_v2/ \
      supabase/website/_v2/
 
