@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_users).
+# One-shot rename tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Rename kg_users row for Auth ID a57e1f2f-... from Hinata to Zoro."""
 from __future__ import annotations
 

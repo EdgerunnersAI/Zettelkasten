@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_users).
+# One-shot user-cleanup tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Keep only Naruto and Zoro; delete all other users (kg_users + auth.users).
 
 Cascades remove their nodes/links/sandboxes/chat data automatically.

@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 rate-limit surface.
+# One-shot smoke-probe counter reset — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """iter-08 one-shot: reset the rag-smoke probe user's monthly rag_question
 counter so the deploy smoke probe stops returning HTTP 402 quota_exhausted.
 

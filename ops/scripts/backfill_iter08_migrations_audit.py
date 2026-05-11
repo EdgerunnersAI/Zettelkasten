@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): targets dropped v1 migration audit surface.
+# One-shot iter-08 audit backfill — not in active production path.
+# Revive: port to v2 _v2/ migration runner. Tracked for follow-up.
 """iter-08 one-shot: backfill _migrations_applied with the 3 iter-08 migrations.
 
 Context: apply_iter08_migrations.py applied the SQL via the Supabase Management

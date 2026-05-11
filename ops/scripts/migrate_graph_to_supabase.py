@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): targets dropped v1 kg_* tables.
+# One-shot v1 cutover tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Migrate graph.json data into Supabase.
 
 Usage:

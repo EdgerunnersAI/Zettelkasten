@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_*/rag_*/etc.).
+# One-shot iter-03 eval harness — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Iter-03 end-to-end eval harness — Playwright + prod API + UI verification.
 
 Replaces the Claude-in-Chrome MCP path. This is the canonical iter-03+ eval

@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_nodes).
+# One-shot backfill tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """One-shot backfill: polish + caveat-strip + reddit-tag rewrite for every
 existing ``kg_nodes`` row in Supabase.
 

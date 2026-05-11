@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): targets dropped v1 migration surface.
+# One-shot iter-08 migration runner — not in active production path.
+# Revive: port to v2 _v2/ migration runner. Tracked for follow-up.
 """iter-08 one-shot: apply the 3 Supabase migrations via Management API.
 
 Reads SUPABASE_ACCESS_TOKEN from the root .env and posts each migration to

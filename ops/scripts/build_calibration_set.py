@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_*/rag_*/etc.).
+# One-shot calibration / eval tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Build the BGE int8 calibration set: 500 stratified in-distribution rerank pairs.
 
 Sampling protocol (per spec 3.15 layer 1):

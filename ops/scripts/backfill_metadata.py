@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_node_chunks).
+# One-shot backfill tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """One-shot backfill: enrich kg_node_chunks.metadata for legacy chunks.
 
 Plan: docs/superpowers/plans/2026-04-26-rag-improvements-iter-01-02.md (Task 12).

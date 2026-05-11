@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_users).
+# One-shot cleanup tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Delete every non-canonical Naruto kg_users row + cascades.
 
 Canonical Naruto auth id: f2105544-b73d-4946-8329-096d82f070d3

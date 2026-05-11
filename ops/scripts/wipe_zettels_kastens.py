@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_*/rag_*/etc.).
+# One-shot wipe tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """One-shot wipe: delete all Zettels (kg_nodes + links + chunks) and
 Kastens (rag_sandboxes + members + chat sessions/messages) across all users.
 

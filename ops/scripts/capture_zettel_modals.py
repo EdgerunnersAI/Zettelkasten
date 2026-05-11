@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_nodes).
+# One-shot UI capture / audit tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Capture every zettel modal as Playwright screenshots and run a content audit.
 
 Workflow:

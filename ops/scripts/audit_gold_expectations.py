@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_*/rag_*/etc.).
+# One-shot / eval / backfill tool — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """iter-12 Task 30 / R3 Tier-1 — pre-eval gold expectation groundedness check.
 
 Usage:

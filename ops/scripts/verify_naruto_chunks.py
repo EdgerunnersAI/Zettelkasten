@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 tables (kg_node_chunks).
+# One-shot verification helper — not in active production path.
+# Revive: port to website.core.supabase_v2 / get_v2_client(). Tracked for follow-up.
 """Phase A A4 verification helper.
 
 Counts Naruto's ``kg_node_chunks`` rows before/after a fresh capture on
