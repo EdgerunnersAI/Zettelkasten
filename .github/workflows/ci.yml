@@ -39,5 +39,13 @@ jobs:
       - name: Run pytest
         env:
           GEMINI_API_KEY: "ci-stub"
+          # Stubs for the v2 Supabase client so module-level / fallback
+          # constructor paths don't fail validation under unit-test mocks.
+          # Tests inject MagicMock clients — these values are never used to
+          # make network calls; they only let get_v2_client() construct.
+          SUPABASE_V2_URL: "https://ci-stub.supabase.co"
+          SUPABASE_V2_ANON_KEY: "ci-stub-anon"
+          SUPABASE_V2_SERVICE_ROLE_KEY: "ci-stub-service"
+          NEXUS_TOKEN_ENCRYPTION_KEY: "7TgtMgeR5dMTnXxW6ULICwhf66A1VpzwuNFuIBqmoe4="
         run: |
           pytest -q --maxfail=5
