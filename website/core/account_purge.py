@@ -87,18 +87,36 @@ def purge_user_dependencies(
         report.notes.append(f"pricing_cancel_failed: {exc!r}")
 
     # 3) Explicit kasten_members removal (Phase 8.5.R2 amendment 2026-05-10).
-    # CASCADE chain through core.profiles handles this functionally today, but
-    # explicit handling is belt-and-suspenders against a future FK clause
-    # change (e.g. dropping CASCADE) silently breaking offboarding.
+    # CASCADE chain through core.profiles -> core.workspaces handles this
+    # functionally today, but explicit handling is belt-and-suspenders against
+    # a future FK clause change (e.g. dropping CASCADE) silently breaking
+    # offboarding.
+    #
+    # Phase 8.5.R2-amend 2026-05-11: rag.kasten_members is keyed by
+    # (kasten_id, workspace_id) — there's no per-profile column. The prior
+    # block referenced `member_profile_id` which does not exist; the silent
+    # try/except meant the belt-and-suspenders never actually fired. Bug
+    # surfaced by P2.5 ranker-boost test wiring purge_user_dependencies into
+    # conftest teardown. Correct shape: look up the user's workspaces first,
+    # then purge kasten_members scoped to those workspaces.
     try:
-        resp = (
-            sb.schema("rag")
-            .table("kasten_members")
-            .delete()
-            .eq("member_profile_id", str(profile_id))
+        ws_resp = (
+            sb.schema("core")
+            .table("workspaces")
+            .select("id")
+            .eq("owner_profile_id", str(profile_id))
             .execute()
         )
-        report.kasten_memberships_removed = len(resp.data or [])
+        ws_ids = [str(row["id"]) for row in (ws_resp.data or [])]
+        if ws_ids:
+            resp = (
+                sb.schema("rag")
+                .table("kasten_members")
+                .delete()
+                .in_("workspace_id", ws_ids)
+                .execute()
+            )
+            report.kasten_memberships_removed = len(resp.data or [])
     except Exception as exc:  # noqa: BLE001
         logger.warning("kasten_members removal failed: %s", exc)
         report.notes.append(f"kasten_members_failed: {exc!r}")
