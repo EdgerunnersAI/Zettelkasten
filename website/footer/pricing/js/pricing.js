@@ -432,6 +432,9 @@
   // user_home.js / user_zettels.js so the same localStorage 'zk-auth-token'
   // entry is the single shared session across pages.
   var _supabase = null;
+  var _pendingPurchase = null;            // queued buy intent waiting on sign-in
+  var _authListenerInstalled = false;
+
   async function initSupabase() {
     if (_supabase) return _supabase;
     if (typeof supabase === 'undefined' || !supabase.createClient) return null;
@@ -451,14 +454,50 @@
       // Touch the session so a stale (but still refresh-eligible) token gets
       // exchanged before the user clicks a buy button.
       try { await _supabase.auth.getSession(); } catch (_) { /* fall through */ }
+
+      if (!_authListenerInstalled) {
+        _supabase.auth.onAuthStateChange(function (event) {
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            closeLoginModal();
+            refreshCurrentSubscription().then(renderSubscriptions);
+            // Replay the buy intent the user clicked before being asked to sign in.
+            if (_pendingPurchase) {
+              var pending = _pendingPurchase;
+              _pendingPurchase = null;
+              window.ZKPricing.openPurchase(pending).catch(function (err) {
+                if (err && err.status === 401) openLoginModal(pending);
+              });
+            }
+          }
+        });
+        _authListenerInstalled = true;
+      }
       return _supabase;
     } catch (_) {
       return null;
     }
   }
 
-  function redirectToLogin() {
-    window.location.href = '/?auth=login&return=' + encodeURIComponent(window.location.pathname);
+  function openLoginModal(pendingPurchase) {
+    _pendingPurchase = pendingPurchase || null;
+    var modal = document.getElementById('login-modal');
+    if (!modal) {
+      // Fall back to homepage modal if the inline one isn't on this page.
+      window.location.href = '/?auth=login&return=' + encodeURIComponent(window.location.pathname);
+      return;
+    }
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    var emailInput = document.getElementById('login-email');
+    if (emailInput) { try { emailInput.focus(); } catch (_) {} }
+  }
+
+  function closeLoginModal() {
+    var modal = document.getElementById('login-modal');
+    if (modal) {
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+    }
   }
 
   async function bootSharedHeader() {
@@ -523,7 +562,7 @@
         );
         if (!ok) return;
       }
-      window.ZKPricing.openPurchase({
+      var purchaseIntent = {
         productId: productBtn.getAttribute('data-product'),
         kind: productBtn.getAttribute('data-kind'),
         expectedAmount: parseInt(productBtn.getAttribute('data-amount') || '', 10),
@@ -532,10 +571,13 @@
         onResume: function () {
           refreshCurrentSubscription().then(renderSubscriptions);
         }
-      }).catch(function (err) {
-        // Surface session expiry as a redirect — without this the rejection
-        // becomes an unhandled console error and the user sees nothing.
-        if (err && err.status === 401) redirectToLogin();
+      };
+      window.ZKPricing.openPurchase(purchaseIntent).catch(function (err) {
+        // Session expiry — pop the inline login modal and queue the buy intent
+        // so it auto-resumes after the SIGNED_IN event fires. Previously this
+        // either silently rejected (nothing happened) or redirected the user
+        // off /pricing entirely.
+        if (err && err.status === 401) openLoginModal(purchaseIntent);
       });
       return;
     }

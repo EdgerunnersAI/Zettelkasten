@@ -10,11 +10,44 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css?v=20260407a">
   <link rel="stylesheet" href="/header/css/header.css?v=20260418f">
+  <link rel="stylesheet" href="/auth/css/auth.css?v=20260413a">
   <link rel="stylesheet" href="/user-pricing/css/purchase_launcher.css?v=20260501a">
-  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260511a">
+  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260511b">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <!-- Inline login modal — opens in place when a buy click hits a 401 instead of
+       redirecting away to /. Same markup + IDs as static/index.html so auth.js
+       picks it up and Supabase password-grant works identically. -->
+  <div class="login-modal" id="login-modal">
+    <div class="modal-overlay" id="modal-overlay"></div>
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <h2 class="modal-title">Sign in to continue</h2>
+      <p class="modal-subtitle">You need an account to start a Zettelkasten subscription or buy a pack.</p>
+
+      <form id="login-form">
+        <div class="login-field">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="login-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="login-submit">Sign in</button>
+        <p class="login-error" id="login-error"></p>
+      </form>
+
+      <div class="modal-divider">or continue with</div>
+
+      <button class="modal-oauth-btn" id="oauth-google">
+        <svg viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+    </div>
+  </div>
+
   <div class="pricing-container">
     <!--ZK_HEADER-->
 
@@ -47,7 +80,9 @@
   <!--ZK_FOOTER-->
 
   <script src="/header/js/header.js?v=20260428b"></script>
+  <script src="/browser-cache/js/cache.js?v=20260413a"></script>
+  <script src="/auth/js/auth.js?v=20260413a"></script>
   <script src="/user-pricing/js/purchase_launcher.js?v=20260502o"></script>
-  <script src="/pricing/js/pricing.js?v=20260511a"></script>
+  <script src="/pricing/js/pricing.js?v=20260511b"></script>
 </body>
 </html>
