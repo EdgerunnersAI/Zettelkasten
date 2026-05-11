@@ -95,8 +95,12 @@
   async function ensureBillingProfile() {
     var token = authToken();
     if (!token) {
-      window.location.href = '/?auth=login&return=' + encodeURIComponent(window.location.pathname + window.location.search);
-      throw new Error('Please sign in to continue checkout.');
+      // Don't navigate here — surface a 401 so the caller can decide whether
+      // to pop an inline login modal (pricing page) or do its own redirect.
+      var err = new Error('Please sign in to continue checkout.');
+      err.status = 401;
+      err.code = 'not_authenticated';
+      throw err;
     }
 
     var profilePayload = await fetchJson('/api/pricing/billing-profile', { headers: authHeaders() });
