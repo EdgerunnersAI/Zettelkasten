@@ -66,12 +66,37 @@ def created_auth_user_ids() -> list[uuid.UUID]:
     Cleanup is best-effort (does not abort on the first failure) but every
     failure is collected and surfaced via ``warnings.warn`` so a pool exhaustion
     or auth outage cannot silently leak users without test output.
+
+    Phase 8.5.R2 amendment (T1): we run ``account_purge.purge_user_dependencies``
+    BEFORE ``auth.admin.delete_user`` to pre-clean FK-bound rows the GoTrue
+    admin API doesn't cascade through (rag.retrieval_feedback_events,
+    billing.pricing_subscriptions, rag.kasten_members). Without this, content-
+    seeding tests left ``AuthApiError('Database error deleting user')``
+    warnings that the session-finish backstop swept up — the per-test purge
+    eliminates the noise so real test failures aren't drowned in teardown
+    noise. Canonical pattern per Supabase Discussion #28776 + storage#65:
+    auth.admin.delete_user has no cascade flag in 2024-2026.
     """
     created: list[uuid.UUID] = []
     yield created
     errors: list[tuple[uuid.UUID, BaseException]] = []
+    # Lazy import — account_purge pulls supabase client init; only needed at
+    # teardown so we defer the cost until the fixture is actually used.
+    from website.core.account_purge import purge_user_dependencies
     for auth_user_id in created:
         try:
+            # Pre-purge FK-bound rows the admin API doesn't cascade through.
+            # profile_id == auth_user_id today (handle_new_auth_user trigger
+            # invariant); if the invariant ever breaks, the purge becomes a
+            # no-op and admin.delete_user falls back to its prior behaviour —
+            # the session-finish backstop sweep then handles the residue.
+            try:
+                purge_user_dependencies(auth_user_id)
+            except Exception as purge_exc:  # noqa: BLE001 — best-effort
+                warnings.warn(
+                    f"purge_user_dependencies({auth_user_id}) failed: {purge_exc!r}",
+                    stacklevel=1,
+                )
             delete_test_user(auth_user_id)
         except Exception as exc:  # noqa: BLE001 — collect and report at end
             errors.append((auth_user_id, exc))
