@@ -163,7 +163,10 @@ def test_checksum_mismatch_is_hard_fail(fake_psycopg, env, mig_dir):
     am = _load()
     fake_psycopg.applied_rows.append(("2026-01-01_first.sql", "deadbeef-not-matching"))
     rc = am.main(["--migrations-dir", str(mig_dir)])
-    assert rc == 1
+    # Rev++ (Phase 8.0): drift uses a dedicated exit code distinct from the
+    # generic SQL-failure path so deploy.sh and humans can branch on cause.
+    assert rc == am.EXIT_DRIFT_DETECTED
+    assert rc != 1
     # Second migration must NOT have been applied after the failure.
     names = [r[0] for r in fake_psycopg.applied_rows]
     assert "2026-01-02_second.sql" not in names
