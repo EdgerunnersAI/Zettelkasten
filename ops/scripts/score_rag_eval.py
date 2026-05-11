@@ -23,6 +23,9 @@ Exit codes:
     1  — missing inputs
     2  — Supabase fetch failed for >50% of nodes (degraded scoring not useful)
 """
+# LEGACY (broken after 2026-05-11): imports website.core.supabase_kg which was retired
+# in Phase 8.0.6. To revive, port get_supabase_client calls to get_v2_client() from
+# website.core.supabase_v2.client. Tracked for follow-up iteration.
 from __future__ import annotations
 
 import argparse

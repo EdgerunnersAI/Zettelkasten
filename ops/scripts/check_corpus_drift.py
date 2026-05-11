@@ -9,6 +9,9 @@ to open an auto-refresh PR.
 Returns exit 0 (no drift) / 1 (drift detected) / 2 (config / IO error) for
 the workflow to branch on.
 """
+# LEGACY (broken after 2026-05-11): imports website.core.supabase_kg which was retired
+# in Phase 8.0.6. To revive, port get_supabase_client calls to get_v2_client() from
+# website.core.supabase_v2.client. Tracked for follow-up iteration.
 from __future__ import annotations
 
 import argparse

@@ -381,11 +381,9 @@ Multi-stage build (`ops/Dockerfile`): Stage 1 installs `ops/requirements.txt` in
 
 ## DB v2 Purge — Phase 8 Closeout Complete (2026-05-11)
 
-The DB v2 schema purge Phase 8 closeout is complete (commits NOT yet pushed). All production code paths run on the v2 schemas (`core, content, kg, rag, pipelines, billing`); legacy `public.kg_*`, `public.rag_*`, `public.chat_*`, `public.summary_batch_*`, `public.nexus_*`, `public.kg_usage_edges*`, `public.kg_kasten_node_freq`, `public.recompute_runs`, `public._migrations_applied`, and 5 of 11 `public.pricing_*` tables are dropped (commit `e168b38` Phase 6).
+The DB v2 schema purge Phase 8 closeout is complete. All production code paths run on the v2 schemas (`core, content, kg, rag, pipelines, billing`); legacy `public.kg_*`, `public.rag_*`, `public.chat_*`, `public.summary_batch_*`, `public.nexus_*`, `public.kg_usage_edges*`, `public.kg_kasten_node_freq`, `public.recompute_runs`, `public._migrations_applied`, and the original 5 of 11 `public.pricing_*` tables were dropped in Phase 6 (commit `e168b38`); the remaining 6 `public.pricing_*` tables + 6 RPCs were dropped in Phase 8.0.6 via `supabase/website/_v2/31_drop_legacy_pricing.sql` after the pre-T6 audit confirmed zero live website refs. `website/core/supabase_kg/` directory deleted in the same commit.
 
-**Pending T15 verification → then operator-approved DROP:**
-- 6 retained `public.pricing_*` tables + 6 RPCs (T6, deferred per 2026-05-11 operator decision)
-- `website/core/supabase_kg/` directory delete (T7-dir-delete, paired with T6)
+**Annotated as LEGACY (broken after 2026-05-11):** 6 `ops/scripts/*` still import the retired `website.core.supabase_kg`; revive by porting `get_supabase_client` calls to `get_v2_client()` from `website.core.supabase_v2.client` in a follow-up iteration.
 
 **Test infrastructure:**
 - `tests/v2/fixtures/users.py` — `mint_test_user_with_workspaces` (now includes `email` field per Phase 8.0-TX)

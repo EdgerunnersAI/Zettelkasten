@@ -10,6 +10,9 @@ and writes coverage_blind_queries.json to the _audit/ dir.
 
 Default: advisory-only (--auto-exclude=False).
 """
+# LEGACY (broken after 2026-05-11): imports website.core.supabase_kg which was retired
+# in Phase 8.0.6. To revive, port get_supabase_client calls to get_v2_client() from
+# website.core.supabase_v2.client. Tracked for follow-up iteration.
 from __future__ import annotations
 
 import argparse
