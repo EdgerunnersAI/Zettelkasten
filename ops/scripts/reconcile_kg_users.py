@@ -1,9 +1,17 @@
-"""Reconcile kg_users: dedupe duplicates of Naruto, purge orphans (spec §3.9, plan 2D.1).
+"""Reconcile profiles: dedupe duplicates of Naruto, purge orphans (Phase 2D.2 v2 port).
 
 Single-tenant allowlist enforcement: only the canonical Naruto + Zoro auth IDs
-own data in production. Any other kg_users row, kg_nodes row, or kg_links row
-is a leftover from prior auth migrations and must be reassigned (Naruto dupes)
-or purged (orphans).
+own data in production. Any other core.profiles row, or any workspace_zettels
+row owned (via workspace -> owner_profile_id) by a non-canonical profile is a
+leftover from prior auth migrations and must be reassigned (Naruto dupes) or
+purged (orphans).
+
+v2 surface mapping (post-Phase-8 v1 drop):
+- v1 kg_users          -> v2 core.profiles (id + email denormalized on profile)
+- v1 kg_nodes owner    -> v2 content.workspace_zettels via core.workspaces.owner_profile_id
+- v1 kg_links          -> v2 no separate links table (KG/links concept removed)
+- v1 kg_node_chunks    -> v2 content.workspace_chunk_membership, scoped by workspace_id;
+                          cascades automatically when workspace is deleted.
 
 Usage:
   python ops/scripts/reconcile_kg_users.py --audit
@@ -36,9 +44,15 @@ def audit(conn, allowlist: dict | None = None) -> dict:
     aw = allowlist or load_allowlist()
     canonical = {aw["_canonical_naruto"], aw["_canonical_zoro"]}
     with conn.cursor() as cur:
-        cur.execute("SELECT id::text, email FROM kg_users")
+        # v2: profile rows live in core.profiles; email is denormalized there.
+        cur.execute("SELECT id::text, email FROM core.profiles")
         users = list(cur.fetchall())
-        cur.execute("SELECT DISTINCT user_id::text FROM kg_nodes")
+        # v2: zettel ownership flows through workspace owner; collect distinct owner profile ids.
+        cur.execute(
+            "SELECT DISTINCT w.owner_profile_id::text "
+            "FROM content.workspace_zettels wz "
+            "JOIN core.workspaces w ON w.id = wz.workspace_id"
+        )
         node_owners = {r[0] for r in cur.fetchall()}
     duplicate_naruto = [
         list(u) for u in users
@@ -62,7 +76,7 @@ def dedupe_naruto(conn, *, dry_run: bool = True, allowlist: dict | None = None) 
     canonical = aw["_canonical_naruto"]
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id::text FROM kg_users WHERE LOWER(email) LIKE 'naruto%%' AND id != %s",
+            "SELECT id::text FROM core.profiles WHERE LOWER(email) LIKE 'naruto%%' AND id != %s",
             (canonical,),
         )
         dupes = [r[0] for r in cur.fetchall()]
@@ -74,13 +88,14 @@ def dedupe_naruto(conn, *, dry_run: bool = True, allowlist: dict | None = None) 
         return len(dupes)
     with conn.cursor() as cur:
         for dupe_id in dupes:
-            cur.execute("UPDATE kg_nodes SET user_id = %s WHERE user_id = %s", (canonical, dupe_id))
-            cur.execute("UPDATE kg_links SET user_id = %s WHERE user_id = %s", (canonical, dupe_id))
+            # v2: reassign every workspace owned by the dupe to canonical Naruto.
+            # workspace_zettels / workspace_chunk_membership follow the workspace
+            # automatically (no per-row user_id column in v2).
             cur.execute(
-                "UPDATE kg_node_chunks SET user_id = %s WHERE user_id = %s",
+                "UPDATE core.workspaces SET owner_profile_id = %s WHERE owner_profile_id = %s",
                 (canonical, dupe_id),
             )
-            cur.execute("DELETE FROM kg_users WHERE id = %s", (dupe_id,))
+            cur.execute("DELETE FROM core.profiles WHERE id = %s", (dupe_id,))
     conn.commit()
     return len(dupes)
 
@@ -89,17 +104,39 @@ def purge_orphans(conn, *, dry_run: bool = True, allowlist: dict | None = None) 
     aw = allowlist or load_allowlist()
     allowed = tuple(aw["allowed_auth_ids"])
     with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM kg_nodes WHERE user_id::text NOT IN %s", (allowed,))
+        # v2: count zettels whose workspace owner is outside the allowlist.
+        cur.execute(
+            "SELECT COUNT(*) FROM content.workspace_zettels wz "
+            "JOIN core.workspaces w ON w.id = wz.workspace_id "
+            "WHERE w.owner_profile_id::text NOT IN %s",
+            (allowed,),
+        )
         n_nodes = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM kg_links WHERE user_id::text NOT IN %s", (allowed,))
+        # v2: count workspaces themselves owned outside the allowlist (replaces
+        # the v1 kg_links sweep — links no longer exist as a standalone table).
+        cur.execute(
+            "SELECT COUNT(*) FROM core.workspaces WHERE owner_profile_id::text NOT IN %s",
+            (allowed,),
+        )
         n_links = cur.fetchone()[0]
     counts = {"nodes": n_nodes, "links": n_links}
     if dry_run:
         logger.info("would purge: %s", counts)
         return counts
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM kg_nodes WHERE user_id::text NOT IN %s", (allowed,))
-        cur.execute("DELETE FROM kg_links WHERE user_id::text NOT IN %s", (allowed,))
+        # v2: deleting the workspace cascades to workspace_zettels +
+        # workspace_chunk_membership + workspace_members via FK ON DELETE CASCADE.
+        cur.execute(
+            "DELETE FROM content.workspace_zettels "
+            "WHERE workspace_id IN ("
+            " SELECT id FROM core.workspaces WHERE owner_profile_id::text NOT IN %s"
+            ")",
+            (allowed,),
+        )
+        cur.execute(
+            "DELETE FROM core.workspaces WHERE owner_profile_id::text NOT IN %s",
+            (allowed,),
+        )
     conn.commit()
     logger.info("purged: %s", counts)
     return counts

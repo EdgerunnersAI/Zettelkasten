@@ -1,8 +1,14 @@
-"""Tests for reconcile_kg_users (Task 2D.1).
+"""Tests for reconcile_kg_users (Task 2D.1, v2-refactored 2026-05-11).
 
 The script talks to Postgres; tests use a fake conn/cursor recording every
 SQL statement and returning canned rows. We verify the SQL contract, dry-run
 vs apply behavior, and that the allowlist is respected.
+
+Post-Phase-8 v2 surface:
+- v1 kg_users    -> core.profiles
+- v1 kg_nodes    -> content.workspace_zettels JOIN core.workspaces
+- v1 kg_links    -> no separate table; workspace owner sweep replaces it
+- v1 kg_node_chunks -> content.workspace_chunk_membership (cascade-deleted with workspace)
 """
 from __future__ import annotations
 
@@ -76,8 +82,8 @@ def test_load_allowlist(tmp_path: Path):
 
 def test_audit_returns_users_and_orphans():
     conn = FakeConn({
-        "FROM kg_users": [(NARUTO, "naruto@example.com"), (ZORO, "zoro@example.com")],
-        "FROM kg_nodes": [(NARUTO,), (ZORO,), (ORPHAN,)],
+        "FROM core.profiles": [(NARUTO, "naruto@example.com"), (ZORO, "zoro@example.com")],
+        "FROM content.workspace_zettels": [(NARUTO,), (ZORO,), (ORPHAN,)],
     })
     report = r.audit(conn, allowlist=ALLOWLIST)
     assert ORPHAN in report["orphan_owners"]
@@ -87,12 +93,12 @@ def test_audit_returns_users_and_orphans():
 
 def test_audit_flags_duplicate_naruto():
     conn = FakeConn({
-        "FROM kg_users": [
+        "FROM core.profiles": [
             (NARUTO, "naruto@konoha.test"),
             (DUPE_NARUTO, "naruto-old@konoha.test"),
             (ZORO, "zoro@example.com"),
         ],
-        "FROM kg_nodes": [(NARUTO,)],
+        "FROM content.workspace_zettels": [(NARUTO,)],
     })
     report = r.audit(conn, allowlist=ALLOWLIST)
     assert any(row[0] == DUPE_NARUTO for row in report["duplicate_naruto"])
@@ -100,7 +106,7 @@ def test_audit_flags_duplicate_naruto():
 
 def test_dedupe_naruto_dry_run_does_not_commit():
     conn = FakeConn({
-        "FROM kg_users WHERE LOWER(email) LIKE 'naruto%%'": [(DUPE_NARUTO,)],
+        "FROM core.profiles WHERE LOWER(email) LIKE 'naruto%%'": [(DUPE_NARUTO,)],
     })
     n = r.dedupe_naruto(conn, dry_run=True, allowlist=ALLOWLIST)
     assert n == 1
@@ -111,28 +117,28 @@ def test_dedupe_naruto_dry_run_does_not_commit():
 
 def test_dedupe_naruto_apply_reassigns_and_deletes():
     conn = FakeConn({
-        "FROM kg_users WHERE LOWER(email) LIKE 'naruto%%'": [(DUPE_NARUTO,)],
+        "FROM core.profiles WHERE LOWER(email) LIKE 'naruto%%'": [(DUPE_NARUTO,)],
     })
     n = r.dedupe_naruto(conn, dry_run=False, allowlist=ALLOWLIST)
     assert n == 1
     assert conn.commits == 1
     sqls = [c[0] for c in conn._cursor.executed]
-    assert any("UPDATE kg_nodes" in s for s in sqls)
-    assert any("UPDATE kg_links" in s for s in sqls)
-    assert any("UPDATE kg_node_chunks" in s for s in sqls)
-    assert any("DELETE FROM kg_users" in s for s in sqls)
+    # v2: reassignment goes through core.workspaces.owner_profile_id; downstream
+    # workspace_zettels / workspace_chunk_membership follow automatically via FKs.
+    assert any("UPDATE core.workspaces" in s for s in sqls)
+    assert any("DELETE FROM core.profiles" in s for s in sqls)
 
 
 def test_dedupe_handles_no_duplicates():
-    conn = FakeConn({"FROM kg_users WHERE LOWER(email) LIKE 'naruto%%'": []})
+    conn = FakeConn({"FROM core.profiles WHERE LOWER(email) LIKE 'naruto%%'": []})
     assert r.dedupe_naruto(conn, dry_run=False, allowlist=ALLOWLIST) == 0
     assert conn.commits == 0
 
 
 def test_purge_orphans_dry_run_only_counts():
     conn = FakeConn({
-        "COUNT(*) FROM kg_nodes WHERE user_id::text NOT IN": [(7,)],
-        "COUNT(*) FROM kg_links WHERE user_id::text NOT IN": [(3,)],
+        "COUNT(*) FROM content.workspace_zettels": [(7,)],
+        "COUNT(*) FROM core.workspaces": [(3,)],
     })
     counts = r.purge_orphans(conn, dry_run=True, allowlist=ALLOWLIST)
     assert counts == {"nodes": 7, "links": 3}
@@ -141,14 +147,14 @@ def test_purge_orphans_dry_run_only_counts():
 
 def test_purge_orphans_apply_deletes():
     conn = FakeConn({
-        "COUNT(*) FROM kg_nodes WHERE user_id::text NOT IN": [(2,)],
-        "COUNT(*) FROM kg_links WHERE user_id::text NOT IN": [(1,)],
+        "COUNT(*) FROM content.workspace_zettels": [(2,)],
+        "COUNT(*) FROM core.workspaces": [(1,)],
     })
     r.purge_orphans(conn, dry_run=False, allowlist=ALLOWLIST)
     assert conn.commits == 1
     sqls = [c[0] for c in conn._cursor.executed]
-    assert any("DELETE FROM kg_nodes" in s for s in sqls)
-    assert any("DELETE FROM kg_links" in s for s in sqls)
+    assert any("DELETE FROM content.workspace_zettels" in s for s in sqls)
+    assert any("DELETE FROM core.workspaces" in s for s in sqls)
 
 
 def test_main_requires_at_least_one_action(monkeypatch):
