@@ -31,6 +31,31 @@ if git diff --cached --name-only | grep -qx 'CLAUDE.md'; then
   git add AGENTS.md
 fi
 
+# NIST SP 800-53 AU-2 / SOC 2 CC7.2 audit-trail guard: any commit that edits
+# ops/runbooks/db-direct-touch.log must include a GitHub issue / PR reference
+# in the commit message so the touch is link-traceable. Per R3 research 2024-
+# 2026: append-only audit trail outside the DB is the canonical compliance
+# pattern; the runbook itself enforces "one entry per touch", this hook adds
+# the upstream-ticket linkage. Bypass with --no-verify only when the touch is
+# documented elsewhere (e.g. an inline runbook entry that names the ticket).
+if git diff --cached --name-only | grep -qx 'ops/runbooks/db-direct-touch.log'; then
+  COMMIT_MSG_FILE="${1:-.git/COMMIT_EDITMSG}"
+  if [ -r "$COMMIT_MSG_FILE" ] && ! grep -qE '#[0-9]+|/issues/[0-9]+|/pull/[0-9]+|PR-[0-9]+' "$COMMIT_MSG_FILE"; then
+    cat >&2 <<EOF
+[pre-commit] BLOCKED — db-direct-touch.log edit without ticket reference.
+
+NIST SP 800-53 AU-2 / SOC 2 CC7.2 require traceable audit trails for
+direct DB mutations. To unblock: add a GitHub issue / PR reference to
+the commit message — e.g. "ops(db): manual fix per #1234" or
+"...repo/pull/567 documents rationale". Then re-commit.
+
+If the touch is fully documented inside the runbook entry itself
+(operator + reason + before/after), bypass with --no-verify.
+EOF
+    exit 1
+  fi
+fi
+
 # Phase 8 prevention guard: if any supabase/website/_v2/*_drop_*.sql is staged,
 # require expected_schema.json to be staged in the SAME commit. Phase 8 deploys
 # broke 3 times because the manifest wasn't auto-regenerated after destructive
