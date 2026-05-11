@@ -41,10 +41,8 @@ def load_env() -> None:
 
 
 async def snapshot_counts(conn: asyncpg.Connection) -> dict[str, int]:
+    # v1 public.kg_* tables dropped in Phase 6 — counts now come from v2 schemas only.
     return {
-        "public.kg_users": await conn.fetchval("SELECT COUNT(*) FROM public.kg_users"),
-        "public.kg_nodes": await conn.fetchval("SELECT COUNT(*) FROM public.kg_nodes"),
-        "public.kg_node_chunks": await conn.fetchval("SELECT COUNT(*) FROM public.kg_node_chunks"),
         "core.profiles": await conn.fetchval("SELECT COUNT(*) FROM core.profiles"),
         "core.workspaces": await conn.fetchval("SELECT COUNT(*) FROM core.workspaces"),
         "content.canonical_zettels": await conn.fetchval("SELECT COUNT(*) FROM content.canonical_zettels"),
@@ -139,18 +137,13 @@ async def main() -> int:
         except Exception as e:
             print(f"\nWarning: failed to delete test user: {e}")
 
-        # Verdict
+        # Verdict — public.kg_* dropped in Phase 6, so only v2 growth is meaningful.
         print("\n" + "=" * 70)
-        v1_growth = (after["public.kg_nodes"] - before["public.kg_nodes"]) > 0
         v2_growth = (after["content.workspace_zettels"] - before["content.workspace_zettels"]) > 0
-        if v2_growth and not v1_growth:
+        if v2_growth:
             print("VERDICT: PURE v2 (writes landed in content.* only) ✓")
-        elif v2_growth and v1_growth:
-            print("VERDICT: DUAL-WRITE (both v1 and v2 got rows) — purge incomplete")
-        elif v1_growth and not v2_growth:
-            print("VERDICT: v1 ONLY (v2 path didn't fire) ✗ — needs fix")
         else:
-            print("VERDICT: NO WRITES landed (both schemas unchanged) — likely auth/route failure")
+            print("VERDICT: NO WRITES landed (content.workspace_zettels unchanged) — likely auth/route failure")
         return 0
     finally:
         await conn.close()
