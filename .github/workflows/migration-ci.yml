@@ -9,41 +9,10 @@ on:
     paths: ['supabase/**/*.sql']
 
 jobs:
-  migrate-fresh:
-    name: Fresh-DB migration apply
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_PASSWORD: ci
-          POSTGRES_DB: kg_ci
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-        ports:
-          - 5432:5432
-    steps:
-      - uses: actions/checkout@v5
-      - name: Prepare legacy Supabase baseline
-        env:
-          PGPASSWORD: ci
-        run: |
-          psql -h localhost -U postgres -d kg_ci -v ON_ERROR_STOP=1 <<'SQL'
-          \i supabase/website/kg_public/ci_baseline.sql
-          SQL
-      - name: Apply all kg_public migrations from scratch
-        env:
-          PGPASSWORD: ci
-        run: |
-          for f in $(ls supabase/website/kg_public/migrations/*.sql | sort); do
-            echo "::group::Applying $f"
-            psql -h localhost -U postgres -d kg_ci -v ON_ERROR_STOP=1 -f "$f"
-            echo "::endgroup::"
-          done
+  # 2026-05-11: removed legacy `migrate-fresh` job. It applied
+  # kg_public/migrations/*.sql + kg_public/ci_baseline.sql (both legacy v1
+  # references to dropped public.kg_* tables) to a fresh pgvector container.
+  # v1 is gone post-Phase-8; coverage moved to migrate-v2-fresh below.
 
   migrate-v2-fresh:
     # Phase 8.5.R1-3: PR-time "_v2 applies cleanly on a fresh Supabase stack"
@@ -80,13 +49,15 @@ jobs:
           pip install -r ops/requirements.txt
       - name: Apply _v2 migrations to fresh DB
         env:
-          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          # 2026-05-11: env var name MUST be SUPABASE_V2_DATABASE_URL —
+          # apply_migrations.py::_build_dsn(v2=True) reads only this name.
+          SUPABASE_V2_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           MIGRATION_MANIFEST_AUTOBOOTSTRAP: "1"
         run: |
           python ops/scripts/apply_migrations.py --v2
       - name: Verify manifest matches freshly-applied DB
         env:
-          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          SUPABASE_V2_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
         run: |
           # --check-manifest-fresh asserts every _v2/expected_schema.json
           # entry exists in the connected DB. A non-zero exit blocks merge.

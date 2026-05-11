@@ -48,7 +48,9 @@ jobs:
           pip install -r ops/requirements.txt
       - name: Introspect prod & diff against repo manifest
         env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # 2026-05-11: env var name MUST be SUPABASE_V2_DATABASE_URL —
+          # apply_migrations.py::_build_dsn(v2=True) reads only this name.
+          SUPABASE_V2_DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           python ops/scripts/apply_migrations.py --v2 --check-manifest-fresh
       - name: Drift detected (failure annotation)

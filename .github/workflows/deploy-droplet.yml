@@ -58,52 +58,15 @@ jobs:
           NEXUS_TOKEN_ENCRYPTION_KEY: "7TgtMgeR5dMTnXxW6ULICwhf66A1VpzwuNFuIBqmoe4="
         run: pytest -q --maxfail=5
 
-  # iter-03 §1C.5: schema-drift freshness gate. Spins a throwaway Postgres,
-  # applies every committed migration, then asks apply_migrations to compare
-  # the resulting live schema against supabase/website/kg_public/expected_schema.json.
-  # Drift here means a migration was added without updating the manifest —
-  # block the deploy so the operator either edits the manifest or fixes the
-  # migration.
-  migrations-manifest-check:
-    name: Schema-drift manifest freshness
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: ops/requirements.txt
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r ops/requirements.txt
-          pip install 'psycopg[binary]'
-      - name: Apply migrations + verify manifest
-        env:
-          SUPABASE_DB_URL: postgresql://postgres:testpass@localhost:5432/postgres
-        run: |
-          # Skip the gate if the manifest hasn't been bootstrapped yet —
-          # the first commit that adds expected_schema.json arms the gate.
-          if [ ! -f supabase/website/kg_public/expected_schema.json ]; then
-            echo "[manifest-check] expected_schema.json not present yet; skipping."
-            exit 0
-          fi
-          python ops/scripts/apply_migrations.py
-          python ops/scripts/apply_migrations.py --check-manifest-fresh
+  # 2026-05-11: removed `migrations-manifest-check` job. It used to apply legacy
+  # kg_public/migrations to vanilla postgres:15 and verify against a v1 manifest
+  # that no longer exists. Re-pointing to _v2 won't work either: v2 SQL references
+  # auth.users / auth.uid() / auth.jwt() which vanilla pgvector containers can't
+  # provide. Coverage is preserved by:
+  #   - .github/workflows/migration-ci.yml::migrate-v2-fresh — PR-time fresh apply
+  #     against a full Supabase stack (auth/GoTrue/vault/pgsodium/pgvector).
+  #   - .github/workflows/v2_drift_check.yml — nightly drift check against PROD.
+  # See docs/superpowers/plans/2026-05-10-phase-8-v2-purge-closeout.md.
 
   build-and-push:
     name: Build & push image
