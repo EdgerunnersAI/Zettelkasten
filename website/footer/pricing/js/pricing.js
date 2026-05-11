@@ -598,8 +598,11 @@
       if (!r.ok) return null;
       return r.json();
     }).then(function (payload) {
-      if (payload && payload.profile) {
-        window.ZKPricing.cachedProfile = payload.profile;
+      // Always store the response, even when profile is null or phone-less, so
+      // the click handler can decide to open the phone modal without paying a
+      // round-trip just to learn the profile is missing.
+      if (payload) {
+        window.ZKPricing.cachedProfile = payload.profile || { phone: '' };
       }
     }).catch(function () { /* non-fatal */ });
   }
