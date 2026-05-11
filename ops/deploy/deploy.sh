@@ -138,7 +138,26 @@ docker run --rm --network host \
 MIG_RC=${PIPESTATUS[0]}
 set -e
 if [ "$MIG_RC" -ne 0 ]; then
-    log "[migration] FAILED rc=$MIG_RC — ABORTING DEPLOY (no traffic flip, IDLE container not started)"
+    case "$MIG_RC" in
+        2)
+            log "[migration] CONFIG ERROR (rc=2) — ABORTING DEPLOY (no traffic flip, IDLE container not started)"
+            log "[migration] Likely cause: missing/invalid SUPABASE_V2_DATABASE_URL or related env in /opt/zettelkasten/compose/.env"
+            ;;
+        3)
+            log "[migration] DRIFT DETECTED (rc=3) — ABORTING DEPLOY (no traffic flip, IDLE container not started)"
+            log "[migration] An applied migration's checksum no longer matches the file on disk."
+            log "[migration] Runbook: ops/runbooks/migration-drift.md"
+            log "[migration] Resolution paths (pick one, then re-deploy):"
+            log "[migration]   (a) Revert if unintended:"
+            log "[migration]       git checkout HEAD -- supabase/website/_v2/<file>.sql"
+            log "[migration]   (b) Move to repeatable if intentional+idempotent code object (fn/view/RLS):"
+            log "[migration]       mv supabase/website/_v2/<file>.sql supabase/website/_v2/repeatable/R__<name>.sql"
+            log "[migration]   (c) Add a new versioned migration for structural changes (table/column)."
+            ;;
+        *)
+            log "[migration] FAILED rc=$MIG_RC — ABORTING DEPLOY (no traffic flip, IDLE container not started)"
+            ;;
+    esac
     exit "$MIG_RC"
 fi
 log "[migration] OK — proceeding with blue/green flip."
