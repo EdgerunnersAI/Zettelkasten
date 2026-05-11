@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 table kg_bandit_posteriors.
+# Not scheduled by any workflow (verified 2026-05-11). No v2 equivalent table.
+# Revive: rebuild against v2 bandit RPC surface if/when needed. Tracked for follow-up.
 """iter-12 T31 R4: hourly per-Kasten bandit health check + auto-rollback.
 
 Pathology rules (all PER-KASTEN ONLY — global revert is FORBIDDEN per CLAUDE.md):

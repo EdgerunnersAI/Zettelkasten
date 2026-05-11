@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 table kg_bandit_posteriors.
+# One-shot warm-start backfill — not scheduled by any workflow (verified 2026-05-11).
+# Revive: rebuild against v2 bandit RPC surface if/when needed. Tracked for follow-up.
 """iter-12 T31 R4: one-shot warm-start backfill for bandit posteriors.
 
 Reads last 30 days of static-0.30 anchor-seed outcomes from the droplet logs

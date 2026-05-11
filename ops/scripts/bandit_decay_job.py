@@ -1,3 +1,8 @@
+# LEGACY (broken after 2026-05-11): references dropped v1 table kg_bandit_posteriors
+# (DROP IF EXISTS in _v2/15_drop_legacy_tables.sql). No v2 equivalent table — v2 exposes
+# rag_bandit_read_arms() / rag_bandit_record_outcome() RPCs (different surface). Not
+# scheduled by any workflow (verified 2026-05-11). Revive: rebuild against v2 bandit
+# RPC surface if/when needed. Tracked for follow-up.
 """iter-12 T31 R4: daily decay job for Thompson-sampling bandit posteriors.
 
 Applies γ=0.98/day decay to α and β in kg_bandit_posteriors.
