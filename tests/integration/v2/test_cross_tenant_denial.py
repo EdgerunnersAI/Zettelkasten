@@ -28,6 +28,16 @@ pytestmark = pytest.mark.live
 @pytest.fixture
 def v2_app(monkeypatch):
     monkeypatch.setenv("DB_SCHEMA_VERSION", "v2")
+    # Phase 8.5.R3 follow-up: the prior `if 503 and "RAG runtime"` skip pattern
+    # was triggered by `get_rag_runtime()` raising on missing Gemini keys
+    # (website/features/api_key_switching/__init__.py:50 — "No Gemini API keys
+    # found"), NOT by LANGFUSE. The original skip message was misleading.
+    # Stubbing GEMINI_API_KEYS lets the runtime construct cleanly; cross-tenant
+    # tests reject at the RLS layer (403/404) BEFORE any LLM call, so no live
+    # Gemini round-trip occurs. Same applies to ANTHROPIC_API_KEY which is
+    # stored-not-raised at backend init.
+    monkeypatch.setenv("GEMINI_API_KEYS", "stub-key-for-cross-tenant-tests")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "stub-key-for-cross-tenant-tests")
     from website.api import auth as auth_mod
     auth_mod._jwks_client = None
     from website.core import persist as persist_mod
