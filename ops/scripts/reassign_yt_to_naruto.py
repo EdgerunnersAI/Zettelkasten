@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_nodes / kg_users.
+# One-shot remediation script — fully consumed. v2 ownership lives in
+# workspaces.owner_user_id (not a kg_users mapping). Kept for historical context.
 """Move specific post-fix YT zettels from legacy 'naruto' render_id user to the
 authenticated Naruto UUID f2105544-b73d-4946-8329-096d82f070d3.
 

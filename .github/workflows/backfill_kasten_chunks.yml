@@ -1,5 +1,10 @@
 name: Backfill Kasten Chunks (one-shot)
 
+# LEGACY (broken after 2026-05-11): invokes ops/scripts/backfill_chunks.py which
+# references dropped public.kg_nodes / kg_node_chunks. Manual-dispatch only —
+# won't fire silently. Revive after porting backfill_chunks.py to v2 schema
+# (content_nodes / chunks via website.core.supabase_v2).
+
 on:
   workflow_dispatch:
     inputs:

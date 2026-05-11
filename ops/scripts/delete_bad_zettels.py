@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_nodes / kg_links.
+# One-shot cleanup script — fully consumed; v2 equivalent (content_nodes/edges)
+# not needed for new captures. Kept as reference; retire if not revived by 2026-06.
 """Delete malfunctioned zettels from Supabase kg_nodes.
 
 Targets rows explicitly flagged by the user as low-content or placeholder

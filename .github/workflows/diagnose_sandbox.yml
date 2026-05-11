@@ -1,5 +1,10 @@
 name: Diagnose Sandbox (one-shot)
 
+# LEGACY (broken after 2026-05-11): invokes ops/scripts/diagnose_sandbox.py which
+# references dropped public.kg_users / kg_nodes / rag_sandbox_members. Manual-
+# dispatch only — won't fire silently. Revive after porting to v2 schema
+# (workspaces / content_nodes via website.core.supabase_v2).
+
 on:
   workflow_dispatch:
     inputs:

@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_* tables (kg_users,
+# kg_nodes, kg_node_chunks, rag_sandbox_members). To revive, port to v2 schema
+# (workspaces / content_nodes / chunks) via website.core.supabase_v2.client.
 """Diagnose user_id wiring for a kasten sandbox.
 
 Prints:

@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_nodes.summary.
+# v2 equivalent: content_nodes.summary via website.core.supabase_v2. Tracked for
+# follow-up; one-shot historical backfill — likely retire rather than port.
 """Backfill kg_nodes.summary from on-disk eval artifacts.
 
 Recovers the structured `detailed_summary` that was silently dropped by the

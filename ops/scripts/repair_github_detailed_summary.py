@@ -1,3 +1,5 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_nodes. To revive,
+# port to website.core.supabase_v2 / content_nodes.summary. Tracked for follow-up.
 """Repair script for github rows whose ``summary.detailed_summary`` is a
 Python repr of a list-of-dict (iter-23 regression) rather than either a
 JSON array or a markdown string.

@@ -1,3 +1,6 @@
+# LEGACY (broken after 2026-05-11): references dropped public.kg_nodes /
+# kg_node_chunks. Wired to backfill_kasten_chunks.yml workflow (manual-dispatch
+# only — won't fire silently). To revive, port to v2 (content_nodes / chunks).
 """Backfill kg_node_chunks for existing KG nodes that have zero chunks.
 
 Designed to run inside the production container via ``docker exec`` where

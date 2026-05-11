@@ -1,11 +1,14 @@
 name: KG Intelligence Tests
 
 on:
+  # 2026-05-11: removed stale `website/core/supabase_kg/**` filter (directory
+  # was retired in Phase 8.0.6 — only a __pycache__ remained). Kept v2-aware
+  # paths so the workflow actually fires on relevant changes.
   pull_request:
     paths:
       - 'website/features/kg_features/**'
-      - 'website/core/supabase_kg/**'
-      - 'supabase/website/kg_features/**'
+      - 'website/core/supabase_v2/**'
+      - 'supabase/website/_v2/**'
       - 'tests/kg_intelligence/**'
       - 'ops/requirements.txt'
       - '.github/workflows/kg-intelligence-tests.yml'
@@ -13,8 +16,8 @@ on:
     branches: [master]
     paths:
       - 'website/features/kg_features/**'
-      - 'website/core/supabase_kg/**'
-      - 'supabase/website/kg_features/**'
+      - 'website/core/supabase_v2/**'
+      - 'supabase/website/_v2/**'
       - 'tests/kg_intelligence/**'
       - 'ops/requirements.txt'
       - '.github/workflows/kg-intelligence-tests.yml'
