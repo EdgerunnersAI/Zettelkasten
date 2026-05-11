@@ -103,8 +103,15 @@
       throw err;
     }
 
-    var profilePayload = await fetchJson('/api/pricing/billing-profile', { headers: authHeaders() });
-    var profile = profilePayload && profilePayload.profile;
+    // Use the profile that pricing.js prefetched on page load if available —
+    // saves the click-time GET round-trip when the user has a phone on file.
+    var profile = null;
+    if (window.ZKPricing && window.ZKPricing.cachedProfile && window.ZKPricing.cachedProfile.phone) {
+      profile = window.ZKPricing.cachedProfile;
+    } else {
+      var profilePayload = await fetchJson('/api/pricing/billing-profile', { headers: authHeaders() });
+      profile = profilePayload && profilePayload.profile;
+    }
     if (profile && profile.phone) return profile;
 
     // Pages can install window.ZKPricing.promptForPhone to capture the phone

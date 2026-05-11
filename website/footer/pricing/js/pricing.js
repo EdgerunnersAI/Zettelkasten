@@ -578,9 +578,30 @@
     if (window.ZKPricing && typeof window.ZKPricing.loadRazorpayScript === 'function') {
       window.ZKPricing.loadRazorpayScript().catch(function () { /* non-fatal */ });
     }
+    // Prefetch the user's billing profile in parallel with the rest of the
+    // page boot so the first buy click doesn't pay the 1.5 s India→droplet
+    // round-trip again. purchase_launcher reads window.ZKPricing.cachedProfile
+    // before falling back to fetching itself.
+    prefetchBillingProfile();
     await Promise.all([bootSharedHeader(), refreshCurrentSubscription()]);
     renderSubscriptions();
     renderPacks();
+  }
+
+  function prefetchBillingProfile() {
+    if (!window.ZKPricing) return;
+    var token = readAuthToken();
+    if (!token) return;  // anonymous visitors will hit login modal anyway
+    fetch('/api/pricing/billing-profile', {
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    }).then(function (r) {
+      if (!r.ok) return null;
+      return r.json();
+    }).then(function (payload) {
+      if (payload && payload.profile) {
+        window.ZKPricing.cachedProfile = payload.profile;
+      }
+    }).catch(function () { /* non-fatal */ });
   }
 
   async function refreshCurrentSubscription() {
