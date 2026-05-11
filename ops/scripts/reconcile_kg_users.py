@@ -102,20 +102,23 @@ def dedupe_naruto(conn, *, dry_run: bool = True, allowlist: dict | None = None) 
 
 def purge_orphans(conn, *, dry_run: bool = True, allowlist: dict | None = None) -> dict[str, int]:
     aw = allowlist or load_allowlist()
-    allowed = tuple(aw["allowed_auth_ids"])
+    # psycopg3 binds Python lists -> PostgreSQL ARRAY; use `!= ALL(%s)` instead
+    # of `NOT IN %s` (the latter emits a single $1 placeholder, which Postgres
+    # rejects as a syntax error since IN expects a parenthesised list).
+    allowed = list(aw["allowed_auth_ids"])
     with conn.cursor() as cur:
         # v2: count zettels whose workspace owner is outside the allowlist.
         cur.execute(
             "SELECT COUNT(*) FROM content.workspace_zettels wz "
             "JOIN core.workspaces w ON w.id = wz.workspace_id "
-            "WHERE w.owner_profile_id::text NOT IN %s",
+            "WHERE w.owner_profile_id::text != ALL(%s)",
             (allowed,),
         )
         n_nodes = cur.fetchone()[0]
         # v2: count workspaces themselves owned outside the allowlist (replaces
         # the v1 kg_links sweep — links no longer exist as a standalone table).
         cur.execute(
-            "SELECT COUNT(*) FROM core.workspaces WHERE owner_profile_id::text NOT IN %s",
+            "SELECT COUNT(*) FROM core.workspaces WHERE owner_profile_id::text != ALL(%s)",
             (allowed,),
         )
         n_links = cur.fetchone()[0]
@@ -129,12 +132,12 @@ def purge_orphans(conn, *, dry_run: bool = True, allowlist: dict | None = None) 
         cur.execute(
             "DELETE FROM content.workspace_zettels "
             "WHERE workspace_id IN ("
-            " SELECT id FROM core.workspaces WHERE owner_profile_id::text NOT IN %s"
+            " SELECT id FROM core.workspaces WHERE owner_profile_id::text != ALL(%s)"
             ")",
             (allowed,),
         )
         cur.execute(
-            "DELETE FROM core.workspaces WHERE owner_profile_id::text NOT IN %s",
+            "DELETE FROM core.workspaces WHERE owner_profile_id::text != ALL(%s)",
             (allowed,),
         )
     conn.commit()
