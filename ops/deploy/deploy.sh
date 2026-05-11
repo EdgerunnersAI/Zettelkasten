@@ -90,39 +90,40 @@ IMAGE_TAG="$SHA" docker compose \
 # Runs the new image as a short-lived helper container so the migration set
 # matches the code about to be deployed. Failure is FATAL — we abort before
 # touching the IDLE container so prod stays on the previous (working) color.
+#
+# Phase 8.5 v2-purge (2026-05-11): switched to --v2 so the deploy targets
+# supabase/website/_v2/*.sql against SUPABASE_V2_DATABASE_URL. The legacy
+# v1 migration tree (supabase/website/kg_public/migrations/) is unrunnable
+# post-Phase-6 — every file there references public.kg_* tables that were
+# dropped in 15_drop_legacy_tables.sql / 31_drop_legacy_pricing.sql. The
+# canonical v2 manifest lives in-image at supabase/website/_v2/
+# expected_schema.json (versioned with code), so we no longer mount an
+# external manifest-out volume — operator updates the manifest by running
+# `apply_migrations.py --v2 --update-manifest` against staging and
+# committing the diff.
 
-# iter-03 §1C.1 preflight: confirm SUPABASE_DB_URL is in the env-file before
-# we even spin the migration container. Without it apply_migrations exits
+# Preflight: confirm SUPABASE_V2_DATABASE_URL is in the env-file before we
+# even spin the migration container. Without it apply_migrations --v2 exits
 # with rc=2 (config error) — surface that as a clear deploy abort.
-if ! grep -q '^SUPABASE_DB_URL=' /opt/zettelkasten/compose/.env; then
-    log "[deploy] FATAL: SUPABASE_DB_URL missing from /opt/zettelkasten/compose/.env"
+if ! grep -q '^SUPABASE_V2_DATABASE_URL=' /opt/zettelkasten/compose/.env; then
+    log "[deploy] FATAL: SUPABASE_V2_DATABASE_URL missing from /opt/zettelkasten/compose/.env"
     exit 2
 fi
 
-log "[migration] Applying pending Supabase migrations against prod..."
+log "[migration] Applying pending v2 Supabase migrations against prod..."
 set +e
 # iter-03 §1C.4: pass deploy provenance so apply_migrations can stamp each
 # audit row with git SHA / deploy id / actor. Defaults guarantee non-null
 # values even when this script is run outside CI (manual operator deploy).
-# iter-03 §1C.5: mount a host dir so the bootstrapped/verified manifest
-# survives the container exit. Operator commits this back to Git after the
-# first deploy, after which the in-image copy at /app/supabase/.../
-# expected_schema.json is the canonical source.
-MANIFEST_HOST_DIR="$ROOT/data/schema"
-mkdir -p "$MANIFEST_HOST_DIR"
-chown -R deploy:deploy "$MANIFEST_HOST_DIR" 2>/dev/null || true
-
 docker run --rm --network host \
     --env-file /opt/zettelkasten/compose/.env \
-    -v "$MANIFEST_HOST_DIR":/manifest-out \
     -e DEPLOY_GIT_SHA="${DEPLOY_GIT_SHA:-$SHA}" \
     -e DEPLOY_ID="${DEPLOY_ID:-manual-$(date -u +%Y%m%dT%H%M%SZ)}" \
     -e DEPLOY_ACTOR="${DEPLOY_ACTOR:-$(whoami)}" \
     -e MIGRATION_MANIFEST_REQUIRED="${MIGRATION_MANIFEST_REQUIRED:-1}" \
     -e MIGRATION_MANIFEST_AUTOBOOTSTRAP="${MIGRATION_MANIFEST_AUTOBOOTSTRAP:-1}" \
     "$IMAGE" \
-    python ops/scripts/apply_migrations.py \
-        --manifest-path /manifest-out/expected_schema.json \
+    python ops/scripts/apply_migrations.py --v2 \
         2>&1 | tee -a "$LOG"
 MIG_RC=${PIPESTATUS[0]}
 set -e
