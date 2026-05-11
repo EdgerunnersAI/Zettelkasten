@@ -107,7 +107,15 @@
     var profile = profilePayload && profilePayload.profile;
     if (profile && profile.phone) return profile;
 
-    var phone = window.prompt('Enter your phone number for secure checkout');
+    // Pages can install window.ZKPricing.promptForPhone to capture the phone
+    // via a styled inline modal; we fall back to window.prompt only when no
+    // page has installed a custom collector.
+    var phone;
+    if (typeof window.ZKPricing.promptForPhone === 'function') {
+      phone = await window.ZKPricing.promptForPhone();
+    } else {
+      phone = window.prompt('Enter your phone number for secure checkout');
+    }
     if (!phone) throw new Error('Phone number is required for checkout.');
     return await fetchJson('/api/pricing/billing-profile', {
       method: 'PUT',
@@ -297,7 +305,11 @@
       onResume: typeof options.onResume === 'function' ? options.onResume : null
     };
 
-    var catalog = await fetchJson('/api/pricing/catalog');
+    // Reuse the catalog that pricing.js already fetched on page load if
+    // available — saves one round-trip on every click.
+    var catalog = (window.ZKPricing && window.ZKPricing.cachedCatalog)
+      ? window.ZKPricing.cachedCatalog
+      : await fetchJson('/api/pricing/catalog');
     var productId = chooseProductId(options, catalog);
     if (!productId) {
       window.location.href = '/pricing';

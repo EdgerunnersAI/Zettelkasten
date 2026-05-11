@@ -7,15 +7,41 @@
   <title>Pricing | Zettelkasten</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Prime TLS + warm the Razorpay checkout script before the user clicks
+       Subscribe so the first-click latency (currently ~300-800 ms) is hidden
+       behind the catalog/billing-profile fetches that already happen. -->
+  <link rel="preconnect" href="https://checkout.razorpay.com" crossorigin>
+  <link rel="preload" as="script" href="https://checkout.razorpay.com/v1/checkout.js" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css?v=20260407a">
   <link rel="stylesheet" href="/header/css/header.css?v=20260418f">
   <link rel="stylesheet" href="/auth/css/auth.css?v=20260413a">
   <link rel="stylesheet" href="/user-pricing/css/purchase_launcher.css?v=20260501a">
-  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260511b">
+  <link rel="stylesheet" href="/pricing/css/pricing.css?v=20260511c">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <!-- Inline phone-collection modal — replaces window.prompt() for the
+       one-time billing phone capture on the first checkout. Same shell as
+       the login modal so theming stays consistent. Wired up by pricing.js
+       via window.ZKPricing.promptForPhone. -->
+  <div class="login-modal zk-phone-modal" id="phone-modal">
+    <div class="modal-overlay" data-phone-overlay></div>
+    <div class="modal-content">
+      <button class="modal-close" data-phone-cancel aria-label="Cancel">&times;</button>
+      <h2 class="modal-title">One last detail</h2>
+      <p class="modal-subtitle">We need a phone number for secure checkout and order receipts.</p>
+      <form id="phone-form">
+        <div class="login-field">
+          <label for="phone-input">Phone number</label>
+          <input type="tel" id="phone-input" placeholder="+91 98765 43210" autocomplete="tel" inputmode="tel" required />
+        </div>
+        <button type="submit" class="login-submit">Continue to payment</button>
+        <p class="login-error" id="phone-error"></p>
+      </form>
+    </div>
+  </div>
+
   <!-- Inline login modal — opens in place when a buy click hits a 401 instead of
        redirecting away to /. Same markup + IDs as static/index.html so auth.js
        picks it up and Supabase password-grant works identically. -->
@@ -82,7 +108,7 @@
   <script src="/header/js/header.js?v=20260428b"></script>
   <script src="/browser-cache/js/cache.js?v=20260413a"></script>
   <script src="/auth/js/auth.js?v=20260413a"></script>
-  <script src="/user-pricing/js/purchase_launcher.js?v=20260511b"></script>
-  <script src="/pricing/js/pricing.js?v=20260511b"></script>
+  <script src="/user-pricing/js/purchase_launcher.js?v=20260511c"></script>
+  <script src="/pricing/js/pricing.js?v=20260511c"></script>
 </body>
 </html>

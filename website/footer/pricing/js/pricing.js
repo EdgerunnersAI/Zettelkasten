@@ -500,6 +500,58 @@
     }
   }
 
+  // Inline phone-capture modal — installed as window.ZKPricing.promptForPhone so
+  // purchase_launcher.js picks it up instead of falling back to window.prompt.
+  // Returns a Promise that resolves to the phone string or null (cancelled).
+  function installPhoneModalHandler() {
+    if (!window.ZKPricing) return;
+    var modal = document.getElementById('phone-modal');
+    if (!modal) return;
+    var form = document.getElementById('phone-form');
+    var input = document.getElementById('phone-input');
+    var errEl = document.getElementById('phone-error');
+    var cancelBtn = modal.querySelector('[data-phone-cancel]');
+    var overlay = modal.querySelector('[data-phone-overlay]');
+
+    window.ZKPricing.promptForPhone = function () {
+      return new Promise(function (resolve) {
+        function cleanup(result) {
+          modal.classList.remove('open');
+          document.body.style.overflow = '';
+          form.removeEventListener('submit', onSubmit);
+          if (cancelBtn) cancelBtn.removeEventListener('click', onCancel);
+          if (overlay) overlay.removeEventListener('click', onCancel);
+          document.removeEventListener('keydown', onKey);
+          resolve(result);
+        }
+        function onSubmit(e) {
+          e.preventDefault();
+          var raw = (input.value || '').trim();
+          var digitsOnly = raw.replace(/[^\d+]/g, '');
+          if (digitsOnly.replace(/\+/g, '').length < 10) {
+            errEl.textContent = 'Enter at least 10 digits.';
+            errEl.style.display = 'block';
+            return;
+          }
+          cleanup(digitsOnly);
+        }
+        function onCancel() { cleanup(null); }
+        function onKey(e) { if (e.key === 'Escape') onCancel(); }
+
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        if (input) input.value = '';
+        form.addEventListener('submit', onSubmit);
+        if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
+        if (overlay) overlay.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKey);
+
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        if (input) { try { input.focus(); } catch (_) {} }
+      });
+    };
+  }
+
   async function bootSharedHeader() {
     // Hand the access token to the shared ZKHeader module so it can fetch
     // /api/me + render the user's avatar and dropdown — same as user_home
@@ -517,6 +569,15 @@
     await initSupabase();
     var response = await fetch('/api/pricing/catalog');
     catalog = await response.json();
+    // Hand the catalog to purchase_launcher so the next openPurchase call
+    // skips its own redundant catalog fetch.
+    if (window.ZKPricing) window.ZKPricing.cachedCatalog = catalog;
+    // Warm the Razorpay SDK on a microtask so it's resident by the time the
+    // user actually clicks Subscribe. preload <link> primes the network
+    // cache; this primes the global window.Razorpay function.
+    if (window.ZKPricing && typeof window.ZKPricing.loadRazorpayScript === 'function') {
+      window.ZKPricing.loadRazorpayScript().catch(function () { /* non-fatal */ });
+    }
     await Promise.all([bootSharedHeader(), refreshCurrentSubscription()]);
     renderSubscriptions();
     renderPacks();
@@ -642,6 +703,8 @@
   });
 
   window.addEventListener('resize', syncAllSlidingIndicators);
+
+  installPhoneModalHandler();
 
   loadCatalog().catch(function () {
     if (subscriptionGrid) subscriptionGrid.innerHTML = '<p class="pricing-error">Pricing could not load. Please refresh.</p>';
