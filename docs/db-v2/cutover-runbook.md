@@ -162,3 +162,32 @@ candidate.
 - `pytest tests/integration/v2/ --live` → all pass (cross-tenant denial fixed in TX 73c2e35).
 - Login verification: Naruto + Zoro PASS (to be re-verified in T15).
 
+## Phase 8.5.R3 final closeout — PURE v2 verdict captured 2026-05-11
+
+`python ops/scripts/verify_v2_e2e.py` exercised the full write path against
+the live production v2 schema at HEAD 0eb35d3. Test URL:
+`https://docs.python.org/3/whatsnew/3.12.html` (dedup hit on
+`canonical_zettels` + `canonical_chunks` — already ingested previously).
+
+**Snapshot (BEFORE → AFTER):**
+
+| table | before | after | Δ |
+|---|---:|---:|---:|
+| `core.profiles` | 269 | 270 | +1 |
+| `core.workspaces` | 274 | 275 | +1 |
+| `content.canonical_zettels` | 401 | 401 | +0 (dedup) |
+| `content.canonical_chunks` | 428 | 428 | +0 (dedup) |
+| `content.workspace_zettels` | 372 | 373 | +1 |
+| `content.workspace_chunk_membership` | 414 | 415 | +1 |
+
+**VERDICT: PURE v2 (writes landed in content.* only) ✓**
+
+Auth: a fresh e2e test user was minted, signed in, posted `/api/summarize`
+(HTTP 200), and `/api/graph` returned 1 node. Test-user cleanup raised
+`Database error deleting user` (known CASCADE gap — content.workspace_zettels
+FK blocks `auth.admin.delete_user`; backstop sessionfinish sweep in the
+test infra reclaims these eventually — separate audit item).
+
+This satisfies plan Phase 8.2 / Task 7 step 5: the cutover-runbook now
+carries the post-Phase-8 PURE v2 verdict on record.
+
