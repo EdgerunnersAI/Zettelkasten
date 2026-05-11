@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Annotated, Any, Callable
+from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -480,6 +480,13 @@ async def verify_order(
         repo.mark_payment_failed(payment_id=body.payment_id, reason="signature_mismatch")
         raise HTTPException(status_code=400, detail={"code": "signature_mismatch", "message": "Payment verification failed."})
 
+    # Replay-safety: a client that re-submits a valid verify (network retry,
+    # browser back-button, double-tap) must NOT double-credit packs or
+    # re-activate a subscription. The webhook layer already gates duplicates
+    # by event_id; this guards the client-callable path with the same intent.
+    if record.get("status") == "paid":
+        return {"status": "paid", "payment": _public_payment(record)}
+
     updated = repo.mark_payment_paid(
         payment_id=body.payment_id,
         razorpay_payment_id=body.razorpay_payment_id,
@@ -599,6 +606,8 @@ def _h_subscription_authenticated(repo, event, payload) -> str | None:
 
 
 def _h_subscription_activated(repo, event, payload) -> str | None:
+    # WAVE-A P1: owner MUST be derived from DB lookup keyed by razorpay
+    # subscription id — never from notes.render_user_id (caller-controlled).
     sub_entity = (payload.get("subscription") or {}).get("entity") or {}
     notes = sub_entity.get("notes") or {}
     payment_entity = (payload.get("payment") or {}).get("entity") or {}
@@ -606,15 +615,27 @@ def _h_subscription_activated(repo, event, payload) -> str | None:
     months = int(notes.get("months") or 1)
     plan_id = notes.get("plan_id") or ""
     period_id = notes.get("period_id") or ""
-    render_user_id = notes.get("render_user_id") or ""
-    if render_user_id and plan_id:
+    razorpay_sub_id = sub_entity.get("id") or ""
+    existing = (
+        repo.get_subscription_by_razorpay_id(razorpay_subscription_id=razorpay_sub_id)
+        if razorpay_sub_id
+        else None
+    )
+    user_sub = (existing or {}).get("render_user_id") if existing else None
+    if user_sub and plan_id:
         repo.activate_subscription(
-            user_sub=render_user_id,
+            user_sub=user_sub,
             plan_id=plan_id,
             period_id=period_id,
             months=months,
-            razorpay_subscription_id=sub_entity.get("id"),
+            razorpay_subscription_id=razorpay_sub_id,
             razorpay_payment_id=payment_entity.get("id"),
+        )
+    elif razorpay_sub_id:
+        # No DB row → cannot attribute. Log + return 200 so Razorpay does not retry.
+        logger.warning(
+            "subscription.activated: no DB row for razorpay_subscription_id=%s; ignoring (refusing to trust notes.render_user_id)",
+            razorpay_sub_id,
         )
     if pid and payment_entity.get("id"):
         updated = repo.mark_payment_paid(payment_id=pid, razorpay_payment_id=payment_entity["id"])
@@ -624,21 +645,33 @@ def _h_subscription_activated(repo, event, payload) -> str | None:
 
 def _h_subscription_charged(repo, event, payload) -> str | None:
     # Recurring renewal succeeded — extend period_end and bump paid_count.
+    # WAVE-A P1: owner via DB lookup, not notes.render_user_id.
     sub_entity = (payload.get("subscription") or {}).get("entity") or {}
     notes = sub_entity.get("notes") or {}
     payment_entity = (payload.get("payment") or {}).get("entity") or {}
     months = int(notes.get("months") or 1)
-    render_user_id = notes.get("render_user_id") or ""
     plan_id = notes.get("plan_id") or ""
     period_id = notes.get("period_id") or ""
-    if render_user_id and plan_id:
+    razorpay_sub_id = sub_entity.get("id") or ""
+    existing = (
+        repo.get_subscription_by_razorpay_id(razorpay_subscription_id=razorpay_sub_id)
+        if razorpay_sub_id
+        else None
+    )
+    user_sub = (existing or {}).get("render_user_id") if existing else None
+    if user_sub and plan_id:
         repo.activate_subscription(
-            user_sub=render_user_id,
+            user_sub=user_sub,
             plan_id=plan_id,
             period_id=period_id,
             months=months,
-            razorpay_subscription_id=sub_entity.get("id"),
+            razorpay_subscription_id=razorpay_sub_id,
             razorpay_payment_id=payment_entity.get("id"),
+        )
+    elif razorpay_sub_id:
+        logger.warning(
+            "subscription.charged: no DB row for razorpay_subscription_id=%s; ignoring (refusing to trust notes.render_user_id)",
+            razorpay_sub_id,
         )
     return notes.get("payment_id")
 
@@ -735,6 +768,17 @@ def _h_refund_processed(repo, event, payload) -> str | None:
     pid = notes.get("payment_id")
     refund_amount = int(refund_entity.get("amount") or 0)
     record = repo.get_payment_record(payment_id=pid) if pid else None
+    # BOLA guard: bind record to the Razorpay-issued payment id from the signed
+    # envelope. notes.payment_id is client-controllable; an attacker holding the
+    # webhook secret could otherwise pivot a refund onto a victim's record.
+    rzp_pay_id = payment_entity.get("id") or refund_entity.get("payment_id")
+    if record and rzp_pay_id and record.get("razorpay_payment_id") and record.get("razorpay_payment_id") != rzp_pay_id:
+        logger.warning(
+            "Refund event id mismatch: notes.payment_id=%s but Razorpay payment_id=%s; rejecting",
+            pid,
+            rzp_pay_id,
+        )
+        return None
     if record:
         # Decrement pack credits proportionally to the refund amount.
         if record.get("kind") == "pack" and record.get("meter") and record.get("quantity"):
@@ -782,10 +826,28 @@ def _dispute_handler(phase: str) -> Callable:
         dispute_entity = (payload.get("payment.dispute") or payload.get("dispute") or {}).get("entity") or {}
         payment_entity = (payload.get("payment") or {}).get("entity") or {}
         notes = payment_entity.get("notes") or {}
+        pid = notes.get("payment_id")
+
+        # BOLA guard (same class as refund.processed): if notes.payment_id
+        # resolves to a record whose stored razorpay_payment_id does NOT match
+        # the Razorpay-issued id in the signed envelope, refuse to act on it.
+        # We must short-circuit BEFORE record_dispute so a spoofed render_user_id
+        # cannot freeze the victim's account via _DISPUTE_FROZEN.
+        rzp_pay_id = payment_entity.get("id") or dispute_entity.get("payment_id")
+        record = repo.get_payment_record(payment_id=pid) if pid else None
+        if record and rzp_pay_id and record.get("razorpay_payment_id") and record.get("razorpay_payment_id") != rzp_pay_id:
+            logger.warning(
+                "Dispute %s event id mismatch: notes.payment_id=%s but Razorpay payment_id=%s; rejecting",
+                phase,
+                pid,
+                rzp_pay_id,
+            )
+            return None
+
         repo.record_dispute(
             razorpay_dispute_id=dispute_entity.get("id") or "",
             razorpay_payment_id=payment_entity.get("id") or dispute_entity.get("payment_id"),
-            payment_id=notes.get("payment_id"),
+            payment_id=pid,
             render_user_id=notes.get("render_user_id"),
             amount=int(dispute_entity.get("amount") or 0),
             phase=phase,
@@ -794,12 +856,11 @@ def _dispute_handler(phase: str) -> Callable:
         )
         # On 'lost', deduct pack credits same as refund processed.
         if phase == "lost":
-            record = repo.get_payment_record(payment_id=notes.get("payment_id")) if notes.get("payment_id") else None
             if record and record.get("kind") == "pack" and record.get("meter") and record.get("quantity"):
                 repo.deduct_pack_credits(
                     user_sub=record["render_user_id"], meter=record["meter"], quantity=int(record["quantity"])
                 )
-        return notes.get("payment_id")
+        return pid
 
     return _h
 

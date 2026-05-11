@@ -1,0 +1,13 @@
+{
+  "name": "zettelkasten-kg-frontend-tests",
+  "private": true,
+  "description": "Vitest harness for browser-cache and user-auth JS modules. Run: npx vitest run",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "jsdom": "^24.0.0"
+  }
+}

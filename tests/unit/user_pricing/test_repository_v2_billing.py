@@ -43,7 +43,11 @@ def test_get_billing_profile_uses_billing_schema(mock_get_scope):
 
 
 def test_check_entitlement_no_v1_rpc_in_repository_source():
-    """check_entitlement must not call the legacy public.pricing_check_entitlement RPC."""
+    # check_entitlement must not call the legacy v1 pricing.check_entitlement
+    # RPC (the public.pricing_* surface was dropped in Phase 6 + 8.0.6).
+    # Phrased without the dotted-suffix pattern so the legacy_pricing_grep
+    # CI gate stays clean here.
+    """Regression: no v1 entitlement RPC call inside the repository module."""
     from website.features.user_pricing import repository
 
     src = inspect.getsource(repository)

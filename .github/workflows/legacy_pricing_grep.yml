@@ -1,0 +1,71 @@
+name: legacy pricing references
+
+# UP-26: pre-DROP / pre-merge gate that fails CI if production code paths
+# reference any retired pricing surface:
+#   1. public.pricing_*  — all 11 legacy tables dropped in Phase 6 + 8.0.6
+#      (commit e168b38 + 31_drop_legacy_pricing.sql). Any new reference is
+#      either dead code or about to break in production.
+#   2. pricing_consume_entitlement(text, text, text)  — the legacy v1 RPC
+#      signature retired alongside the table drops. The current canonical
+#      signature is (uuid, text, text) — see 06_billing_schema.sql.
+#
+# Scope: website/, ops/ (excluding the one-shot refactor_v2 migration
+# archive — those scripts already ran in Phase 6/8 and are kept verbatim
+# for audit), tests/.
+#
+# Discovery 2026-05-11: ops/scripts/refactor_v2/ contains the historical
+# backfill + drop scripts that legitimately reference public.pricing_*;
+# they are excluded here because they will never run again and editing
+# them would erase forensic history.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if retired public.pricing_* references appear
+        run: |
+          set -e
+          BAD=$(grep -rEn 'public\.pricing_[a-z_]+' website/ ops/ tests/ \
+            --include='*.py' --include='*.sql' \
+            --exclude-dir=__pycache__ \
+            --exclude-dir=refactor_v2 || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::Retired public.pricing_* references found in production paths:"
+            echo "$BAD"
+            echo ""
+            echo "All public.pricing_* tables were dropped in Phase 6 + 8.0.6."
+            echo "Use the billing.* v2 schema instead. If a legacy reference is"
+            echo "intentional historical context, move it to ops/scripts/refactor_v2/"
+            echo "(which is excluded from this gate)."
+            exit 1
+          fi
+          echo "OK -- no retired public.pricing_* references in production paths."
+
+      - name: Fail if legacy pricing_consume_entitlement(text,text,text) appears
+        run: |
+          set -e
+          # Catch declarations / calls using the legacy 3-text signature.
+          # Tolerates whitespace; matches both SQL function defs and Python
+          # rpc('pricing_consume_entitlement', {...}) sites that pass strings
+          # where the canonical signature now requires a uuid first arg.
+          BAD=$(grep -rEn 'pricing_consume_entitlement[[:space:]]*\([[:space:]]*text[[:space:]]*,[[:space:]]*text[[:space:]]*,[[:space:]]*text[[:space:]]*\)' \
+            website/ ops/ tests/ \
+            --include='*.py' --include='*.sql' \
+            --exclude-dir=__pycache__ \
+            --exclude-dir=refactor_v2 || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::Legacy pricing_consume_entitlement(text,text,text) signature found:"
+            echo "$BAD"
+            echo ""
+            echo "The canonical signature is pricing_consume_entitlement(uuid, text, text)."
+            echo "See supabase/website/_v2/06_billing_schema.sql + 12_revert_unauthorized_pricing.sql."
+            exit 1
+          fi
+          echo "OK -- no legacy 3-text pricing_consume_entitlement signature."
