@@ -102,11 +102,20 @@ IMAGE_TAG="$SHA" docker compose \
 # `apply_migrations.py --v2 --update-manifest` against staging and
 # committing the diff.
 
-# Preflight: confirm SUPABASE_V2_DATABASE_URL is in the env-file before we
-# even spin the migration container. Without it apply_migrations --v2 exits
-# with rc=2 (config error) — surface that as a clear deploy abort.
-if ! grep -q '^SUPABASE_V2_DATABASE_URL=' /opt/zettelkasten/compose/.env; then
-    log "[deploy] FATAL: SUPABASE_V2_DATABASE_URL missing from /opt/zettelkasten/compose/.env"
+# Preflight: confirm a Supabase DB URL is in the env-file before we even
+# spin the migration container. Post-Phase-6/8 there is a single Supabase
+# project hosting only v2 schemas — SUPABASE_DB_URL and SUPABASE_V2_DATABASE_URL
+# point at the same DSN. We accept either, and inject SUPABASE_V2_DATABASE_URL
+# into the container env from SUPABASE_DB_URL when the v2-named var is absent
+# (covers the case where the operator has only registered SUPABASE_DB_URL as
+# a GH Actions secret). Without one of them apply_migrations --v2 exits with
+# rc=2 (config error) — surface that as a clear deploy abort.
+V2_URL_FROM_ENV=$(grep -E '^SUPABASE_V2_DATABASE_URL=' /opt/zettelkasten/compose/.env | head -n1 | cut -d= -f2- || true)
+if [ -z "$V2_URL_FROM_ENV" ]; then
+    V2_URL_FROM_ENV=$(grep -E '^SUPABASE_DB_URL=' /opt/zettelkasten/compose/.env | head -n1 | cut -d= -f2- || true)
+fi
+if [ -z "$V2_URL_FROM_ENV" ]; then
+    log "[deploy] FATAL: neither SUPABASE_V2_DATABASE_URL nor SUPABASE_DB_URL in /opt/zettelkasten/compose/.env"
     exit 2
 fi
 
@@ -117,6 +126,7 @@ set +e
 # values even when this script is run outside CI (manual operator deploy).
 docker run --rm --network host \
     --env-file /opt/zettelkasten/compose/.env \
+    -e SUPABASE_V2_DATABASE_URL="$V2_URL_FROM_ENV" \
     -e DEPLOY_GIT_SHA="${DEPLOY_GIT_SHA:-$SHA}" \
     -e DEPLOY_ID="${DEPLOY_ID:-manual-$(date -u +%Y%m%dT%H%M%SZ)}" \
     -e DEPLOY_ACTOR="${DEPLOY_ACTOR:-$(whoami)}" \
