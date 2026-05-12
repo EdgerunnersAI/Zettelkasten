@@ -11,14 +11,17 @@ beautifulsoup4>=4.12
 trafilatura>=2.0
 
 # Google Gemini API
-google-genai>=1.0
+google-genai>=1.0,<2.0
 aiohttp>=3.10
 
 # YouTube transcript extraction
 youtube-transcript-api>=1.0
 
 # YouTube metadata and audio (for yt-dlp based fallbacks)
-yt-dlp>=2024.0
+# Floor pinned to 2026.03.17 so the 2026 player-client set (tv_simply,
+# android_sdkless, web_safari) is available. Weekly rebuild is the
+# freshness strategy — see .github/workflows/yt-dlp-freshness.yml.
+yt-dlp[default]>=2026.03.17
 
 # Web frontend
 fastapi>=0.115

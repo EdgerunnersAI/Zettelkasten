@@ -13,6 +13,11 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY ops/requirements.txt /tmp/requirements.txt
+# Weekly image rebuild is the freshness strategy for yt-dlp (and other
+# pinned floors). The yt-dlp-freshness.yml workflow runs every Monday at
+# 05:00 UTC and fails the job if PyPI is more than 21 days ahead of the
+# installed version, prompting a `pip install -U yt-dlp[default]`-style
+# bump + image rebuild.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r /tmp/requirements.txt
 

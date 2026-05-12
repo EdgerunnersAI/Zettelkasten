@@ -1,0 +1,34 @@
+name: yt-dlp freshness
+
+# YouTube's anti-bot heuristics rotate faster than our normal release cadence.
+# This workflow runs weekly, compares the installed yt-dlp version against
+# PyPI's latest, and fails if we are more than 21 days behind so we are
+# prompted to bump ops/requirements.txt + rebuild the image.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'  # Mondays 05:00 UTC
+  workflow_dispatch:
+
+jobs:
+  freshness-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Compare installed vs PyPI latest
+        run: |
+          pip install --quiet yt-dlp
+          LATEST=$(curl -s https://pypi.org/pypi/yt-dlp/json | python -c "import sys,json; print(json.load(sys.stdin)['info']['version'])")
+          INSTALLED=$(python -c "import importlib.metadata; print(importlib.metadata.version('yt-dlp'))")
+          echo "installed=$INSTALLED latest=$LATEST"
+          LATEST="$LATEST" INSTALLED="$INSTALLED" python - <<'PY'
+          from datetime import date
+          import os, sys
+          def d(s): return date(*map(int, s.split('.')))
+          diff = (d(os.environ['LATEST']) - d(os.environ['INSTALLED'])).days
+          print(f"installed={d(os.environ['INSTALLED'])}, latest={d(os.environ['LATEST'])}, diff_days={diff}")
+          sys.exit(1 if diff > 21 else 0)
+          PY
