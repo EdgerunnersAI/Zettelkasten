@@ -82,10 +82,14 @@ def _runtime_for_user(user: dict):
 
 
 def _serialize_session(row: dict) -> dict:
+    # v2 ``rag.chat_sessions`` exposes ``profile_id``; legacy v1 rows used
+    # ``user_id``. Tolerate both so the serializer doesn't KeyError under v2.
+    # Maps to ``kasten_id`` -> ``sandbox_id`` for back-compat with the v1
+    # frontend payload shape.
     return {
         "id": row["id"],
-        "user_id": row["user_id"],
-        "sandbox_id": row.get("sandbox_id"),
+        "user_id": row.get("user_id") or row.get("profile_id"),
+        "sandbox_id": row.get("sandbox_id") or row.get("kasten_id"),
         "title": row.get("title", "New conversation"),
         "quality_mode": row.get("quality_mode", "fast"),
         "message_count": row.get("message_count", 0),

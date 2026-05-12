@@ -155,7 +155,14 @@ class RAGRepository:
         *,
         kasten_id: UUID,
         workspace_zettel_id: UUID,
+        workspace_id: UUID,
     ) -> bool:
+        # BOLA guard: refuse the delete unless the kasten belongs to the
+        # caller's workspace. The PostgREST DELETE below uses the service-role
+        # client (RLS bypassed by design), so the workspace gate MUST be
+        # explicit here to prevent cross-tenant member deletion.
+        if self.get_kasten(kasten_id, workspace_id) is None:
+            return False
         response = (
             self._client.schema("rag").table("kasten_zettels")
             .delete()
@@ -170,8 +177,12 @@ class RAGRepository:
         *,
         kasten_id: UUID,
         workspace_zettel_ids: list[UUID],
+        workspace_id: UUID,
     ) -> int:
         if not workspace_zettel_ids:
+            return 0
+        # BOLA guard: same as remove_zettel_from_kasten above.
+        if self.get_kasten(kasten_id, workspace_id) is None:
             return 0
         response = (
             self._client.schema("rag").table("kasten_zettels")

@@ -65,6 +65,34 @@ def _v2_scope_for(user: dict) -> tuple[V2RAGRepository, UUID, UUID] | None:
     return V2RAGRepository(), profile_id, workspace_id
 
 
+def _resolve_caller_workspace_for_kasten(
+    user: dict, kasten_id: UUID
+) -> tuple[V2RAGRepository, UUID]:
+    """Resolve caller's workspace_id and assert kasten ownership.
+
+    BOLA-mitigation helper used by the kasten member-mutation endpoints
+    (remove_member, bulk_remove_members). The auth subject's default
+    workspace is treated as the caller's acting workspace; ownership is
+    proven by ``rag_repo.get_kasten`` (workspace_id-keyed read returns None
+    when the workspace does not own the kasten — equivalent to the share
+    handler's ownership check). Raises 403 in any failure mode so the
+    response cannot reveal whether the kasten exists in another tenant.
+
+    Returns ``(rag_repo, workspace_id)`` on success.
+    """
+    scope = _v2_scope_for(user)
+    if scope is None:
+        # Caller has no v2 workspace; the v2-only delete paths cannot proceed
+        # safely. 403 (vs. 404) keeps the response identical for "kasten does
+        # not exist" and "caller is not the owner" — the share handler uses
+        # the same conservative pattern.
+        raise HTTPException(status_code=403, detail="Forbidden")
+    rag_repo, _profile_id, workspace_id = scope
+    if rag_repo.get_kasten(kasten_id, workspace_id) is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return rag_repo, workspace_id
+
+
 def _serialize_kasten_zettel_v2(row: dict) -> dict:
     """Map a row from ``rag.list_kasten_zettels`` RPC into the legacy member shape.
 
@@ -640,6 +668,26 @@ async def remove_member(
     node_id: str,
     user: Annotated[dict, Depends(get_current_user)],
 ):
+    # BOLA fix: resolve caller's workspace + verify kasten ownership BEFORE
+    # the delete. Without this, the legacy ``runtime.kg_user_id`` (auth UUID,
+    # NOT workspace_id) was forwarded to a service-role DELETE keyed only on
+    # (kasten_id, workspace_zettel_id) — letting any authenticated user
+    # remove members from any kasten.
+    if _v2_scope_for(user) is not None:
+        rag_repo, workspace_id = _resolve_caller_workspace_for_kasten(user, sandbox_id)
+        try:
+            wz_id = UUID(node_id)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid node_id") from exc
+        removed = rag_repo.remove_zettel_from_kasten(
+            kasten_id=sandbox_id,
+            workspace_zettel_id=wz_id,
+            workspace_id=workspace_id,
+        )
+        if not removed:
+            raise HTTPException(status_code=404, detail="Sandbox member not found")
+        return {"status": "ok", "node_id": node_id}
+
     runtime = _runtime_for_user(user)
     removed = await runtime.sandboxes.remove_member(sandbox_id, runtime.kg_user_id, node_id)
     if not removed:
@@ -653,13 +701,47 @@ async def bulk_remove_members(
     body: SandboxMemberRemoveRequest,
     user: Annotated[dict, Depends(get_current_user)],
 ):
+    if not any([body.node_ids, body.tags, body.source_types]):
+        raise HTTPException(status_code=400, detail="At least one filter is required")
+
+    # BOLA fix: same as remove_member above. Resolve real workspace_id and
+    # verify ownership before any delete; never trust ``runtime.kg_user_id``
+    # as a workspace key.
+    if _v2_scope_for(user) is not None:
+        rag_repo, workspace_id = _resolve_caller_workspace_for_kasten(user, sandbox_id)
+        # Use the v2 store wired with workspace_id so the BOLA gate fires
+        # inside the repo as well (defense in depth).
+        runtime = _runtime_for_user(user)
+        members = await runtime.sandboxes.list_members(sandbox_id, workspace_id, limit=1000)
+        matched_node_ids = [
+            member.get("workspace_zettel_id") or member.get("node_id")
+            for member in members
+            if _member_matches_filters(member, body)
+        ]
+        matched_wz_ids: list[UUID] = []
+        for mid in matched_node_ids:
+            if not mid:
+                continue
+            try:
+                matched_wz_ids.append(UUID(str(mid)))
+            except (TypeError, ValueError):
+                continue
+        removed_count = rag_repo.remove_zettels_from_kasten(
+            kasten_id=sandbox_id,
+            workspace_zettel_ids=matched_wz_ids,
+            workspace_id=workspace_id,
+        )
+        updated_members = await runtime.sandboxes.list_members(sandbox_id, workspace_id, limit=1000)
+        return {
+            "status": "ok",
+            "removed_count": removed_count,
+            "members": [_serialize_member(member) for member in updated_members],
+        }
+
     runtime = _runtime_for_user(user)
     sandbox = await runtime.sandboxes.get_sandbox(sandbox_id, runtime.kg_user_id)
     if sandbox is None:
         raise HTTPException(status_code=404, detail="Sandbox not found")
-
-    if not any([body.node_ids, body.tags, body.source_types]):
-        raise HTTPException(status_code=400, detail="At least one filter is required")
 
     members = await runtime.sandboxes.list_members(sandbox_id, runtime.kg_user_id, limit=1000)
     # v2 (Phase 8.0 H9): membership rows expose ``workspace_zettel_id``;

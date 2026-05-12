@@ -141,10 +141,13 @@ class SandboxStore:
         workspace_id: UUID,
         workspace_zettel_id: UUID,
     ) -> bool:
-        del workspace_id  # FK + RLS already constrain the row
+        # workspace_id forwarded to the repo for an explicit BOLA gate; the
+        # service-role client used downstream bypasses RLS, so the gate is the
+        # only authz boundary on cross-tenant member deletes.
         return self._repo.remove_zettel_from_kasten(
             kasten_id=sandbox_id,
             workspace_zettel_id=workspace_zettel_id,
+            workspace_id=workspace_id,
         )
 
     async def remove_members(
@@ -153,12 +156,12 @@ class SandboxStore:
         workspace_id: UUID,
         workspace_zettel_ids: list[UUID],
     ) -> int:
-        del workspace_id
         if not workspace_zettel_ids:
             return 0
         return self._repo.remove_zettels_from_kasten(
             kasten_id=sandbox_id,
             workspace_zettel_ids=workspace_zettel_ids,
+            workspace_id=workspace_id,
         )
 
     async def touch_sandbox(

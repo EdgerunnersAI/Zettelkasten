@@ -124,7 +124,7 @@ async def test_remove_member_uses_remove_zettel_from_kasten():
     sid, wid, zid = uuid4(), uuid4(), uuid4()
     assert await store.remove_member(sid, wid, zid) is True
     repo.remove_zettel_from_kasten.assert_called_once_with(
-        kasten_id=sid, workspace_zettel_id=zid,
+        kasten_id=sid, workspace_zettel_id=zid, workspace_id=wid,
     )
 
 

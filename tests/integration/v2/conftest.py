@@ -18,7 +18,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from tests.v2.fixtures import MintedUser, mint_test_user_with_workspaces
+from tests.v2.fixtures import MintedKasten, MintedUser, mint_test_user_with_workspaces
 from tests.v2.fixtures.users import delete_test_user
 from website.core.supabase_v2.client import get_v2_database_url
 
@@ -125,6 +125,204 @@ def mint_user(created_auth_user_ids: list[uuid.UUID]):
         created_auth_user_ids.append(user.auth_user_id)
         return user
     return _mint
+
+
+@pytest_asyncio.fixture
+async def created_sandbox_ids(asyncpg_pool: asyncpg.Pool) -> list[uuid.UUID]:
+    """Per-test list of ``rag.kastens.id`` UUIDs minted by ``mint_kasten``;
+    cleaned up at teardown by direct DELETE through the service-role pool.
+
+    Parallels ``created_auth_user_ids`` rather than piggy-backing on the user
+    cleanup chain — ``rag.kastens`` CASCADEs from the owning workspace, so the
+    user-teardown path already covers most cases, but an explicit per-row sweep
+    means tests that share kastens across users (sharing, cross-tenant) cannot
+    leak a row if the owner-cleanup ordering is unfavourable. Best-effort
+    deletion; failures emit ``warnings.warn`` and never abort teardown.
+    """
+    created: list[uuid.UUID] = []
+    yield created
+    if not created:
+        return
+    errors: list[tuple[uuid.UUID, BaseException]] = []
+    async with asyncpg_pool.acquire() as conn:
+        for kasten_id in created:
+            try:
+                await conn.execute(
+                    "DELETE FROM rag.kastens WHERE id = $1", kasten_id
+                )
+            except Exception as exc:  # noqa: BLE001 — best-effort
+                errors.append((kasten_id, exc))
+    if errors:
+        msg = "; ".join(f"{kid}: {exc!r}" for kid, exc in errors)
+        warnings.warn(
+            f"Kasten cleanup failed for {len(errors)} row(s): {msg}",
+            stacklevel=1,
+        )
+
+
+@pytest.fixture
+def mint_kasten(
+    asyncpg_pool: asyncpg.Pool,
+    created_sandbox_ids: list[uuid.UUID],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Factory: mints a Kasten via the real ``POST /api/rag/sandboxes`` route.
+
+    Uses ``fastapi.testclient.TestClient`` against a v2-forced FastAPI app
+    built per-call. ``require_entitlement`` / ``consume_entitlement`` are
+    monkey-patched to no-ops at the route-module level — the pricing-module-
+    authority rule forbids seeding entitlements directly, and this bypass
+    mirrors the established pattern in ``test_sandbox_routes_v2.py``.
+
+    Usage::
+
+        def test_x(mint_user, mint_kasten):
+            user = mint_user(workspace_count=1)
+            k = mint_kasten(owner_user=user)
+            # k.sandbox_id, k.name, k.owner_user_sub
+    """
+    from fastapi.testclient import TestClient
+
+    # Force v2 schema before building the app — the route module reads this at
+    # request time, but the underlying repository singletons are cached on
+    # ``website.core.persist`` and need a reset so a fresh JWT scope is built.
+    monkeypatch.setenv("DB_SCHEMA_VERSION", "v2")
+    from website.api import auth as auth_mod
+    auth_mod._jwks_client = None
+    from website.core import persist as persist_mod
+    persist_mod._v2_core_repo = None
+    persist_mod._v2_content_repo = None
+
+    async def _noop(*_args, **_kwargs):  # noqa: D401 — entitlement bypass
+        return None
+
+    from website.api import sandbox_routes as sandbox_routes_mod
+    monkeypatch.setattr(sandbox_routes_mod, "require_entitlement", _noop)
+    monkeypatch.setattr(sandbox_routes_mod, "consume_entitlement", _noop)
+
+    from website.app import create_app
+
+    app = create_app()
+
+    def _factory(*, owner_user: MintedUser, name: str | None = None) -> MintedKasten:
+        kasten_name = name or f"k-{uuid.uuid4().hex[:8]}"
+        with TestClient(app) as client:
+            resp = client.post(
+                "/api/rag/sandboxes",
+                json={"name": kasten_name, "default_quality": "fast"},
+                headers={"Authorization": f"Bearer {owner_user.jwt}"},
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"mint_kasten POST /api/rag/sandboxes failed: "
+                f"status={resp.status_code} body={resp.text[:400]}"
+            )
+        sandbox_id = uuid.UUID(resp.json()["sandbox"]["id"])
+        created_sandbox_ids.append(sandbox_id)
+        return MintedKasten(
+            sandbox_id=sandbox_id,
+            name=kasten_name,
+            owner_user_sub=owner_user.auth_user_id,
+        )
+
+    return _factory
+
+
+@pytest.fixture
+def bulk_insert_zettels(asyncpg_pool: asyncpg.Pool):
+    """Factory: bulk-inserts N (canonical_zettel, workspace_zettel) row pairs
+    for a given user's personal workspace; returns the list of
+    ``content.workspace_zettels.id`` UUIDs in insertion order.
+
+    Uses direct asyncpg INSERT into ``content.canonical_zettels`` and
+    ``content.workspace_zettels`` — same path that
+    ``tests/integration/v2/test_sandbox_routes_v2._seed_workspace_zettel`` uses.
+    We do NOT route through ``website.core.persist.persist_summarized_result``
+    here because:
+
+      * That helper expects a fully-summarised pipeline payload and runs the
+        RAG-chunk scheduling tail; that is irrelevant overhead for bulk-fixture
+        seeding and would force every consumer to construct a fake summariser
+        result.
+      * Workspace-scoped INSERTs are CASCADE-cleaned when the workspace is
+        dropped during ``mint_user`` teardown, so no explicit per-row registry
+        is required.
+
+    Bulk size is bounded only by Postgres parameter limits in practice; the
+    fixture batches into 200-row INSERTs to stay well under the 65535 ($N)
+    parameter ceiling for either table.
+    """
+    async def _factory(
+        *,
+        owner_user: MintedUser,
+        n: int = 500,
+        prefix: str = "bulk",
+    ) -> list[uuid.UUID]:
+        if n < 1:
+            raise ValueError("n must be >= 1")
+        workspace_id = owner_user.workspace_ids[0]
+        wz_ids: list[uuid.UUID] = []
+        suffix_seed = uuid.uuid4().hex[:10]
+
+        async with asyncpg_pool.acquire() as conn:
+            async with conn.transaction():
+                for batch_start in range(0, n, 200):
+                    batch_end = min(batch_start + 200, n)
+                    cz_rows = []
+                    wz_rows = []
+                    for i in range(batch_start, batch_end):
+                        cz_id = uuid.uuid4()
+                        wz_id = uuid.uuid4()
+                        norm_url = (
+                            f"https://{prefix}-{suffix_seed}-{i}.example.com/"
+                        )
+                        # 32-byte content_hash matches the canonical schema.
+                        chash = uuid.uuid4().bytes + uuid.uuid4().bytes
+                        cz_rows.append(
+                            (
+                                cz_id,
+                                norm_url,
+                                chash,
+                                "web",
+                                f"{prefix} zettel {i}",
+                                f"{prefix} body {i}",
+                            )
+                        )
+                        wz_rows.append(
+                            (
+                                wz_id,
+                                workspace_id,
+                                cz_id,
+                                (
+                                    '{"brief_summary": "bulk", '
+                                    '"detailed_summary": "bulk detail"}'
+                                ),
+                                [prefix],
+                            )
+                        )
+                        wz_ids.append(wz_id)
+                    await conn.executemany(
+                        """
+                        INSERT INTO content.canonical_zettels
+                            (id, normalized_url, content_hash, source_type,
+                             title, body_md, publication_date)
+                        VALUES ($1, $2, $3, $4, $5, $6, '2026-04-01'::date)
+                        """,
+                        cz_rows,
+                    )
+                    await conn.executemany(
+                        """
+                        INSERT INTO content.workspace_zettels
+                            (id, workspace_id, canonical_zettel_id,
+                             ai_summary, user_tags, user_note, pinned,
+                             added_via)
+                        VALUES ($1, $2, $3, $4, $5, NULL, false, 'website')
+                        """,
+                        wz_rows,
+                    )
+        return wz_ids
+
+    return _factory
 
 
 def pytest_sessionfinish(session, exitstatus):
