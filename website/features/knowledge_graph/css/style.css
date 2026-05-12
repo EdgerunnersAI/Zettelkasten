@@ -833,3 +833,61 @@ body {
   0%, 80%, 100% { opacity: 0.25; transform: scale(0.7); }
   40%           { opacity: 1;    transform: scale(1.1); }
 }
+
+/* ----------------------------------------------------------------
+   WAVE-C 1c — strength controls (bucket toggle + numeric slider).
+   Amber/gold theme only (CLAUDE.md: never purple on /knowledge-graph).
+   ---------------------------------------------------------------- */
+.kg-strength-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 1px solid rgba(212, 160, 36, 0.25);
+  border-radius: 8px;
+  background: rgba(212, 160, 36, 0.04);
+}
+.kg-strength-buckets { display: inline-flex; gap: 2px; }
+.kg-strength-bucket {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(212, 160, 36, 0.25);
+  color: rgba(220, 200, 150, 0.75);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.kg-strength-bucket:hover {
+  background: rgba(212, 160, 36, 0.10);
+  color: #f3d98a;
+}
+.kg-strength-bucket.active {
+  background: rgba(212, 160, 36, 0.22);
+  color: #f3d98a;
+  border-color: #D4A024;
+}
+.kg-strength-slider-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kg-strength-slider-wrap input[type="range"] {
+  width: 90px;
+  accent-color: #D4A024;
+}
+.kg-strength-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #f3d98a;
+  min-width: 32px;
+  text-align: right;
+}
+@media (max-width: 720px) {
+  .kg-strength-controls { gap: 6px; padding: 3px 6px; }
+  .kg-strength-slider-wrap input[type="range"] { width: 60px; }
+  .kg-strength-bucket { padding: 2px 6px; font-size: 10px; }
+}

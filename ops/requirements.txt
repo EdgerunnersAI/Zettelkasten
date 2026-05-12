@@ -42,6 +42,16 @@ cryptography>=43.0
 # Graph algorithms (PageRank, community detection, centrality)
 networkx>=3.2
 scipy>=1.12
+# WAVE-C 1c-A.5: igraph for D-KG-5 — pinned ≥0.11 because that's the first
+# release where ``community_multilevel`` accepts a stable seed kwarg.
+igraph>=0.11
+
+# WAVE-C 1c-A.4: payload compression for /api/graph (D-KG-8). brotli-asgi
+# does Accept-Encoding negotiation (br > gzip > identity); brotli is the
+# native codec. If brotli-asgi is unavailable at runtime (older lockfiles),
+# the app falls back to FastAPI's built-in GZipMiddleware automatically.
+brotli>=1.1
+brotli-asgi>=1.4
 
 # Vector normalization for MRL-truncated embeddings
 numpy>=1.26

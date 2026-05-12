@@ -82,16 +82,26 @@ def test_should_create_semantic_link_threshold():
 
 def test_find_similar_nodes_calls_match_kg_nodes_rpc(mock_supabase_client):
     """find_similar_nodes must call rpc('match_kg_nodes', ...) with the
-    parameter names that match the SQL function signature. The SQL
-    declares ``target_user_id``, ``query_embedding``, ``match_threshold``,
-    ``match_count`` — Python must match.
+    v2 schema parameter names.
 
-    This test will fail against code that uses ``match_user_id`` instead
-    of ``target_user_id`` (P1 bug #2 from verification report).
+    WAVE-C D-ZOMBIE-b ported the RPC from dropped ``public.kg_nodes`` to
+    ``kg.kg_nodes + content.canonical_chunks`` JOIN with an embedding
+    model_version filter. The new SQL signature is:
+        kg.match_kg_nodes(
+            p_user_id uuid,
+            p_query_embedding halfvec(768),
+            p_model_version text,
+            p_match_threshold real DEFAULT 0.75,
+            p_match_count int DEFAULT 10
+        )
+    Call is schema-scoped: ``client.schema("kg").rpc("match_kg_nodes", ...)``.
     """
     user_id = "11111111-1111-1111-1111-111111111111"
     fake_embedding = [0.1] * 768
-    mock_supabase_client.rpc.return_value.execute.return_value.data = [
+
+    # Schema-scoped: the schema() chain returns a client-like object whose
+    # rpc(...).execute() returns the result. Stub it.
+    mock_supabase_client.schema.return_value.rpc.return_value.execute.return_value.data = [
         {"id": "a", "name": "A", "similarity": 0.9},
     ]
 
@@ -103,19 +113,20 @@ def test_find_similar_nodes_calls_match_kg_nodes_rpc(mock_supabase_client):
         limit=5,
     )
 
-    assert mock_supabase_client.rpc.called
-    call_args = mock_supabase_client.rpc.call_args
-    rpc_name = call_args.args[0]
-    rpc_params = call_args.args[1]
+    # The Python wrapper goes through schema("kg").rpc(...) post-ZOMBIE port.
+    assert mock_supabase_client.schema.called, "schema() must be called"
+    schema_call = mock_supabase_client.schema.call_args
+    assert schema_call.args[0] == "kg"
+
+    rpc_call = mock_supabase_client.schema.return_value.rpc.call_args
+    rpc_name = rpc_call.args[0]
+    rpc_params = rpc_call.args[1]
 
     assert rpc_name == "match_kg_nodes"
-    assert "query_embedding" in rpc_params
-    assert "match_threshold" in rpc_params
-    assert "match_count" in rpc_params
-    # The SQL function declares ``target_user_id`` — Python must match.
-    assert "target_user_id" in rpc_params, (
-        "RPC param name mismatch: SQL expects 'target_user_id'. "
-        "EXPECTED FAILURE: documents P1 bug #2 from verification report "
-        "(code uses 'match_user_id')."
-    )
-    assert rpc_params["target_user_id"] == user_id
+    # v2 param names use p_ prefix per kg.match_kg_nodes SQL signature.
+    assert "p_query_embedding" in rpc_params
+    assert "p_match_threshold" in rpc_params
+    assert "p_match_count" in rpc_params
+    assert "p_user_id" in rpc_params
+    assert "p_model_version" in rpc_params
+    assert rpc_params["p_user_id"] == user_id

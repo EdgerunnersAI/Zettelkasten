@@ -291,9 +291,6 @@
     "l2_normalize(vector)": {
       "return_type": "vector"
     },
-    "match_kg_nodes(query_embedding vector, match_threshold double precision, match_count integer, target_user_id uuid)": {
-      "return_type": "TABLE(id text, name text, source_type text, summary text, tags text[], url text, similarity double precision)"
-    },
     "nexus_housekeeping(p_oauth_retention interval, p_run_retention interval)": {
       "return_type": "jsonb"
     },

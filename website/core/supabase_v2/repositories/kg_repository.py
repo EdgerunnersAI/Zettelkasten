@@ -87,6 +87,59 @@ class KGRepository:
         )
         return list(response.data or [])
 
+    def list_node_zettel_mapping(
+        self,
+        workspace_id: UUID,
+        kg_node_ids: list[int],
+        *,
+        limit: int = 50000,
+    ) -> dict[int, list[str]]:
+        """Resolve kg_nodes.id -> set of canonical_zettel_id strings.
+
+        Joins kg.chunk_node_mentions -> content.canonical_chunks to surface
+        every canonical_zettel that mentions a given kg_node, scoped to the
+        workspace via the kg_node parent. The /api/graph assembler needs this
+        to translate edge endpoints (bigint kg_node ids) into overlay node
+        ids (which key off canonical_zettel_id).
+
+        Returns {} when ``kg_node_ids`` is empty. The PostgREST embed pulls
+        the chunk row in the same round-trip; we deduplicate canonical zettel
+        ids per node on the Python side.
+        """
+        if not kg_node_ids:
+            return {}
+        # Filter mentions to the requested node ids; embed canonical_chunks
+        # so we can read canonical_zettel_id without a second round-trip.
+        response = (
+            self._client.schema("kg")
+            .table("chunk_node_mentions")
+            .select(
+                "kg_node_id,canonical_chunk_id,"
+                "canonical_chunks:canonical_chunk_id(canonical_zettel_id)"
+            )
+            .in_("kg_node_id", list(kg_node_ids))
+            .limit(max(1, limit))
+            .execute()
+        )
+        out: dict[int, list[str]] = {}
+        seen: dict[int, set[str]] = {}
+        for row in response.data or []:
+            try:
+                node_id = int(row.get("kg_node_id"))
+            except (TypeError, ValueError):
+                continue
+            chunk = row.get("canonical_chunks") or {}
+            zettel_id = chunk.get("canonical_zettel_id") if isinstance(chunk, dict) else None
+            if not zettel_id:
+                continue
+            zettel_str = str(zettel_id)
+            bucket = seen.setdefault(node_id, set())
+            if zettel_str in bucket:
+                continue
+            bucket.add(zettel_str)
+            out.setdefault(node_id, []).append(zettel_str)
+        return out
+
     def expand_subgraph(self, *, workspace_id: UUID, node_ids: list[int], depth: int = 1) -> list[int]:
         response = self._client.schema("kg").rpc(
             "expand_subgraph",

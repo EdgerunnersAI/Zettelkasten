@@ -9,6 +9,84 @@
    - Minimal draw calls: 1 mesh + 1 sprite per node
    ============================================ */
 
+/* test-exports:start */
+// Pure helpers — extracted so vitest can exercise them without booting
+// THREE / 3d-force-graph (CDN globals not available under jsdom). The
+// fence markers are load-bearing — `tests/js/knowledge_graph/*.test.js`
+// regex-extracts everything between them. Edit with care.
+//
+// WAVE-C 1c locked decisions (mem-vault VCS_HUtQLKTHzh71InGIU87I):
+//   D-KG-3  Default render threshold ≥ 0.7 (Strong-only) on first load.
+//   D-KG-4  Buckets: Strong ≥ 0.70, Medium 0.50–0.70, Weak 0.30–0.50.
+//           Slider: 0.30–0.85 step 0.05, 250 ms debounce, re-warm at α=0.3.
+//   D-KG-VIS Encode connection_strength as line OPACITY + line WIDTH only.
+//            Color stays amber/gold; community modulates HUE within 30–55.
+const STRENGTH_BUCKETS = {
+  strong: { min: 0.7, label: 'Strong' },
+  medium: { min: 0.5, label: 'Medium' },
+  weak:   { min: 0.3, label: 'Weak'   }
+};
+const DEFAULT_MIN_STRENGTH = 0.7;
+const SLIDER_MIN = 0.3;
+const SLIDER_MAX = 0.85;
+const SLIDER_STEP = 0.05;
+const SLIDER_DEBOUNCE_MS = 250;
+const AMBER_HUE_MIN = 30;
+const AMBER_HUE_MAX = 55;
+
+function snapToBucket(name) {
+  const b = STRENGTH_BUCKETS[name];
+  return b ? b.min : DEFAULT_MIN_STRENGTH;
+}
+function bucketForStrength(s) {
+  const v = Number(s);
+  if (!Number.isFinite(v) || v < STRENGTH_BUCKETS.weak.min) return null;
+  if (v >= STRENGTH_BUCKETS.strong.min) return 'strong';
+  if (v >= STRENGTH_BUCKETS.medium.min) return 'medium';
+  return 'weak';
+}
+function cullLinksByStrength(links, threshold) {
+  if (!Array.isArray(links)) return [];
+  const t = Number(threshold) || 0;
+  return links.filter(function (l) {
+    // Missing connection_strength → coerce to 0. At threshold 0 all links
+    // pass through; any threshold > 0 culls links lacking a strength field.
+    const raw = l && l.connection_strength;
+    const s = (raw === null || raw === undefined) ? 0 : Number(raw);
+    if (!Number.isFinite(s)) return false;
+    return s >= t;
+  });
+}
+function debounce(fn, ms) {
+  let h = null;
+  return function () {
+    const args = arguments, self = this;
+    if (h) clearTimeout(h);
+    h = setTimeout(function () { h = null; fn.apply(self, args); }, ms);
+  };
+}
+function _clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+function edgeOpacityFor(s) {
+  const v = _clamp(Number(s) || 0, 0, 1);
+  return 0.2 + 0.8 * v;
+}
+function edgeWidthFor(s) {
+  const v = _clamp(Number(s) || 0, 0, 1);
+  return 0.5 + 2.5 * v;
+}
+function getCommunityHue(communityId) {
+  // Spread integer ids deterministically across the amber band [30..55] so
+  // distinct communities are visually distinguishable while keeping the
+  // CLAUDE.md "no purple, amber on /knowledge-graph" rule intact.
+  if (communityId === null || communityId === undefined) {
+    return (AMBER_HUE_MIN + AMBER_HUE_MAX) / 2;
+  }
+  const span = AMBER_HUE_MAX - AMBER_HUE_MIN;
+  const idx = Math.abs(parseInt(communityId, 10) || 0);
+  return AMBER_HUE_MIN + (idx * 7 % (span + 1));
+}
+/* test-exports:end */
+
 (function () {
   'use strict';
 
@@ -161,6 +239,9 @@
   let currentView = 'global'; // 'global' or 'my'
   let isLoggedIn = false;
   let authToken = null;
+  // WAVE-C 1c: edge-strength threshold (D-KG-3 default 0.7 = Strong-only).
+  let minStrength = DEFAULT_MIN_STRENGTH;
+  let activeBucket = 'strong'; // exclusive bucket selection by default
   const longDateFormatter = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'long',
@@ -477,8 +558,15 @@
     showOverlay('overlay-loading');
     hideOverlay('overlay-empty');
     hideOverlay('overlay-error');
-    const viewParam = currentView === 'my' ? '?view=my' : '';
-    fetch('/api/graph' + viewParam, { headers: authHeaders() })
+    // Build /api/graph URL with `view` and `min_strength` (D-KG-6: the
+    // server uses min_strength as part of its 30s cache key, so passing it
+    // pre-filters payload AND keeps cache-key alignment with the client cull).
+    const params = new URLSearchParams();
+    if (currentView === 'my') params.set('view', 'my');
+    params.set('min_strength', String(minStrength));
+    const qs = params.toString();
+    const apiUrl = '/api/graph' + (qs ? ('?' + qs) : '');
+    fetch(apiUrl, { headers: authHeaders() })
       .then(function (r) { return r.ok ? r.json() : Promise.reject('api'); })
       .catch(function () { return fetch('/kg/content/graph.json').then(function (r) { return r.json(); }); })
       .then(data => {
@@ -604,7 +692,10 @@
 
   // ---- 3D Graph ----
   function initGraph() {
-    graph = new ForceGraph3D(container)
+    // useWebWorker:true offloads the d3 force layout to a Web Worker so the
+    // main thread stays free for camera + label updates. ~3× smoother on
+    // large graphs (>500 nodes).
+    graph = new ForceGraph3D(container, { useWebWorker: true })
       .graphData(graphData)
       .backgroundColor('#06060f')
       .showNavInfo(false)
@@ -694,12 +785,17 @@
       .linkWidth(link => {
         const src = typeof link.source === 'object' ? link.source : null;
         const tgt = typeof link.target === 'object' ? link.target : null;
+        const base = edgeWidthFor(link.connection_strength);
         if (hoverNode && ((src && src.id === hoverNode.id) || (tgt && tgt.id === hoverNode.id))) {
-          return 1.8;
+          return base + 1.0; // boost on hover, still respects strength baseline
         }
-        return 0.5;
+        return base;
       })
-      .linkOpacity(0.6)
+      .linkOpacity(link => edgeOpacityFor(link && link.connection_strength))
+      // d3AlphaMin: stop the simulation when α drops below 0.01 (default
+      // 0.001). 3× faster settle, no visible quality loss after initial
+      // layout. Keeps web-worker idle sooner.
+      .d3AlphaMin(0.01)
       .linkCurvature(0.15)
       .linkCurveRotation(0.4)
       // Particles — 1 per link, fast travel speed
@@ -1261,14 +1357,27 @@
       return true;
     });
     const nodeIds = new Set(filteredNodes.map(n => n.id));
-    const filteredLinks = fullData.links.filter(l => {
+    let filteredLinks = fullData.links.filter(l => {
       const src = typeof l.source === 'object' ? l.source.id : l.source;
       const tgt = typeof l.target === 'object' ? l.target.id : l.target;
       return nodeIds.has(src) && nodeIds.has(tgt);
     });
+    // Client-side strength cull (D-KG-3/4). The server pre-filters using
+    // ?min_strength= for the same threshold so this is normally a no-op,
+    // but it guards against stale payloads after a slider change while
+    // the next /api/graph fetch is in flight.
+    filteredLinks = cullLinksByStrength(filteredLinks, minStrength);
     graphData = { nodes: filteredNodes, links: filteredLinks };
     nodeDegrees = computeDegrees(graphData);
-    if (graph) graph.graphData(graphData);
+    if (graph) {
+      graph.graphData(graphData);
+      // Re-warm at α=0.3 (NOT resetSimulation — that would re-trigger
+      // warmupTicks and burn worker CPU). 0.3 is enough kinetic energy
+      // for the layout to absorb new/removed links without restarting.
+      if (typeof graph.d3ReheatSimulation === 'function') {
+        graph.d3ReheatSimulation();
+      }
+    }
     updateStats();
     closePanel();
     selectedNode = null;
@@ -1458,6 +1567,70 @@
   }
 
   renderKastensSection();
+
+  // ---- Strength bucket / slider wiring (WAVE-C 1c) ----
+  // Buckets are exclusive — clicking one snaps the slider + threshold to
+  // that bucket's lower bound. Slider gives fine control inside [0.30,0.85].
+  // Both paths re-fetch /api/graph (cache-key-aligned) AND re-cull client-
+  // side immediately for snappy UX.
+  const strengthSlider = document.getElementById('strength-slider');
+  const strengthValue = document.getElementById('strength-value');
+  const strengthControls = document.getElementById('strength-controls');
+
+  function _syncStrengthUI() {
+    if (strengthSlider) strengthSlider.value = String(minStrength);
+    if (strengthValue) strengthValue.textContent = minStrength.toFixed(2);
+    if (strengthControls) {
+      strengthControls.querySelectorAll('[data-bucket]').forEach(b => {
+        b.classList.toggle('active', b.dataset.bucket === activeBucket);
+        b.setAttribute('aria-pressed', b.dataset.bucket === activeBucket ? 'true' : 'false');
+      });
+    }
+  }
+
+  function _onStrengthChange(opts) {
+    opts = opts || {};
+    // Re-cull immediately for instant feedback.
+    if (graph) applyFilters();
+    // Refresh from server with new cache key (matches D-KG-6).
+    loadGraphData();
+    if (opts.snapBucket) activeBucket = bucketForStrength(minStrength) || activeBucket;
+    _syncStrengthUI();
+  }
+
+  const _debouncedStrengthChange = debounce(function () {
+    _onStrengthChange({ snapBucket: true });
+  }, SLIDER_DEBOUNCE_MS);
+
+  if (strengthSlider) {
+    strengthSlider.min = String(SLIDER_MIN);
+    strengthSlider.max = String(SLIDER_MAX);
+    strengthSlider.step = String(SLIDER_STEP);
+    strengthSlider.value = String(minStrength);
+    strengthSlider.addEventListener('input', function (e) {
+      const v = parseFloat(e.target.value);
+      if (Number.isFinite(v)) {
+        minStrength = v;
+        if (strengthValue) strengthValue.textContent = v.toFixed(2);
+        _debouncedStrengthChange();
+      }
+    });
+  }
+
+  if (strengthControls) {
+    strengthControls.querySelectorAll('[data-bucket]').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const b = btn.dataset.bucket;
+        if (!STRENGTH_BUCKETS[b]) return;
+        activeBucket = b;
+        minStrength = snapToBucket(b);
+        _syncStrengthUI();
+        _onStrengthChange({ snapBucket: false });
+      });
+    });
+  }
+
+  _syncStrengthUI();
 
   const overlayRetry = document.getElementById('overlay-error-retry');
   if (overlayRetry) overlayRetry.addEventListener('click', loadGraphData);

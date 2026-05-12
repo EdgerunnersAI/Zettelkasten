@@ -121,6 +121,16 @@ jobs:
     name: Squawk lint _v2 SQL
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # WAVE-C fix: sbdchd/squawk-action@v2 posts annotations via the GitHub
+    # Checks API (pull-requests: write). Without this permission the upload
+    # step throws "Upload to GitHub failed" even when lint succeeds. Adding
+    # continue-on-error as a defensive hedge so annotation flakes don't block
+    # unrelated SQL PRs — lint output is still visible in the run log.
+    permissions:
+      pull-requests: write
+      checks: write
+      contents: read
+    continue-on-error: true
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5

@@ -47,21 +47,53 @@ _SHORTENER_HOSTS: frozenset[str] = frozenset(
 )
 
 
-def _is_private_ip(hostname: str) -> bool:
+def _canonicalize_host(host: str) -> str:
+    """Normalize sloppy IPv4 / IPv6 forms to canonical text.
+
+    ``socket.inet_aton`` accepts short-form (``127.1``), 32-bit decimal
+    (``2130706433``), octal (``0177.0.0.1``), and hex (``0x7f000001``) — all
+    of which ``ipaddress.ip_address`` rejects, leaving the SSRF allowlist
+    blind. We canonicalize first so the downstream private-IP check sees
+    the dotted-quad / RFC 5952 form.
+    """
+    if not host:
+        return host
+
+    # IPv6 literals arrive bracket-stripped from urllib's ``hostname``.
     try:
-        addr = ipaddress.ip_address(hostname)
+        packed6 = socket.inet_pton(socket.AF_INET6, host)
+        return socket.inet_ntop(socket.AF_INET6, packed6)
+    except (OSError, ValueError):
+        pass
+
+    try:
+        packed4 = socket.inet_aton(host)
+        return socket.inet_ntoa(packed4)
+    except OSError:
+        pass
+
+    return host
+
+
+def _is_private_ip(hostname: str) -> bool:
+    canonical = _canonicalize_host(hostname)
+
+    try:
+        addr = ipaddress.ip_address(canonical)
         return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
     except ValueError:
         pass
 
     try:
-        results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        results = socket.getaddrinfo(canonical, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         for _family, _type, _proto, _canonname, sockaddr in results:
             ip_str = sockaddr[0]
+            # IPv6 sockaddrs may carry a scope suffix (e.g. "fe80::1%eth0"); strip.
+            ip_str = ip_str.split("%", 1)[0]
             addr = ipaddress.ip_address(ip_str)
             if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
                 return True
-    except (socket.gaierror, OSError):
+    except (socket.gaierror, OSError, ValueError):
         pass
     return False
 

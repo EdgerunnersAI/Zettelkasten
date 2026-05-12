@@ -73,6 +73,20 @@
           </svg>
         </button>
       </div>
+      <!-- WAVE-C 1c: edge-strength controls. Buckets are exclusive (one
+           active at a time, default Strong). Slider gives fine control
+           inside [0.30, 0.85]; debounced 250ms in app.js. -->
+      <div class="kg-strength-controls" id="strength-controls" role="group" aria-label="Min connection strength">
+        <div class="kg-strength-buckets" role="tablist" aria-label="Strength buckets">
+          <button type="button" class="kg-strength-bucket active" data-bucket="strong" role="tab" aria-pressed="true" title="Strong connections only (≥ 0.70)">Strong</button>
+          <button type="button" class="kg-strength-bucket" data-bucket="medium" role="tab" aria-pressed="false" title="Medium and stronger (≥ 0.50)">Medium</button>
+          <button type="button" class="kg-strength-bucket" data-bucket="weak" role="tab" aria-pressed="false" title="Weak and stronger (≥ 0.30)">Weak</button>
+        </div>
+        <label class="kg-strength-slider-wrap" title="Min connection strength">
+          <input type="range" id="strength-slider" min="0.30" max="0.85" step="0.05" value="0.70" aria-label="Min connection strength">
+          <span class="kg-strength-value" id="strength-value">0.70</span>
+        </label>
+      </div>
       <button class="kg-filter-btn" id="filter-btn" type="button" title="Filter notes" aria-label="Filter notes">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>

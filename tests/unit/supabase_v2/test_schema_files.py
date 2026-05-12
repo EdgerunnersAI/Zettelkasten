@@ -52,6 +52,8 @@ def test_all_v2_schema_files_exist_in_apply_order() -> None:
         "37_signal_cron_3hourly_and_monitors.sql",
         "38_extensible_attrs.sql",
         "41_migrate_39_to_repeatable.sql",
+        "42_kg_connection_strength.sql",
+        "43_port_match_kg_nodes.sql",
     ]
 
 

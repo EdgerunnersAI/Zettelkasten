@@ -11,6 +11,7 @@ import os
 import re
 import uuid
 import warnings
+from pathlib import Path
 from typing import AsyncIterator
 from urllib.parse import urlsplit
 
@@ -20,6 +21,13 @@ import pytest_asyncio
 
 from tests.v2.fixtures import MintedKasten, MintedUser, mint_test_user_with_workspaces
 from tests.v2.fixtures.users import delete_test_user
+from tests.v2.fixtures.wave_c import (
+    SOURCE_INGEST_NAMES,
+    GraphJsonValidator,
+    SourceFixturePathResolver,
+    StubGeminiPool,
+    build_random_digraph,
+)
 from website.core.supabase_v2.client import get_v2_database_url
 
 # Phase 7.3b: end-of-session backstop. Per-test fixtures clean up via
@@ -323,6 +331,173 @@ def bulk_insert_zettels(asyncpg_pool: asyncpg.Pool):
         return wz_ids
 
     return _factory
+
+
+# ---------------------------------------------------------------------------
+# WAVE-C Phase 1a fixtures (additive; safe alongside WAVE-A/B fixtures above)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_gemini_pool(monkeypatch: pytest.MonkeyPatch):
+    """Factory: returns a configured ``StubGeminiPool`` AND monkey-patches
+    ``api_key_switching.get_key_pool`` to return it.
+
+    The stub records every call (key_index, model, content_hash) so tests can
+    assert on rotation + content-aware routing decisions without burning real
+    Gemini quota. Supports forced 429 injection (``force_429_after``) and
+    per-(key_index, model) cooldown injection (``stub.inject_cooldown(...)``).
+
+    Usage::
+
+        def test_x(mock_gemini_pool):
+            stub = mock_gemini_pool(embedding_dim=768, force_429_after=2)
+            stub.inject_cooldown(key_index=0, model="gemini-2.5-flash")
+            ...
+            assert stub.calls[0].key_index == 1  # rotated past cooled key
+
+    Anti-pattern guard: this stub never persists anywhere, never bypasses
+    auth (real JWTs from ``mint_user`` continue to flow), and never alters
+    SQL function bodies. It only short-circuits the network call to Gemini.
+    """
+    created: list[StubGeminiPool] = []
+
+    def _factory(**stub_kwargs) -> StubGeminiPool:
+        stub = StubGeminiPool(**stub_kwargs)
+        created.append(stub)
+        # Patch BOTH the module-level singleton accessor AND the import-time
+        # alias so callers that did ``from api_key_switching import get_key_pool``
+        # also see the stub.
+        from website.features import api_key_switching as aks_mod
+
+        monkeypatch.setattr(aks_mod, "get_key_pool", lambda: stub)
+        # Some sites (kg_features.embeddings) imported get_key_pool at module
+        # load. Patch those too if loaded.
+        try:
+            from website.features.kg_features import embeddings as emb_mod
+
+            monkeypatch.setattr(emb_mod, "get_key_pool", lambda: stub, raising=False)
+        except ImportError:
+            pass
+        return stub
+
+    return _factory
+
+
+@pytest.fixture
+def recorded_source_fixtures(monkeypatch: pytest.MonkeyPatch):
+    """Factory: load a recorded HTTP fixture for one of the 10 source ingestors.
+
+    Phase 1a scaffolding: the per-source directories exist (with ``.gitkeep``)
+    but actual cassettes are recorded by Phase 1b sub-agents per source.
+    Calling ``_load(source="github", scenario="happy")`` raises
+    ``FileNotFoundError`` until the cassette lands — clear feedback to the
+    sub-agent that needs to provide it.
+
+    The factory returns a tuple ``(payload_dict, path)`` where ``payload_dict``
+    is the parsed cassette JSON. Tests can wire it into ``respx`` themselves;
+    we deliberately avoid auto-installing routes here to keep the fixture
+    composable with each ingestor's own respx/httpx pattern.
+
+    Usage::
+
+        def test_github_happy(recorded_source_fixtures, respx_mock):
+            payload, _ = recorded_source_fixtures(source="github", scenario="happy")
+            respx_mock.get(payload["request_url"]).respond(json=payload["body"])
+            ...
+    """
+    def _load(*, source: str, scenario: str = "happy") -> tuple[dict, str]:
+        path = SourceFixturePathResolver.path_for(source=source, scenario=scenario)
+        payload = SourceFixturePathResolver.load(source=source, scenario=scenario)
+        return payload, str(path)
+
+    return _load
+
+
+@pytest.fixture
+def nx_graph_factory():
+    """Factory: produces a seedable NetworkX ``DiGraph`` for analytics tests.
+
+    Default: Erdős-Rényi with seed=42, n=100 nodes, edge probability p=0.05,
+    weighted edges (weight ∈ [0, 1) deterministic per (seed, edge)).
+
+    Usage::
+
+        def test_louvain(nx_graph_factory):
+            g = nx_graph_factory(n=500, p=0.02)
+            metrics = compute_graph_metrics(g)
+            assert metrics.modularity > 0.0
+    """
+    def _factory(*, n: int = 100, p: float = 0.05, seed: int = 42, weighted: bool = True):
+        return build_random_digraph(n=n, p=p, seed=seed, weighted=weighted)
+
+    return _factory
+
+
+@pytest.fixture
+def graph_json_loader():
+    """Factory: load + JSON-Schema-validate ``content/graph.json``.
+
+    Default path resolves to
+    ``website/features/knowledge_graph/content/graph.json`` relative to the
+    repo root. Tests can override ``path=`` for fixture variants.
+
+    Usage::
+
+        def test_graph_integrity(graph_json_loader):
+            graph = graph_json_loader()
+            assert len(graph["nodes"]) > 0
+    """
+    import json as _json
+
+    repo_root = Path(__file__).resolve().parents[3]
+    default_path = (
+        repo_root
+        / "website"
+        / "features"
+        / "knowledge_graph"
+        / "content"
+        / "graph.json"
+    )
+
+    def _load(*, path: Path | str | None = None) -> dict:
+        target = Path(path) if path else default_path
+        if not target.exists():
+            raise FileNotFoundError(f"graph.json not found at {target}")
+        payload = _json.loads(target.read_text(encoding="utf-8"))
+        GraphJsonValidator.validate(payload)
+        return payload
+
+    return _load
+
+
+@pytest.fixture
+def frozen_clock():
+    """Wrap each test in a ``freezegun.freeze_time`` context anchored at
+    2026-05-12T00:00:00Z. Yields the FrozenDateTimeFactory so tests can
+    advance time via ``frozen_clock.tick(timedelta(seconds=N))`` without
+    sleeping.
+
+    Used for TTL-cache boundary tests (KG-10), cooldown-clock-skew tests
+    (KP-05), and any other time-sensitive surface that would otherwise need
+    a real ``time.sleep()``.
+
+    Usage::
+
+        def test_cache_expires(frozen_clock):
+            cache.set("k", "v", ttl=30)
+            frozen_clock.tick(timedelta(seconds=29))
+            assert cache.get("k") == "v"
+            frozen_clock.tick(timedelta(seconds=2))
+            assert cache.get("k") is None
+    """
+    from freezegun import freeze_time
+
+    with freeze_time("2026-05-12T00:00:00Z") as frozen:
+        yield frozen
+
+
+# ---------------------------------------------------------------------------
 
 
 def pytest_sessionfinish(session, exitstatus):

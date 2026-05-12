@@ -114,6 +114,22 @@ def create_app(lifespan=None) -> FastAPI:
     app = FastAPI(**kwargs)
     nexus_enabled = _nexus_enabled()
 
+    # WAVE-C 1c-A.4 (D-KG-8): payload compression with Accept-Encoding
+    # negotiation. brotli-asgi serves br when supported, falls back to gzip,
+    # else identity. Compresses /api/graph (often >100KB) by ~3-5x. Threshold
+    # = 1024 bytes so tiny health-check responses skip compression.
+    try:
+        from brotli_asgi import BrotliMiddleware
+
+        app.add_middleware(BrotliMiddleware, minimum_size=1024, quality=4)
+    except ImportError:
+        # Fallback: stdlib GZipMiddleware. Lower compression ratio but no
+        # extra dep. Logged once at startup so the deploy bot can flag.
+        from fastapi.middleware.gzip import GZipMiddleware
+
+        app.add_middleware(GZipMiddleware, minimum_size=1024)
+        logger.info("brotli-asgi unavailable — using GZipMiddleware fallback")
+
     # API routes
     app.include_router(api_router)
     app.include_router(engine_v2_router)
