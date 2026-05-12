@@ -67,6 +67,21 @@ jobs:
           # at 127.0.0.1:54322 with postgres/postgres credentials.
           supabase start --workdir . --ignore-health-check || (supabase status --workdir .; exit 1)
           supabase status --workdir .
+      - name: Bootstrap partman schema (CI-only, pre-migration)
+        # 2026-05-12: Migration 00_extensions.sql has `CREATE EXTENSION
+        # pg_partman SCHEMA partman` which requires partman schema to
+        # already exist (pg_partman 5.3.1+ upstream issue #842). On
+        # production Supabase managed Postgres the partman extension is
+        # pre-baked so the IF NOT EXISTS clause makes 00 a no-op there;
+        # on this fresh CI Postgres we have to create the schema
+        # explicitly BEFORE 00 runs. We cannot bake this into a versioned
+        # migration (any new migration runs AFTER 00) and we cannot edit
+        # 00 itself (Flyway-style immutable-migration checksum lock —
+        # already applied to prod, editing it breaks the deploy gate).
+        # The canonical fix is CI-image-side bootstrap, done here.
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+            -c "CREATE SCHEMA IF NOT EXISTS partman;"
       - name: Install runtime deps
         run: |
           python -m pip install --upgrade pip

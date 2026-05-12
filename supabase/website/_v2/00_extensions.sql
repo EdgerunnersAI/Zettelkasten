@@ -3,9 +3,6 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;
--- pg_partman 5.4.1+ requires the target schema to exist BEFORE CREATE EXTENSION
--- (upstream issue #842). Schema-first ordering is the only supported path.
-CREATE SCHEMA IF NOT EXISTS partman;
 CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
