@@ -300,9 +300,10 @@ async def warm():
 async def auth_config():
     """Return public Supabase config for client-side auth init."""
     if get_db_schema_version() == "v2":
+        # β: prefer V2_* names; fall back to canonical when v1 namespace gone.
         return {
-            "supabase_url": os.environ.get("SUPABASE_V2_URL", ""),
-            "supabase_anon_key": os.environ.get("SUPABASE_V2_ANON_KEY", ""),
+            "supabase_url": os.environ.get("SUPABASE_V2_URL", "") or os.environ.get("SUPABASE_URL", ""),
+            "supabase_anon_key": os.environ.get("SUPABASE_V2_ANON_KEY", "") or os.environ.get("SUPABASE_ANON_KEY", ""),
         }
     return {
         "supabase_url": os.environ.get("SUPABASE_URL", ""),

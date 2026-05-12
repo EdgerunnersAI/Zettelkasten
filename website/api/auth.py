@@ -52,7 +52,8 @@ def _get_jwks_client() -> PyJWKClient | None:
         from website.core.db_version import use_supabase_v2
 
         if use_supabase_v2():
-            supabase_url = os.environ.get("SUPABASE_V2_URL", "").rstrip("/")
+            # β: prefer V2_URL; fall back to canonical when v1 namespace gone.
+            supabase_url = (os.environ.get("SUPABASE_V2_URL", "") or os.environ.get("SUPABASE_URL", "")).rstrip("/")
     except Exception:  # pragma: no cover - defensive
         supabase_url = ""
 

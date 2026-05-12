@@ -50,12 +50,20 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _v2_env(primary: str, fallback: str) -> str:
+    """β: primary first; fall back to canonical when SUPABASE_V2_* namespace not set.
+
+    v1 deprecated 2026-05; canonical SUPABASE_* names now point at v2 project.
+    """
+    return os.environ.get(primary, "").strip() or os.environ.get(fallback, "").strip()
+
+
 def get_v2_config() -> V2SupabaseConfig:
     database_url = _env("SUPABASE_V2_DATABASE_URL")
     return V2SupabaseConfig(
-        url=_env("SUPABASE_V2_URL").rstrip("/"),
-        anon_key=_env("SUPABASE_V2_ANON_KEY"),
-        service_role_key=_env("SUPABASE_V2_SERVICE_ROLE_KEY"),
+        url=_v2_env("SUPABASE_V2_URL", "SUPABASE_URL").rstrip("/"),
+        anon_key=_v2_env("SUPABASE_V2_ANON_KEY", "SUPABASE_ANON_KEY"),
+        service_role_key=_v2_env("SUPABASE_V2_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"),
         database_url=database_url,
         listen_database_url=_env("SUPABASE_V2_LISTEN_DATABASE_URL", database_url),
         environment=_env("SUPABASE_V2_ENVIRONMENT", "dev") or "dev",
