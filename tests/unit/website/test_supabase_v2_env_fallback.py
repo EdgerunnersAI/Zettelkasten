@@ -97,6 +97,6 @@ def test_auth_config_falls_back_to_canonical(monkeypatch):
     importlib.reload(routes_mod)
 
     import asyncio
-    result = asyncio.get_event_loop().run_until_complete(routes_mod.auth_config())
+    result = asyncio.run(routes_mod.auth_config())
     assert result["supabase_url"] == "https://example.supabase.co"
     assert result["supabase_anon_key"] == "sb_publishable_test"
