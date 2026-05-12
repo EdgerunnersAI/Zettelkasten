@@ -907,7 +907,13 @@ async def summarize(body: SummarizeRequest, request: Request, user: Annotated[di
             invalidate_user_graph(user["sub"] if user else None)
             _graph_cache_global = None
             _graph_cache_global_ts = 0
-        return persistence.result
+        return {
+            **persistence.result,
+            "persistence": {
+                "file_store": persistence.file_saved,
+                "supabase": persistence.supabase_saved,
+            },
+        }
     except HTTPException:
         raise
     except ExtractionConfidenceError as exc:

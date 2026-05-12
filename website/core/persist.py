@@ -51,6 +51,7 @@ class PersistenceOutcome:
     result: dict[str, Any]
     file_node_id: str | None = None
     supabase_node_id: str | None = None
+    file_saved: bool = False  # True if file-backed graph.json was written
     supabase_saved: bool = False
     supabase_duplicate: bool = False
     kg_user_id: str | None = None
@@ -468,6 +469,7 @@ async def persist_summarized_result(
         result=payload,
         file_node_id=file_node_id,
         supabase_node_id=supabase_node_id,
+        file_saved=file_node_id is not None,
         supabase_saved=supabase_saved,
         supabase_duplicate=supabase_duplicate,
         kg_user_id=kg_user_id,
