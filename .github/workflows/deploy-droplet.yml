@@ -314,7 +314,8 @@ jobs:
             "RAG_BLOCKLIST_COLD_START_NODES=50" \
             "RAG_ANCHOR_BANDIT_ENABLED=true" \
             "RAG_ANCHOR_BANDIT_ARMS=0.25,0.30,0.35,0.40" \
-            "RAG_ANCHOR_BANDIT_N_MIN=20")
+            "RAG_ANCHOR_BANDIT_N_MIN=20" \
+            "DB_SCHEMA_VERSION=v2")
 
           FULL_ENV="${SECRETS_BODY}"$'\n'"${STATIC_BODY}"
 
