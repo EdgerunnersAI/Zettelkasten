@@ -27,7 +27,7 @@ Risk tier: **High** (silent monitoring loss = operational blind spot).
 | WM-08 | P2 | Inbound payload fuzzing — Hypothesis/schemathesis on `DOAlertPayload` + payment webhook (4xx never 5xx) |
 | WM-09 | P2 | Severity classifier (`_severity`) table-driven unit tests |
 | WM-10 | P2 | Structured logging assertions — every alert path emits structured line even when Slack post fails |
-| WM-11 | P3 | Synthetic alert canary heartbeat — **DEFERRED: WAVE-D hardening sprint** (operator D-1 decision, 2026-05-12). Rationale: low-yield without a paged-runbook consumer; revisit when on-call rotation is staffed. |
+| WM-11 ✅ DONE | P3 | Synthetic alert canary heartbeat — implemented post-WAVE-D H-4 (commit 16ca7c2). healthchecks.io free-tier dead-man-switch at 5-min cadence, Slack #do-alerts on absence. Bypasses Caddy + Cloudflare so signal proves droplet event loop. Module at `website/core/heartbeat.py`. Tests at `tests/unit/web_monitor/test_canary.py` (5 cases, all pass). Wired into `website/main.py` lifespan. Operator provisions `HEARTBEAT_PING_URL` in droplet `.env` per `ops/.env.example`. |
 | WM-12 | P3 | Healthz contract smoke (3 `*_healthz` endpoints) |
 | WM-13 | P3 | Scheduled `notify_pricing_visit` non-blocking under slow Slack |
 | WM-14 | P3 | Config/env validation — boot-time check for `*_WEBHOOK_URL`; degraded-mode behavior when unset |
@@ -56,7 +56,7 @@ WM-01 → WM-04 → WM-03 → WM-02 → WM-05 → WM-10 → WM-06 → WM-08 → 
 * **WM-14 wired**: `_env_validation.log_web_monitor_env_warnings()` runs once at `create_app()` boot; warns per unset `SLACK_WEBHOOK_*`.
 * **WM-15**: source-of-truth column is `core.profiles.display_name` (NOT `full_name`). Spec citation was stale post-DB-v2; verified at `supabase/website/_v2/01_core_schema.sql:7`. Resolution helper `_resolve_full_name(display_name, email)` falls back to email-localpart, then em-dash.
 * **WM-16**: in-module ISO-3166 mapping (`_country.py`, ~50 entries + `Unknown (XX)` fallback). No new dependency.
-* **WM-11 deferred** per operator D-1; documented above.
+* **WM-11 ✅ DONE post-WAVE-D H-4** (2026-05-12); see row above. Closes web_monitor 14/14.
 
 
 Mocked Slack in CI. `--live` staging only. Production read-only: `GET /digitalocean_healthz`, `GET /app_errors_healthz`, `GET /user_activity_healthz`.

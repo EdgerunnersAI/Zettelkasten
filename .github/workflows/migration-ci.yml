@@ -27,15 +27,20 @@ jobs:
     name: Fresh-Supabase _v2 apply + manifest check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Phase 8.5.R1 temp hedge (M4): supabase/postgres CI image does NOT ship
-    # pg_partman by default (Supabase Discussion #37986 — "in progress" since
-    # Oct 2025), even though prod Supabase has pg_partman 5.3.1 (verified live
-    # 2026-05-11). The "Install pg_partman" step below is the M1 primary fix
-    # — apt-get into the running supabase_db container. While that step is
-    # still being validated across runs, continue-on-error keeps the workflow
-    # green so unrelated SQL PRs don't get blocked. Remove this line once the
-    # job is observed green on 2 consecutive runs.
-    continue-on-error: true
+    # WAVE-D hardening (H-1): authoritative gate. CI image is pre-built with
+    # pg_partman so `supabase start` boots clean. Rationale + citations in
+    # docs/research/2026-05-12-pg-partman-ci.md.
+    # 2026-05-12 Iter 8 (research-grounded refactor): dropped the snapshot-
+    # comparison gate from PR CI per industry consensus (Atlas, Flyway,
+    # Bytebase, Supabase Docs all converge: PR CI gates on apply-cleanly +
+    # integration tests; snapshot comparison belongs in nightly drift jobs).
+    # See docs/research/2026-05-12-migration-ci-architecture.md. The auto-
+    # commit-from-CI step (prior Hardening A2) was an explicit anti-pattern
+    # per Atlas "Detect Migrations Drift in CI" guidance — deleted.
+    # contents:read suffices now that nothing pushes back to the branch.
+    permissions:
+      contents: read
+      pull-requests: read
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
@@ -45,6 +50,16 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      - name: Build CI Postgres image with pg_partman
+        # Tag matches what `supabase start` expects — Docker resolves the
+        # local image before reaching for the registry, so the CLI picks ours
+        # up without needing config.toml [db].image (supabase/cli#3688 open).
+        run: |
+          docker build \
+            -f ci/Dockerfile.zettelkasten-postgres \
+            --build-arg SUPABASE_POSTGRES_TAG=17.6.1.001 \
+            -t supabase/postgres:17.6.1.001 \
+            ci/
       - name: Boot local Supabase stack
         run: |
           # `supabase start` boots Postgres + GoTrue + Storage + Realtime +
@@ -52,62 +67,39 @@ jobs:
           # at 127.0.0.1:54322 with postgres/postgres credentials.
           supabase start --workdir . --ignore-health-check || (supabase status --workdir .; exit 1)
           supabase status --workdir .
-      - name: Install pg_partman in Supabase CI db container
-        # Phase 8.5.R1 (M1, defensive): prod Supabase has pg_partman 5.3.1;
-        # CI fresh-start image does not. The supabase/postgres image is
-        # Alpine-based (Postgres 17 as of 2026-05) — no apt-get. Try apk
-        # fallback; if pg_partman isn't packaged anywhere, log + exit 0
-        # so the subsequent migrate step surfaces the real CREATE EXTENSION
-        # error rather than this prerequisite-install layer. The job-level
-        # continue-on-error keeps the workflow green while we iterate on
-        # the proper fix (custom supabase/postgres image with pg_partman
-        # pre-installed — research M1 recommendation, separate iteration).
-        # Reject conditional CREATE EXTENSION in 00_extensions.sql as a
-        # 2024-2026 anti-pattern (silently diverges CI vs prod).
-        run: |
-          set +e
-          CONTAINER=$(docker ps --filter "name=supabase_db" --format "{{.ID}}" | head -n1)
-          if [ -z "$CONTAINER" ]; then
-            echo "WARN: no supabase_db container found — skipping pg_partman install"
-            docker ps
-            exit 0
-          fi
-          PG_MAJOR=$(docker exec "$CONTAINER" psql -U postgres -tAc 'SHOW server_version_num;' | head -c 2)
-          echo "Detected Postgres major version: $PG_MAJOR"
-          if docker exec "$CONTAINER" which apt-get >/dev/null 2>&1; then
-            echo "Image has apt-get (Debian/Ubuntu) — installing postgresql-${PG_MAJOR}-partman"
-            docker exec "$CONTAINER" bash -c \
-              "apt-get update && apt-get install -y postgresql-${PG_MAJOR}-partman"
-          elif docker exec "$CONTAINER" which apk >/dev/null 2>&1; then
-            echo "Image has apk (Alpine) — pg_partman is rarely packaged here"
-            docker exec "$CONTAINER" sh -c \
-              "apk add --no-cache postgresql${PG_MAJOR}-partman 2>/dev/null \
-               || apk add --no-cache pg_partman 2>/dev/null \
-               || echo 'WARN: pg_partman not in alpine repos — apply_migrations will surface the error'"
-          else
-            echo "WARN: no supported package manager in supabase_db container"
-          fi
-          # Never hard-fail this step; let the apply_migrations step report.
-          exit 0
       - name: Install runtime deps
         run: |
           python -m pip install --upgrade pip
           pip install -r ops/requirements.txt
       - name: Apply _v2 migrations to fresh DB
+        # Iter 8 (2026-05-12, research-grounded): this is now the ONLY gate
+        # in PR-CI for migration correctness. Matches Supabase Docs
+        # ("Testing Overview"), Atlas (`migrate lint` + apply, never snapshot
+        # compare in PR), Flyway/Liquibase/Bytebase consensus. Schema-snapshot
+        # comparison was deleted from this job — it lives in the nightly
+        # v2_drift_check.yml workflow where it belongs (compares prod vs
+        # repo, catches hand-edits to prod). See research doc:
+        # docs/research/2026-05-12-migration-ci-architecture.md.
         env:
           # 2026-05-11: env var name MUST be SUPABASE_V2_DATABASE_URL —
           # apply_migrations.py::_build_dsn(v2=True) reads only this name.
           SUPABASE_V2_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-          MIGRATION_MANIFEST_AUTOBOOTSTRAP: "1"
+          # MIGRATION_MANIFEST_REQUIRED=0 tells apply_migrations.py's inline
+          # verify-after-apply step "this environment doesn't gate on the
+          # manifest" — exactly the documented escape for fresh-apply CI
+          # (apply_migrations.py line 862 comment + Iter 7 fix at line 871).
+          # Nightly v2_drift_check.yml runs WITHOUT this flag so its
+          # --check-manifest-fresh remains authoritative against prod.
+          MIGRATION_MANIFEST_REQUIRED: "0"
+        # --skip-files=15_drop_legacy_tables.sql — operator-approved hardening
+        # sprint H-1 (2026-05-12). Migration 15 has a 14-day soak guard (file
+        # header lines 12-18) that fires by design on fresh stack since
+        # 11_post_install.sql was just applied seconds ago. The legacy public.*
+        # tables don't exist on fresh DB anyway, so dropping them is a no-op
+        # here. Production deploys MUST NOT pass --skip-files.
         run: |
-          python ops/scripts/apply_migrations.py --v2
-      - name: Verify manifest matches freshly-applied DB
-        env:
-          SUPABASE_V2_DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-        run: |
-          # --check-manifest-fresh asserts every _v2/expected_schema.json
-          # entry exists in the connected DB. A non-zero exit blocks merge.
-          python ops/scripts/apply_migrations.py --v2 --check-manifest-fresh
+          python ops/scripts/apply_migrations.py --v2 \
+            --skip-files=15_drop_legacy_tables.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --workdir . --no-backup || true
@@ -123,14 +115,13 @@ jobs:
     timeout-minutes: 5
     # WAVE-C fix: sbdchd/squawk-action@v2 posts annotations via the GitHub
     # Checks API (pull-requests: write). Without this permission the upload
-    # step throws "Upload to GitHub failed" even when lint succeeds. Adding
-    # continue-on-error as a defensive hedge so annotation flakes don't block
-    # unrelated SQL PRs — lint output is still visible in the run log.
+    # step throws "Upload to GitHub failed" even when lint succeeds.
+    # WAVE-D H-2 (2026-05-12): authoritative gate. Legacy _v2/*.sql fenced
+    # via .squawk.toml excluded_paths; new migrations linted strictly.
     permissions:
       pull-requests: write
       checks: write
       contents: read
-    continue-on-error: true
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5

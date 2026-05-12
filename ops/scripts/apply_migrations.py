@@ -215,13 +215,22 @@ def _ensure_table(conn, *, v2: bool = False) -> None:
     with conn.cursor() as cur:
         if v2:
             cur.execute("CREATE SCHEMA IF NOT EXISTS core")
+        # Schema must match 00_extensions.sql:14-23 — the INSERT at _apply_one
+        # writes 7 columns including deploy_git_sha/deploy_id/deploy_actor/
+        # runner_hostname. Without these columns the fresh-DB apply trips
+        # `column "deploy_git_sha" of relation "_migrations_applied" does not
+        # exist` on the very first migration insert.
         cur.execute(
             f"""
             CREATE TABLE IF NOT EXISTS {_migration_table(v2)} (
-                name TEXT PRIMARY KEY,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                checksum TEXT NOT NULL,
-                applied_by TEXT
+                name             TEXT PRIMARY KEY,
+                applied_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                checksum         TEXT NOT NULL,
+                applied_by       TEXT,
+                deploy_git_sha   TEXT,
+                deploy_id        TEXT,
+                deploy_actor     TEXT,
+                runner_hostname  TEXT
             )
             """
         )
@@ -589,6 +598,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "any migrations. Used by the CI freshness gate."
         ),
     )
+    p.add_argument(
+        "--skip-files",
+        default="",
+        help=(
+            "Comma-separated migration filenames to skip entirely (treated "
+            "as if not present in the directory). CI-only escape hatch for "
+            "migrations that are by-design incompatible with fresh-stack "
+            "apply (e.g. destructive drops behind a soak guard). Production "
+            "deploys never set this — operator-approved per occurrence."
+        ),
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 
@@ -687,6 +707,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         applied = _applied_index(conn, v2=args.v2)
         migrations = _list_migrations(directory, v2=args.v2)
+        # --skip-files: drop named migrations from the plan. Used by CI's
+        # fresh-stack job to omit destructive drops whose soak guard fires
+        # on day-0 by design. Each skip is operator-approved per occurrence
+        # — production deploys MUST NOT pass --skip-files.
+        skip_files = {
+            name.strip() for name in args.skip_files.split(",") if name.strip()
+        }
+        if skip_files:
+            before = len(migrations)
+            migrations = [p for p in migrations if p.name not in skip_files]
+            logger.warning(
+                "[migration] --skip-files dropped %d migration(s): %s",
+                before - len(migrations),
+                ", ".join(sorted(skip_files)),
+            )
         total_count = len(migrations)
 
         for path in migrations:
@@ -835,7 +870,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif manifest_path.exists():
                 drift_rc = _verify_schema(conn, manifest_path)
                 if drift_rc != 0:
-                    rc = 1
+                    if required:
+                        rc = 1
+                    else:
+                        # Hardening A2 (2026-05-12): warn-only path when
+                        # MIGRATION_MANIFEST_REQUIRED=0. CI uses this so the
+                        # auto-regen step downstream can rewrite the manifest
+                        # against the fresh DB before the authoritative
+                        # verify step runs. Comment at line 862 promised this
+                        # behavior; without this branch, drift hard-failed
+                        # the apply step before regen could fire.
+                        logger.warning(
+                            "[migration] schema drift present but MIGRATION_MANIFEST_REQUIRED=0 — continuing (warn-only).",
+                        )
             elif autobootstrap:
                 logger.warning(
                     "[migration] manifest missing — AUTOBOOTSTRAP writing %s. "

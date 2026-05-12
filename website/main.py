@@ -23,6 +23,7 @@ from fastapi import FastAPI
 
 from website.api import _proc_stats as _proc_stats_module
 from website.app import create_app
+from website.core.heartbeat import heartbeat_loop
 from website.core.settings import get_settings
 from website.features.rag_pipeline.observability.event_loop_monitor import EventLoopMonitor
 
@@ -72,14 +73,34 @@ async def _lifespan(
     _app.state.event_loop_monitor = lag_monitor
 
     task = asyncio.create_task(loop_factory())
+
+    # WM-11 canary heartbeat (post-WAVE-D H-4). No-op if HEARTBEAT_PING_URL
+    # is unset, so dev environments stay quiet by default.
+    hb_stop = asyncio.Event()
+    _app.state.heartbeat_stop = hb_stop
+
+    def _key_pool_getter() -> object | None:
+        try:
+            from website.features.api_key_switching import get_key_pool
+
+            return get_key_pool()
+        except Exception:  # noqa: BLE001 — never block lifespan startup
+            return None
+
+    hb_task = asyncio.create_task(
+        heartbeat_loop(hb_stop, key_pool_getter=_key_pool_getter)
+    )
+
     try:
         yield
     finally:
+        hb_stop.set()
         task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        for t in (task, hb_task):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
         await lag_monitor.stop()
 
 

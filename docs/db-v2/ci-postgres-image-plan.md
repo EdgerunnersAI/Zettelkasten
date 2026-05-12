@@ -101,3 +101,28 @@ If multi-developer reuse or pre-warmed image caching becomes valuable, add a sep
 - Initial CI-gate discovery + research: observation `E6JaMsOfar7Rvees6KVNhddV` (2026-05-11)
 - Phase 8.5.R1 plan: `docs/superpowers/plans/2026-05-10-phase-8.5-hardening-additions.md`
 - Industry pattern citations: Atlas FAQ on extension management 2024-2025, Flyway extensions guide 2024, Supabase Discussion #37986 (Oct 2025), Supabase Issue #1586
+
+---
+
+## Post-WAVE-D update (2026-05-12)
+
+Path A landed. `ci/Dockerfile.zettelkasten-postgres` extends
+`supabase/postgres:17.6.1.001` and installs `postgresql-17-partman` via PGDG
+apt-get (Debian branch is the working path; Alpine branch retained as fallback).
+The image is built and tagged in CI as `supabase/postgres:17.6.1.001` so
+`supabase start` resolves the local image automatically — this sidesteps the
+still-open `supabase/cli#3688` `[db].image` config-field request.
+
+`00_extensions.sql` now creates `partman` schema BEFORE `CREATE EXTENSION
+pg_partman SCHEMA partman` (pg_partman upstream issue #842 — non-relocatable
+since 5.4.1).
+
+**`partman.create_parent` deliberately NOT called.** Defer to a later iteration
+once any v2 table crosses the 10M-row threshold or shows planning-time
+regression in `pg_stat_statements`. Citation: [pganalyze — Partitioning in
+Postgres and the risk of high partition counts (2023)](https://pganalyze.com/blog/5mins-postgres-partitioning).
+Until then the extension is idle metadata — zero runtime cost.
+
+Runtime apt-get/apk install step REMOVED from the workflow. Job-level
+`continue-on-error: true` REMOVED. The Fresh-Supabase gate is authoritative
+again per Atlas/Flyway 2024-2026 consensus.

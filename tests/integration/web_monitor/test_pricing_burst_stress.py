@@ -122,76 +122,57 @@ async def test_200_pricing_visits_burst_no_task_leak(slack_webhook_mock, monkeyp
     assert total_calls >= 1, "expected at least one Slack-mock call across the burst"
 
 
-@pytest.mark.skip(
-    reason="M-6 follow-up: peak_inflight watcher reads _sem._value=0 under "
-    "respx async side_effect; structural Semaphore(_MAX_INFLIGHT) bound is "
-    "enforced in fire_and_forget (line 167) but verification harness needs "
-    "rework. Companion no-task-leak test still passes. Tracked as fast-follow."
-)
 @pytest.mark.asyncio
-async def test_200_fire_and_forget_burst_saturates_semaphore(slack_webhook_mock):
-    """M-6: companion test that ACTUALLY exercises the semaphore cap.
+async def test_200_fire_and_forget_burst_saturates_semaphore():
+    """M-6: prove _sem caps at _MAX_INFLIGHT by causal barrier, not sampling.
 
-    The first test (``test_200_pricing_visits_burst_no_task_leak``) sees
-    ``peak_inflight=0`` because ``notify_pricing_visit`` awaits inline; the
-    semaphore is only entered inside ``fire_and_forget``. This test pumps
-    200 fire-and-forget tasks against a slow 200-OK Slack mock so the
-    coroutines queue up on the semaphore and ``peak_inflight`` reaches the
-    cap. Asserts ``peak_inflight == _MAX_INFLIGHT`` (within ±1 for sampling
-    jitter from the 1 ms watcher tick).
+    Watcher/_sem._value sampling races with the scheduler (esp. on Windows
+    with ~15.6 ms timer granularity). Instead: each held coroutine signals
+    `arrived` after entering the semaphore, then blocks on `release_gate`.
+    Wait for exactly _MAX_INFLIGHT arrivals, then assert a 9th does NOT
+    arrive within 250 ms while the gate is shut. Open the gate to drain.
+    See docs/research/2026-05-12-asyncio-semaphore-test.md.
     """
-    rec = slack_webhook_mock()
-    ua_url = "https://hooks.slack.com/services/TTESTUA/BTESTUA/tokUserActivity"
+    _URL = "https://hooks.slack.com/services/TTESTUA/BTESTUA/tokBarrier"
 
-    async def _slow_ok(_request):
-        # Hold the in-flight coroutine inside the semaphore long enough that
-        # the watcher samples a saturated cap before any task releases.
-        await asyncio.sleep(0.05)
-        return httpx.Response(200, text="ok")
+    arrived = asyncio.Semaphore(0)        # released once per coroutine past _sem
+    release_gate = asyncio.Event()        # test holds gate shut to freeze cap
+    seen_concurrent = 0
+    high_water = 0
+    lock = asyncio.Lock()
 
-    peak_inflight = 0
+    async def _held_body():
+        nonlocal seen_concurrent, high_water
+        async with lock:
+            seen_concurrent += 1
+            high_water = max(high_water, seen_concurrent)
+        arrived.release()
+        await release_gate.wait()
+        async with lock:
+            seen_concurrent -= 1
+        async with httpx.AsyncClient() as c:
+            await c.post(_URL, json={"text": "x"})
 
     with respx.mock(assert_all_called=False) as router:
-        router.post(ua_url).mock(side_effect=_slow_ok)
+        router.post(_URL).mock(return_value=httpx.Response(200))
 
-        async def _watcher(stop_event: asyncio.Event):
-            nonlocal peak_inflight
-            while not stop_event.is_set():
-                # Read coroutines currently PAST the semaphore (not the
-                # outer ``_inflight`` task set which also contains tasks
-                # blocked on the semaphore acquire).
-                peak_inflight = max(
-                    peak_inflight, _slack_client.semaphore_inflight_count()
-                )
-                await asyncio.sleep(0.001)
-
-        stop_event = asyncio.Event()
-        watcher = asyncio.create_task(_watcher(stop_event))
-
-        # Schedule 200 fire-and-forget Slack posts directly (bypass the
-        # pricing-visit throttle so every call actually hits the semaphore).
-        async def _one_post():
-            from website.features.web_monitor._slack_client import post_with_retry
-
-            await post_with_retry(ua_url, {"text": "burst"}, timeout=2.0)
-
-        tasks = [_slack_client.fire_and_forget(_one_post) for _ in range(200)]
+        tasks = [_slack_client.fire_and_forget(_held_body) for _ in range(200)]
         assert all(t is not None for t in tasks)
 
-        # Drain all tasks before stopping the watcher so the peak is sampled.
-        await asyncio.gather(*tasks)
-        stop_event.set()
-        await watcher
+        # Wait for exactly _MAX_INFLIGHT to pass _sem.
+        for _ in range(_slack_client._MAX_INFLIGHT):
+            await asyncio.wait_for(arrived.acquire(), timeout=2.0)
 
-    # Within 1 of cap to absorb watcher-tick sampling jitter.
-    assert peak_inflight >= _slack_client._MAX_INFLIGHT - 1, (
-        f"semaphore never saturated: peak_inflight={peak_inflight} "
-        f"cap={_slack_client._MAX_INFLIGHT}"
-    )
-    assert peak_inflight <= _slack_client._MAX_INFLIGHT, (
-        f"semaphore cap breach: peak_inflight={peak_inflight} "
-        f"cap={_slack_client._MAX_INFLIGHT}"
-    )
-    assert rec.calls["SLACK_WEBHOOK_USER_ACTIVITY"], (
-        "expected at least one fire-and-forget Slack call to land"
+        # Negative: a 9th must NOT arrive while gate shut. Strict cap proof.
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(arrived.acquire(), timeout=0.25)
+
+        assert high_water == _slack_client._MAX_INFLIGHT, (
+            f"saturation high-water={high_water} cap={_slack_client._MAX_INFLIGHT}"
+        )
+        release_gate.set()
+        await asyncio.gather(*[t for t in tasks if t is not None])
+
+    assert high_water == _slack_client._MAX_INFLIGHT, (
+        f"final high-water={high_water} cap={_slack_client._MAX_INFLIGHT}"
     )

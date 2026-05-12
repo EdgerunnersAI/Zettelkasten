@@ -374,6 +374,17 @@ class GeminiKeyPool:
             slot: exp for slot, exp in self._cooldowns.items() if exp > now
         }
 
+    def count_active_keys(self) -> int:
+        """Keys with zero current cooldowns — WM-11 canary signal.
+
+        Conservative: a key with ANY model-slot in cooldown is counted as
+        unavailable. Heartbeat publishes this in the healthchecks.io ping body
+        so Slack alerts can surface "alive but keys exhausted" degraded state.
+        """
+        self._purge_expired()
+        cooled_keys = {ki for (ki, _model) in self._cooldowns.keys()}
+        return len(self._keys) - len(cooled_keys)
+
     def _role_for_key(self, key_index: int) -> str:
         return self._key_roles[key_index]
 

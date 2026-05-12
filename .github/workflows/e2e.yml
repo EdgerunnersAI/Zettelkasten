@@ -22,29 +22,17 @@ name: E2E (Playwright + axe)
 # regression (microsoft/playwright#38489) is single-instance-safe but
 # multiplies catastrophically under parallel workers.
 
+# 2026-05-12 (operator): PR + push triggers temporarily DISABLED.
+# Reason: GitHub Actions ubuntu-latest runners are intermittently hanging
+# on the "Install Chromium (with system deps)" step — apt mirror / Playwright
+# install transient. Blocking PR merges on this is unacceptable while we
+# investigate. UI tests will be run separately (manual workflow_dispatch
+# below, or against staging during the next sprint).
+# Re-enable triggers once the install-chromium hang has a stable
+# mitigation (cache hit path or alternate base image). Tracked as a
+# separate ticket.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - "website/features/user_home/**"
-      - "website/features/header/**"
-      - "website/features/web_monitor/**"
-      - "tests/integration/browser/**"
-      - "tests/js/**"
-      - "ops/requirements.txt"
-      - "ops/requirements-dev.txt"
-      - ".github/workflows/e2e.yml"
-  push:
-    branches: [master]
-    paths:
-      - "website/features/user_home/**"
-      - "website/features/header/**"
-      - "website/features/web_monitor/**"
-      - "tests/integration/browser/**"
-      - "tests/js/**"
-      - "ops/requirements.txt"
-      - "ops/requirements-dev.txt"
-      - ".github/workflows/e2e.yml"
+  workflow_dispatch:
 
 concurrency:
   group: e2e-${{ github.ref }}
