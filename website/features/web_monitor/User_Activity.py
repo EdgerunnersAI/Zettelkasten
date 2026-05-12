@@ -41,14 +41,19 @@ Env vars:
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, status
+
+from website.features.web_monitor._country import format_country
+from website.features.web_monitor._slack_client import post_with_retry
 
 logger = logging.getLogger("website.web_monitor.user_activity")
 
@@ -56,12 +61,13 @@ router = APIRouter(prefix="/webhooks/monitor", tags=["web_monitor.user_activity"
 
 SLACK_ENV_VAR = "SLACK_WEBHOOK_USER_ACTIVITY"
 
-# Per-IP throttle for pricing-visit alerts. Dict[ip, last_alert_epoch].
-# Bounded by _PRICING_THROTTLE_MAX to cap memory under scan/DoS traffic;
-# when full we evict the oldest entry (O(n) scan is fine at n ≤ 2000).
+# Per-IP throttle for pricing-visit alerts. OrderedDict[ip, last_alert_epoch].
+# Bounded by _PRICING_THROTTLE_MAX (FIFO eviction via popitem(last=False)).
+# M-4: prior dict + min() picked the smallest *value* (oldest timestamp), not
+# the LRU insertion key — switch to OrderedDict + move_to_end for O(1) LRU.
 _PRICING_THROTTLE_SECONDS = 60 * 60       # 1 alert / IP / hour
 _PRICING_THROTTLE_MAX = 2000
-_pricing_seen_at: dict[str, float] = {}
+_pricing_seen_at: "OrderedDict[str, float]" = OrderedDict()
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +114,10 @@ class SlackMessage:
 
 
 async def post_to_user_activity(msg: SlackMessage) -> bool:
-    """POST to #user-activity. Returns True on 2xx. Never raises."""
+    """POST to #user-activity. Returns True on 2xx. Never raises.
+
+    WM-05: delegates to _slack_client.post_with_retry for backoff handling.
+    """
     url = os.getenv(SLACK_ENV_VAR)
     if not url:
         logger.warning(
@@ -116,20 +125,20 @@ async def post_to_user_activity(msg: SlackMessage) -> bool:
         )
         logger.info("ALERT[user_activity] %s — %s", msg.title, msg.body)
         return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(url, json=msg.to_payload())
-        if not (200 <= r.status_code < 300):
-            logger.error(
-                "user_activity: Slack post failed (%s): %s",
-                r.status_code,
-                r.text[:200],
-            )
-            return False
-        return True
-    except httpx.HTTPError as exc:
-        logger.exception("user_activity: Slack post errored: %s", exc)
+    response = await post_with_retry(url, msg.to_payload())
+    if response is None:
+        logger.error("user_activity: Slack post gave up after retries: %s", msg.title)
         return False
+    if not (200 <= response.status_code < 300):
+        # B-4: drop response.text — Slack body may echo PII / log-injection.
+        logger.error(
+            "user_activity: Slack post failed status=%s reason=%s body_len=%s",
+            response.status_code,
+            response.reason_phrase,
+            len(response.text),
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -138,18 +147,30 @@ async def post_to_user_activity(msg: SlackMessage) -> bool:
 
 
 def _client_ip(request: Request) -> str:
-    """Return the real client IP.
+    """Return the real client IP, validated.
 
-    Cloudflare → Caddy → uvicorn. Caddy sets ``X-Forwarded-For`` preserving
-    CF's first-hop IP; fall back to request.client.host if missing (which
-    means we're behind an unexpected proxy chain or called directly).
+    M-3: prefer ``cf-connecting-ip`` (single trusted value Cloudflare sets)
+    over ``X-Forwarded-For`` (attacker-controllable comma-list — a crafted
+    header could grow ``_pricing_seen_at`` toward _PRICING_THROTTLE_MAX in
+    a single burst). Anything that doesn't parse as a real IP collapses to
+    the ``"unknown"`` single-bucket — DoS-safe.
     """
-    fwd = request.headers.get("x-forwarded-for") or request.headers.get(
-        "cf-connecting-ip"
+    raw = (
+        request.headers.get("cf-connecting-ip")
+        or request.headers.get("x-forwarded-for")
+        or (request.client.host if request.client else None)
     )
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    if not raw:
+        return "unknown"
+    # XFF may be a comma-list; take the first hop.
+    candidate = raw.split(",")[0].strip()
+    if not candidate:
+        return "unknown"
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return "unknown"
+    return candidate
 
 
 def _mask_email(email: str | None) -> str:
@@ -160,6 +181,39 @@ def _mask_email(email: str | None) -> str:
     if len(local) <= 1:
         return f"*@{domain}"
     return f"{local[0]}***@{domain}"
+
+
+def _resolve_full_name(
+    *,
+    display_name: str | None,
+    email: str | None,
+) -> str:
+    """WM-15: resolve user's display name for Slack payloads.
+
+    Source-of-truth is ``core.profiles.display_name`` (NOT ``full_name`` —
+    the column was renamed during the DB v2 cutover; see
+    ``supabase/website/_v2/01_core_schema.sql:7``). The trigger
+    ``core.handle_new_auth_user`` populates this from the OAuth provider's
+    ``raw_user_meta_data ->> 'name'`` (Google / GitHub return the full
+    profile name there).
+
+    Fallback chain:
+      1. ``display_name`` if set and non-empty.
+      2. Email local-part (e.g. ``"alice@x.com" → "alice"``).
+      3. Em-dash placeholder for log-only mode when neither is available.
+
+    Pure helper — does not hit the DB. Callers pass display_name explicitly
+    so the function stays sync and side-effect-free for unit testing.
+    """
+    if display_name:
+        cleaned = display_name.strip()
+        if cleaned:
+            return cleaned
+    if email and "@" in email:
+        local = email.split("@", 1)[0].strip()
+        if local:
+            return local
+    return "—"
 
 
 # ---------------------------------------------------------------------------
@@ -189,12 +243,14 @@ async def notify_new_signup(
         signup_source: free-form hint ("oauth:google", "email", …) if the
             caller has it. Optional.
     """
+    # WM-15: resolved name appears in BOTH the body text AND the fields block
+    # so on-call ops sees who signed up without scanning the field strip.
+    resolved_name = _resolve_full_name(display_name=display_name, email=email)
     fields = {
         "user_id": user_id[:8] + "…",
+        "name": resolved_name,
         "email": _mask_email(email),
     }
-    if display_name:
-        fields["name"] = display_name
     if render_user_id:
         fields["auth_id"] = render_user_id[:8] + "…"
     if signup_source:
@@ -202,7 +258,7 @@ async def notify_new_signup(
 
     msg = SlackMessage(
         title=":tada: New signup",
-        body=f"A new user just joined — {_mask_email(email)}",
+        body=f"A new user just joined — *{resolved_name}* ({_mask_email(email)})",
         severity="info",
         fields=fields,
         source="signup",
@@ -231,17 +287,20 @@ async def notify_pricing_visit(request: Request) -> None:
 
     last = _pricing_seen_at.get(ip)
     if last is not None and (now - last) < _PRICING_THROTTLE_SECONDS:
+        # Touch on access so this IP stays at the LRU tail.
+        _pricing_seen_at.move_to_end(ip)
         return  # throttled
 
-    # Bound the map before insert.
+    # M-4: O(1) FIFO eviction via OrderedDict.popitem(last=False).
     if len(_pricing_seen_at) >= _PRICING_THROTTLE_MAX:
-        oldest_ip = min(_pricing_seen_at, key=_pricing_seen_at.get)  # type: ignore[arg-type]
-        _pricing_seen_at.pop(oldest_ip, None)
+        _pricing_seen_at.popitem(last=False)
     _pricing_seen_at[ip] = now
+    _pricing_seen_at.move_to_end(ip)
 
     ua = (request.headers.get("user-agent") or "—")[:120]
     referer = request.headers.get("referer") or "—"
-    country = request.headers.get("cf-ipcountry") or "—"  # Cloudflare geo hint
+    # WM-16: render the bare CF ipcountry code as "Name (CC)" for ops legibility.
+    country = format_country(request.headers.get("cf-ipcountry"))
 
     msg = SlackMessage(
         title=":eyes: Pricing page visit",
@@ -275,21 +334,33 @@ async def notify_payment(
     plan: str | None = None,
     provider: str = "unknown",
     provider_payment_id: str | None = None,
+    display_name: str | None = None,
+    country: str | None = None,
 ) -> None:
     """Payment succeeded. Wire this into the eventual provider webhook
     handler (Stripe ``payment_intent.succeeded``, Razorpay ``payment.captured``
     — whichever is chosen).
 
+    WM-15/WM-16: includes resolved display_name + formatted country in the
+    payload so payment alerts surface "who & where" at a glance. Both are
+    optional — callers that don't yet plumb them through still get a valid
+    Slack message, just without the enrichment.
+
     Left as a callable now so the hook site in /webhooks/monitor/payment
     below can be filled in later without touching this file's public API.
     """
+    resolved_name = _resolve_full_name(display_name=display_name, email=email)
+    formatted_country = format_country(country)
     msg = SlackMessage(
         title=f":moneybag: Payment — {amount:.2f} {currency}",
-        body=f"*{_mask_email(email)}* just paid {amount:.2f} {currency}"
+        body=f"*{resolved_name}* ({_mask_email(email)}) just paid "
+        f"{amount:.2f} {currency}"
         + (f" for *{plan}*" if plan else ""),
         severity="info",
         fields={
             "user_id": (user_id or "—")[:8] + ("…" if user_id else ""),
+            "name": resolved_name,
+            "country": formatted_country,
             "provider": provider,
             "provider_payment_id": provider_payment_id or "—",
             "plan": plan or "—",

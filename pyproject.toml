@@ -3,4 +3,5 @@ asyncio_mode = "auto"
 markers = [
     "live: Run live API integration tests (requires real credentials)",
     "destructive: Mutate shared state (delete users, drop data); opt-in via --destructive",
+    "e2e: Browser-driven Playwright E2E test (runs in e2e.yml workflow, not default CI)",
 ]

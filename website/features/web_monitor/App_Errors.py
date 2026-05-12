@@ -36,6 +36,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter
 
+from website.features.web_monitor._slack_client import post_with_retry
+
 logger = logging.getLogger("website.web_monitor.app_errors")
 
 router = APIRouter(prefix="/webhooks/monitor", tags=["web_monitor.app_errors"])
@@ -90,26 +92,34 @@ async def post_to_app_errors(msg: SlackMessage) -> bool:
     """POST a Slack message to #app-errors. Returns True on 2xx.
 
     Never raises — a failed alert must not escalate into a failed response.
+    WM-05: delegates to _slack_client.post_with_retry which honors Slack's
+    Retry-After on 429 and applies exp+jitter backoff for transient errors.
     """
     url = os.getenv(SLACK_ENV_VAR)
     if not url:
         logger.warning(
             "app_errors: %s unset; alert logged only: %s", SLACK_ENV_VAR, msg.title
         )
+        # Structured contract: level=info, channel name embedded.
         logger.info("ALERT[app_errors] %s — %s", msg.title, msg.body)
         return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(url, json=msg.to_payload())
-        if not (200 <= r.status_code < 300):
-            logger.error(
-                "app_errors: Slack post failed (%s): %s", r.status_code, r.text[:200]
-            )
-            return False
-        return True
-    except httpx.HTTPError as exc:
-        logger.exception("app_errors: Slack post errored: %s", exc)
+    response = await post_with_retry(url, msg.to_payload())
+    if response is None:
+        logger.error("app_errors: Slack post gave up after retries: %s", msg.title)
         return False
+    if not (200 <= response.status_code < 300):
+        # B-4: never log response.text — Slack echoes payload fragments that
+        # may include PII / log-injection content. Status + reason + length
+        # are sufficient for triage; body is fetched only at WARN level in
+        # exceptional debug sessions, never in standard error logging.
+        logger.error(
+            "app_errors: Slack post failed status=%s reason=%s body_len=%s",
+            response.status_code,
+            response.reason_phrase,
+            len(response.text),
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------

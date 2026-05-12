@@ -24,6 +24,9 @@ from website.features.summarization_engine.api import router as engine_v2_router
 from website.features.user_pricing.routes import router as pricing_router
 from website.features.web_monitor import router as web_monitor_router
 from website.features.web_monitor.App_Errors import notify_app_error
+from website.features.web_monitor._env_validation import (
+    log_web_monitor_env_warnings,
+)
 from website.api.admin_routes import router as admin_router
 from website.api import _memory_guard
 
@@ -113,6 +116,14 @@ def create_app(lifespan=None) -> FastAPI:
 
     app = FastAPI(**kwargs)
     nexus_enabled = _nexus_enabled()
+
+    # WAVE-D WM-14: log a warning at boot for each unset SLACK_WEBHOOK_* env
+    # var so missing webhook config is visible BEFORE the first event would
+    # have fired. Non-fatal — channels degrade to log-only on missing vars.
+    # m-3: suppress under pytest so the per-test ``create_app`` calls in the
+    # mocked CI lane don't drown the log stream with stub-env warnings.
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        log_web_monitor_env_warnings()
 
     # WAVE-C 1c-A.4 (D-KG-8): payload compression with Accept-Encoding
     # negotiation. brotli-asgi serves br when supported, falls back to gzip,

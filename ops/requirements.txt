@@ -81,6 +81,11 @@ cachetools>=5.3
 # Razorpay payments (orders, subscriptions, webhook signature verify)
 razorpay>=1.4
 
+# Async retry/backoff for Slack webhook calls in website/features/web_monitor/
+# (WAVE-D Phase 1 — D-1 research recommendation). Wraps tenacity with sensible
+# defaults + identical sync/async API; honors Retry-After via custom wait fn.
+stamina>=26.1.0,<27
+
 # Experimental PageIndex RAG
 # PageIndex commit a51d97f63cedbf1d36b1121ff47386ea4e088ff5 is verified,
 # but the upstream repo is not pip-installable at that commit.

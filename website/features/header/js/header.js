@@ -203,15 +203,40 @@
   function bindAvatarDropdown() {
     if (!refs.avatarBtn || !refs.avatarDrop || refs.avatarBtn.dataset.zkBound) return;
     refs.avatarBtn.dataset.zkBound = '1';
+
+    // m-8: every close path MUST also reset aria-expanded — screen readers
+    // otherwise announce the menu as still expanded after Escape / focus loss.
+    function closeDropdown() {
+      if (!refs.avatarDrop.classList.contains('open')) return;
+      refs.avatarDrop.classList.remove('open');
+      refs.avatarBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    // WCAG 2.2 4.1.2 / WAI-ARIA 1.2 menubutton: aria-expanded mirrors .open state.
     refs.avatarBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      refs.avatarDrop.classList.toggle('open');
+      var nowOpen = refs.avatarDrop.classList.toggle('open');
+      refs.avatarBtn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
     });
     document.addEventListener('click', function (e) {
       if (refs.avatarWrap && !refs.avatarWrap.contains(e.target)) {
-        refs.avatarDrop.classList.remove('open');
+        closeDropdown();
       }
     });
+    // m-8: Escape key closes the dropdown from anywhere.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeDropdown();
+    });
+    // m-8: focus leaving the avatar wrap closes the dropdown (focusout
+    // bubbles, unlike blur). Schedule on microtask so the relatedTarget
+    // check sees the post-focus state — without that delay, clicking a
+    // dropdown menu item would close before the click handler fires.
+    if (refs.avatarWrap) {
+      refs.avatarWrap.addEventListener('focusout', function (e) {
+        var next = e.relatedTarget;
+        if (!next || !refs.avatarWrap.contains(next)) closeDropdown();
+      });
+    }
   }
 
   function initBasics() {

@@ -1,0 +1,4 @@
+Visual-regression baselines for UH-02. Populated by Playwright on the
+first --update-snapshots run; do NOT generate baselines locally — Linux
+Cairo font rendering differs from macOS/Windows and produces drift.
+Regenerate via the e2e.yml workflow with manual dispatch.

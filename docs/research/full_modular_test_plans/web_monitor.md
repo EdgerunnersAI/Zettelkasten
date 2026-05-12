@@ -27,7 +27,7 @@ Risk tier: **High** (silent monitoring loss = operational blind spot).
 | WM-08 | P2 | Inbound payload fuzzing — Hypothesis/schemathesis on `DOAlertPayload` + payment webhook (4xx never 5xx) |
 | WM-09 | P2 | Severity classifier (`_severity`) table-driven unit tests |
 | WM-10 | P2 | Structured logging assertions — every alert path emits structured line even when Slack post fails |
-| WM-11 | P3 | Synthetic alert canary heartbeat |
+| WM-11 | P3 | Synthetic alert canary heartbeat — **DEFERRED: WAVE-D hardening sprint** (operator D-1 decision, 2026-05-12). Rationale: low-yield without a paged-runbook consumer; revisit when on-call rotation is staffed. |
 | WM-12 | P3 | Healthz contract smoke (3 `*_healthz` endpoints) |
 | WM-13 | P3 | Scheduled `notify_pricing_visit` non-blocking under slow Slack |
 | WM-14 | P3 | Config/env validation — boot-time check for `*_WEBHOOK_URL`; degraded-mode behavior when unset |
@@ -48,5 +48,15 @@ WM-01 → WM-04 → WM-03 → WM-02 → WM-05 → WM-10 → WM-06 → WM-08 → 
 - `mcp__scheduled-tasks` for WM-11 canary heartbeat verification
 - `mcp__github` for CI workflow assertions
 
-## Live-test policy
+## WAVE-D Phase 1 — implementation notes (2026-05-12)
+
+* **WM-03 surgical fix landed**: `DO_Alerts.py` shared-secret compare now uses `hmac.compare_digest` (constant-time). Regression-guarded by `tests/unit/web_monitor/test_do_webhook_auth.py::test_digitalocean_webhook_uses_compare_digest_not_eq`.
+* **WM-05 + WM-07 merged**: `website/features/web_monitor/_slack_client.py` adds `post_with_retry` (stamina retry, Retry-After honoring, exp+jitter for transients) and `fire_and_forget` (asyncio.Semaphore(8) per worker + strong-ref task set). All 3 channel `post_to_*` helpers now delegate to it.
+* **WM-08 fix-in-place**: DO webhook now catches `pydantic.ValidationError` and returns 400 instead of 5xx — addresses fuzz regression discovered while authoring `test_payload_fuzz.py`.
+* **WM-14 wired**: `_env_validation.log_web_monitor_env_warnings()` runs once at `create_app()` boot; warns per unset `SLACK_WEBHOOK_*`.
+* **WM-15**: source-of-truth column is `core.profiles.display_name` (NOT `full_name`). Spec citation was stale post-DB-v2; verified at `supabase/website/_v2/01_core_schema.sql:7`. Resolution helper `_resolve_full_name(display_name, email)` falls back to email-localpart, then em-dash.
+* **WM-16**: in-module ISO-3166 mapping (`_country.py`, ~50 entries + `Unknown (XX)` fallback). No new dependency.
+* **WM-11 deferred** per operator D-1; documented above.
+
+
 Mocked Slack in CI. `--live` staging only. Production read-only: `GET /digitalocean_healthz`, `GET /app_errors_healthz`, `GET /user_activity_healthz`.

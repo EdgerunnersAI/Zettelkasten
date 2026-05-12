@@ -26,6 +26,7 @@ Env vars:
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -34,7 +35,9 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+
+from website.features.web_monitor._slack_client import post_with_retry
 
 logger = logging.getLogger("website.web_monitor.do_alerts")
 
@@ -87,7 +90,10 @@ class SlackMessage:
 
 
 async def post_to_do_alerts(msg: SlackMessage) -> bool:
-    """POST a Slack message to #do-alerts. Returns True on 2xx."""
+    """POST a Slack message to #do-alerts. Returns True on 2xx.
+
+    WM-05: delegates to _slack_client.post_with_retry for backoff handling.
+    """
     url = os.getenv(SLACK_ENV_VAR)
     if not url:
         logger.warning(
@@ -95,18 +101,20 @@ async def post_to_do_alerts(msg: SlackMessage) -> bool:
         )
         logger.info("ALERT[do_alerts] %s — %s", msg.title, msg.body)
         return False
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(url, json=msg.to_payload())
-        if not (200 <= r.status_code < 300):
-            logger.error(
-                "do_alerts: Slack post failed (%s): %s", r.status_code, r.text[:200]
-            )
-            return False
-        return True
-    except httpx.HTTPError as exc:
-        logger.exception("do_alerts: Slack post errored: %s", exc)
+    response = await post_with_retry(url, msg.to_payload())
+    if response is None:
+        logger.error("do_alerts: Slack post gave up after retries: %s", msg.title)
         return False
+    if not (200 <= response.status_code < 300):
+        # B-4: drop response.text — Slack body may echo PII / log-injection.
+        logger.error(
+            "do_alerts: Slack post failed status=%s reason=%s body_len=%s",
+            response.status_code,
+            response.reason_phrase,
+            len(response.text),
+        )
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -165,10 +173,21 @@ async def digitalocean_alert(request: Request) -> dict[str, str]:
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"invalid json: {exc}") from exc
 
-    payload = DOAlertPayload.model_validate(data)
+    # WM-08: cap validation failures at 400 so fuzz / malformed JSON never
+    # escalates into a 5xx (non-object roots like list/string/number arrive
+    # as dicts after json.loads but fail model validation).
+    try:
+        payload = DOAlertPayload.model_validate(data)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid payload: {exc.errors()[:3]}") from exc
 
     expected = os.getenv("DO_ALERT_WEBHOOK_SECRET")
-    if expected and payload.alert_uuid != expected:
+    # WM-03 surgical: constant-time compare blocks timing side-channels that
+    # leak shared-secret prefix length to an attacker iterating UUIDs.
+    if expected and not hmac.compare_digest(
+        (payload.alert_uuid or "").encode("utf-8"),
+        expected.encode("utf-8"),
+    ):
         logger.warning("do_alerts: webhook rejected — alert_uuid mismatch")
         raise HTTPException(status_code=401, detail="bad alert_uuid")
 

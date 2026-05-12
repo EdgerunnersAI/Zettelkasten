@@ -1,0 +1,162 @@
+name: E2E (Playwright + axe)
+
+# WAVE-D Phase 1: browser-driven E2E + WCAG 2.2 AA audit lane.
+#
+# SCOPE (post-review M-7, 2026-05-12):
+# This workflow runs the ``e2e and not live`` lane ONLY for chromium-install
+# + Playwright-fixture import-smoke. A real browser flow against a live
+# FastAPI surface lives under the ``--live`` lane against staging — there is
+# NO docker-compose lift inside this job yet. Until we add that, do NOT
+# treat the green check on this workflow as a required merge gate beyond
+# "imports resolve + chromium installs". The collect-count sanity step
+# below makes "0 tests collected" loud so pytest's exit-5 cannot silently
+# pass.
+#
+# Decoupled from deploy-droplet.yml on purpose (D-5 research recommendation):
+# browser tests gate MERGE to master, not deploy-from-master. The droplet
+# only receives images that already passed the visual/a11y matrix on a PR
+# build. ubuntu-latest is 4 vCPU / 16 GB RAM — comfortable for a single-
+# worker Chromium matrix (peak ~3.5 GB, well under the 16 GB ceiling).
+#
+# Workers stay at 1 for the visual matrix: the Chrome-for-Testing memory
+# regression (microsoft/playwright#38489) is single-instance-safe but
+# multiplies catastrophically under parallel workers.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "website/features/user_home/**"
+      - "website/features/header/**"
+      - "website/features/web_monitor/**"
+      - "tests/integration/browser/**"
+      - "tests/js/**"
+      - "ops/requirements.txt"
+      - "ops/requirements-dev.txt"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [master]
+    paths:
+      - "website/features/user_home/**"
+      - "website/features/header/**"
+      - "website/features/web_monitor/**"
+      - "tests/integration/browser/**"
+      - "tests/js/**"
+      - "ops/requirements.txt"
+      - "ops/requirements-dev.txt"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  browser-matrix:
+    name: Playwright + axe (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            ops/requirements.txt
+            ops/requirements-dev.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ops/requirements-dev.txt
+
+      # Playwright bundles its own Chromium build (~350 MB downloaded +
+      # extracted). Cache the install root so re-runs hit warm storage.
+      # Key on the playwright wheel version so a bump invalidates the cache.
+      - name: Detect Playwright version (for cache key)
+        id: pw
+        run: |
+          PW_VER=$(python -c "import importlib.metadata as m; print(m.version('playwright'))")
+          echo "version=${PW_VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          restore-keys: |
+            ms-playwright-${{ runner.os }}-
+
+      - name: Install Chromium (with system deps)
+        run: |
+          # --with-deps installs the OS shared libs Chromium needs. We pin
+          # to `chromium` only — installing all browsers downloads ~2 GB
+          # of Firefox + WebKit we will never run in CI.
+          python -m playwright install --with-deps chromium
+
+      - name: Sanity-check that at least one e2e test would be collected
+        env:
+          GEMINI_API_KEY: "ci-stub"
+          SUPABASE_V2_URL: "https://ci-stub.supabase.co"
+          SUPABASE_V2_ANON_KEY: "ci-stub-anon"
+          SUPABASE_V2_SERVICE_ROLE_KEY: "ci-stub-service"
+          NEXUS_TOKEN_ENCRYPTION_KEY: "7TgtMgeR5dMTnXxW6ULICwhf66A1VpzwuNFuIBqmoe4="
+          E2E_BASE_URL: "http://127.0.0.1:8000"
+        # Surface "0 tests collected" loudly. pytest's exit-5 (no tests)
+        # otherwise looks identical to "ran zero tests, all green" and lets
+        # a marker rename silently turn this lane into a no-op.
+        run: |
+          set -euo pipefail
+          pytest tests/integration/browser/ \
+            -m "e2e and not live" \
+            --strict-markers \
+            --collect-only -q \
+            | tee /tmp/e2e_collected.txt
+          COLLECTED=$(grep -cE '::' /tmp/e2e_collected.txt || true)
+          echo "e2e_collected_count=${COLLECTED}"
+          if [ "${COLLECTED}" -lt 1 ]; then
+            echo "::error::No tests matched 'e2e and not live'. Did a marker rename happen?"
+            exit 1
+          fi
+
+      - name: Run browser smoke + matrix tests
+        env:
+          # Stubs for module-level supabase client construction; the e2e
+          # tests that talk to real Supabase must be explicitly marked
+          # @pytest.mark.live (and gated by --live, off by default here).
+          GEMINI_API_KEY: "ci-stub"
+          SUPABASE_V2_URL: "https://ci-stub.supabase.co"
+          SUPABASE_V2_ANON_KEY: "ci-stub-anon"
+          SUPABASE_V2_SERVICE_ROLE_KEY: "ci-stub-service"
+          NEXUS_TOKEN_ENCRYPTION_KEY: "7TgtMgeR5dMTnXxW6ULICwhf66A1VpzwuNFuIBqmoe4="
+          # CI default: no --live flag, so the smoke test (which is
+          # @pytest.mark.live) skips by autouse skip_live until staging
+          # spins up. The module sub-agents will add NOT-live e2e tests
+          # that exercise the surface without burning Supabase quota.
+          E2E_BASE_URL: "http://127.0.0.1:8000"
+        run: |
+          pytest tests/integration/browser/ \
+            -m "e2e and not live" \
+            --strict-markers \
+            -v \
+            --maxfail=3
+
+      # Upload screenshots + axe JSON only on failure — saves runner
+      # storage churn for green runs.
+      - name: Upload snapshot artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts-${{ github.run_id }}
+          path: |
+            tests/integration/browser/snapshots/**
+            test-results/**
+          if-no-files-found: ignore
+          retention-days: 14

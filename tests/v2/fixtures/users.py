@@ -179,3 +179,5 @@ def delete_test_user(auth_user_id: uuid.UUID) -> None:
     """Delete the auth user; ON DELETE CASCADE removes profile/workspaces/members."""
     service = get_v2_client()
     service.auth.admin.delete_user(str(auth_user_id))
+
+
