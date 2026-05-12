@@ -16,14 +16,19 @@ class KGRepository:
     def upsert_node(
         self,
         *,
-        workspace_id: UUID | None,
+        workspace_id: UUID,  # non-None; service-role bypasses RLS
         node_type: str,
         canonical_name: str,
         slug: str,
         metadata: dict | None = None,
     ) -> int:
+        if workspace_id is None:
+            raise ValueError(
+                "workspace_id is required (service-role bypasses RLS; "
+                "NULL would allow cross-tenant kg_nodes write)"
+            )
         payload = {
-            "workspace_id": str(workspace_id) if workspace_id else None,
+            "workspace_id": str(workspace_id),
             "type": node_type,
             "canonical_name": canonical_name,
             "slug": slug,
@@ -41,7 +46,7 @@ class KGRepository:
     def add_edge(
         self,
         *,
-        workspace_id: UUID | None,
+        workspace_id: UUID,  # non-None; service-role bypasses RLS
         src_node_id: int,
         dst_node_id: int,
         relation_type: str,
@@ -49,8 +54,13 @@ class KGRepository:
         weight: float | None = None,
         metadata: dict | None = None,
     ) -> int:
+        if workspace_id is None:
+            raise ValueError(
+                "workspace_id is required (service-role bypasses RLS; "
+                "NULL would allow cross-tenant kg_edges write)"
+            )
         payload = {
-            "workspace_id": str(workspace_id) if workspace_id else None,
+            "workspace_id": str(workspace_id),
             "src_node_id": src_node_id,
             "dst_node_id": dst_node_id,
             "relation_type": relation_type,
