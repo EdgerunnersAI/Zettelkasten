@@ -99,8 +99,8 @@ sources:
     divergence_threshold_pct: 20
   youtube:
     transcript_languages: ["en", "en-US", "en-GB"]
-    ytdlp_player_clients: ["android_embedded", "ios"]
-    transcript_budget_ms: 45000
+    ytdlp_player_clients: ["android_embedded", "ios", "tv_embedded", "mweb", "web"]
+    transcript_budget_ms: 90000
     piped_instances:
       - pipedapi.kavin.rocks
       - pipedapi.adminforge.de
@@ -122,7 +122,7 @@ sources:
     gemini_audio_max_duration_min: 60
     gemini_audio_max_filesize_mb: 50
     use_ytdlp_fallback: true
-    use_gemini_video_fallback: false
+    use_gemini_video_fallback: true
     webshare_proxy_env: "WEBSHARE_PROXY_URL"
   hackernews:
     api: "algolia"
