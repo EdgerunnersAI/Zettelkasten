@@ -267,8 +267,51 @@ async def test_rate_limit_appends_event_with_kind_rate_limit(monkeypatch):
     assert len(rl_events) == 2, f"expected 2 rate_limit events, got {list(pool._events)}"
     keys = {ev["key_index"] for ev in rl_events}
     assert keys == {0, 1}
+    # S3: full shape includes the OTel-aligned key_role field.
+    expected = {
+        "ts", "kind", "key_index", "key_role",
+        "model", "role", "attempt", "cooldown_secs",
+    }
     for ev in rl_events:
-        assert {"ts", "kind", "key_index", "model", "role", "attempt", "cooldown_secs"} <= ev.keys()
+        assert expected <= ev.keys()
+        # key[0] and key[1] are free-tier in _pool_with_billing_last(3).
+        assert ev["key_role"] == "free"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_emits_otel_counter(monkeypatch):
+    """S3: when a 429 fires, _record_event should call
+    budget.emit_rate_limited via the lazy import."""
+    pool = _pool_with_billing_last(num_keys=3)
+
+    def _behavior(key_index, model):
+        if key_index in (0, 1):
+            raise _FakeClientError()
+        return _success_resp()
+
+    seen: list[tuple[int, str]] = []
+    _install_fake_clients(pool, _behavior, monkeypatch, seen)
+
+    calls: list[dict] = []
+
+    def _spy(**kwargs):
+        calls.append(kwargs)
+
+    import website.features.summarization_engine.core.budget as budget_mod
+    monkeypatch.setattr(budget_mod, "emit_rate_limited", _spy)
+
+    await pool.generate_content(
+        contents="prompt",
+        starting_model="gemini-2.5-flash",
+        label="otel-rate-limit",
+    )
+
+    # Two 429s -> two emit calls. Each must carry the 4 required labels.
+    assert len(calls) >= 2
+    for c in calls:
+        assert set(c.keys()) == {"summarizer", "role", "model", "key_role"}
+        assert c["key_role"] == "free"
+        assert c["model"] == "gemini-2.5-flash"
 
 
 @pytest.mark.asyncio

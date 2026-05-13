@@ -1,4 +1,4 @@
-"""Per-request LLM call budget enforcement.
+"""Per-request LLM call budget enforcement + GenAI observability counters.
 
 Industry pattern: ContextVar (PEP 567) set inside a FastAPI async dependency,
 threaded implicitly through nested async/sync call stacks; explicit
@@ -7,6 +7,25 @@ code reviewers (decorator-only hides cost; middleware-only can't decrement
 per-call).
 
 Hard invariant: max 3 LLM calls per summarization. Test asserts this.
+
+The counters in this module follow the OpenTelemetry GenAI semantic
+conventions (https://opentelemetry.io/docs/specs/semconv/gen-ai/):
+
+  - gen_ai_client_calls_total       (per-call counter)
+  - gen_ai_client_budget_exceeded_total (3-call cap violations)
+  - gen_ai_client_rate_limited_total (429 events per key/model/role)
+  - gen_ai_client_quota_exhausted_total (hard-quota events)
+
+These are scraped as Prometheus metrics and consumed by Grafana/Langfuse.
+
+Labels are deliberately low-cardinality:
+  - gen_ai_system: always "gemini" today
+  - summarizer:   one of newsletter|youtube|github|reddit|default|unknown
+  - role:         dense_verify|summarizer|repair|patch|other
+  - model:        gemini-2.5-pro|gemini-2.5-flash|gemini-2.5-flash-lite
+  - key_role:     free|billing
+
+key_index is NEVER a label (high cardinality); always an event-field only.
 
 SCOPE — production summarization only.
     The budget covers Gemini calls inside ``summarizer.summarize()`` (extract /
@@ -141,12 +160,32 @@ try:
         "Times the per-request LLM budget cap was hit.",
         ["summarizer", "role"],
     )
+    KEY_POOL_RATE_LIMITED = Counter(
+        "gen_ai_client_rate_limited_total",
+        "Times a Gemini call was rate-limited (per key, model, role).",
+        ["gen_ai_system", "summarizer", "role", "model", "key_role"],
+    )
+    KEY_POOL_QUOTA_EXHAUSTED = Counter(
+        "gen_ai_client_quota_exhausted_total",
+        "Times a Gemini call hit hard quota exhaustion (per key, model, role).",
+        ["gen_ai_system", "summarizer", "role", "model", "key_role"],
+    )
 
     def _emit_call_counter(summarizer: str, role: str) -> None:
         LLM_CALLS_TOTAL.labels("gemini", summarizer, role).inc()
 
     def _emit_overrun_counter(summarizer: str, role: str) -> None:
         BUDGET_EXCEEDED.labels(summarizer, role).inc()
+
+    def emit_rate_limited(
+        *, summarizer: str, role: str, model: str, key_role: str
+    ) -> None:
+        KEY_POOL_RATE_LIMITED.labels("gemini", summarizer, role, model, key_role).inc()
+
+    def emit_quota_exhausted(
+        *, summarizer: str, role: str, model: str, key_role: str
+    ) -> None:
+        KEY_POOL_QUOTA_EXHAUSTED.labels("gemini", summarizer, role, model, key_role).inc()
 
 except ImportError:  # pragma: no cover — prom optional
 
@@ -162,11 +201,31 @@ except ImportError:  # pragma: no cover — prom optional
             summarizer, role,
         )
 
+    def emit_rate_limited(
+        *, summarizer: str, role: str, model: str, key_role: str
+    ) -> None:
+        logger.info(
+            "metric gen_ai_client_rate_limited_total summarizer=%s role=%s "
+            "model=%s key_role=%s",
+            summarizer, role, model, key_role,
+        )
+
+    def emit_quota_exhausted(
+        *, summarizer: str, role: str, model: str, key_role: str
+    ) -> None:
+        logger.warning(
+            "metric gen_ai_client_quota_exhausted_total summarizer=%s role=%s "
+            "model=%s key_role=%s",
+            summarizer, role, model, key_role,
+        )
+
 
 __all__ = [
     "Budget",
     "BudgetExceeded",
     "budget_scope",
+    "emit_quota_exhausted",
+    "emit_rate_limited",
     "get_budget",
     "llm_budget_dep",
 ]

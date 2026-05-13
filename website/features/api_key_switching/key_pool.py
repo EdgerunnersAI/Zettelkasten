@@ -417,6 +417,10 @@ class GeminiKeyPool:
             model=attempt_model,
         )
 
+    def _key_role_label(self, key_index: int) -> str:
+        """Return 'billing'|'free' for OTel key_role label."""
+        return "billing" if key_index in self._billing_key_indices else "free"
+
     def _record_event(
         self,
         *,
@@ -428,16 +432,45 @@ class GeminiKeyPool:
         cooldown_secs: float,
     ) -> None:
         """Append a bounded telemetry event to the per-pool ring (maxlen=200).
-        Consumed by phases.py to populate input.json.gemini_calls.quota_exhausted_events."""
+        Consumed by phases.py to populate input.json.gemini_calls.quota_exhausted_events.
+
+        ``role`` is the per-key tier ("free"|"billing"); duplicated as
+        ``key_role`` for OTel-aligned consumers that key on that name (S3)."""
         self._events.append({
             "ts": time.time(),
             "kind": kind,
             "key_index": key_index,
+            "key_role": self._key_role_label(key_index),
             "model": model,
             "role": role,
             "attempt": attempt,
             "cooldown_secs": cooldown_secs,
         })
+        # Lazy import to avoid budget.py <-> key_pool.py circularity.
+        try:
+            from website.features.summarization_engine.core.budget import (
+                _SUMMARIZER,
+                emit_quota_exhausted,
+                emit_rate_limited,
+            )
+            summarizer = _SUMMARIZER.get("unknown") or "unknown"
+            key_role = self._key_role_label(key_index)
+            if kind == "rate_limit":
+                emit_rate_limited(
+                    summarizer=summarizer,
+                    role=role or "unknown",
+                    model=model,
+                    key_role=key_role,
+                )
+            elif kind == "quota_exhausted":
+                emit_quota_exhausted(
+                    summarizer=summarizer,
+                    role=role or "unknown",
+                    model=model,
+                    key_role=key_role,
+                )
+        except Exception:  # noqa: BLE001 — telemetry must never break the request path
+            logger.debug("OTel counter emit failed (non-critical)", exc_info=True)
 
     def _log_quota_exhausted(
         self,

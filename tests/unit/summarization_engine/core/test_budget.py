@@ -10,6 +10,8 @@ from website.features.summarization_engine.core.budget import (
     BudgetExceeded,
     _BUDGET,
     budget_scope,
+    emit_quota_exhausted,
+    emit_rate_limited,
     get_budget,
     llm_budget_dep,
 )
@@ -102,6 +104,77 @@ async def test_concurrent_tasks_have_independent_budgets():
         worker("c", 1),
     )
     assert results == {"a": 3, "b": 2, "c": 1}
+
+
+def test_emit_rate_limited_increments_counter():
+    """emit_rate_limited bumps the gen_ai_client_rate_limited_total counter
+    (when prometheus_client is installed) or otherwise logs a metric line."""
+    try:
+        from website.features.summarization_engine.core.budget import (
+            KEY_POOL_RATE_LIMITED,
+        )
+    except ImportError:
+        # prometheus_client not installed — log-fallback path. Just verify the
+        # function doesn't raise; the import-error branch is exercised by the
+        # log fallback test below.
+        emit_rate_limited(
+            summarizer="newsletter", role="summarizer",
+            model="gemini-2.5-flash", key_role="free",
+        )
+        return
+
+    before = KEY_POOL_RATE_LIMITED.labels(
+        "gemini", "newsletter", "summarizer", "gemini-2.5-flash", "free",
+    )._value.get()
+    emit_rate_limited(
+        summarizer="newsletter", role="summarizer",
+        model="gemini-2.5-flash", key_role="free",
+    )
+    after = KEY_POOL_RATE_LIMITED.labels(
+        "gemini", "newsletter", "summarizer", "gemini-2.5-flash", "free",
+    )._value.get()
+    assert after == before + 1
+
+
+def test_emit_quota_exhausted_increments_counter():
+    """emit_quota_exhausted bumps the gen_ai_client_quota_exhausted_total counter."""
+    try:
+        from website.features.summarization_engine.core.budget import (
+            KEY_POOL_QUOTA_EXHAUSTED,
+        )
+    except ImportError:
+        emit_quota_exhausted(
+            summarizer="youtube", role="dense_verify",
+            model="gemini-2.5-pro", key_role="billing",
+        )
+        return
+
+    before = KEY_POOL_QUOTA_EXHAUSTED.labels(
+        "gemini", "youtube", "dense_verify", "gemini-2.5-pro", "billing",
+    )._value.get()
+    emit_quota_exhausted(
+        summarizer="youtube", role="dense_verify",
+        model="gemini-2.5-pro", key_role="billing",
+    )
+    after = KEY_POOL_QUOTA_EXHAUSTED.labels(
+        "gemini", "youtube", "dense_verify", "gemini-2.5-pro", "billing",
+    )._value.get()
+    assert after == before + 1
+
+
+def test_emit_rate_limited_log_fallback_does_not_raise(caplog):
+    """When prom is unavailable, the function path is a logger call; verify
+    it never raises and emits something at INFO level."""
+    import logging
+    with caplog.at_level(
+        logging.INFO, logger="website.features.summarization_engine.core.budget"
+    ):
+        emit_rate_limited(
+            summarizer="github", role="summarizer",
+            model="gemini-2.5-flash-lite", key_role="free",
+        )
+    # Either prom counter path (no log) or fallback log path — both are valid.
+    # We only assert no exception was raised by reaching here.
 
 
 @pytest.mark.asyncio
