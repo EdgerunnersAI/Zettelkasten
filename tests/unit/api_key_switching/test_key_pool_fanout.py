@@ -193,3 +193,106 @@ async def test_billing_key_actually_attempted_before_giving_up(monkeypatch):
     assert 2 in {ki for ki, _m in seen}, (
         "billing key was never attempted before raising — fanout broken"
     )
+
+
+# ── W5 telemetry: counters + event ring ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_success_increments_free_calls_for_free_key(monkeypatch):
+    """A successful call on a free-tier key bumps _free_calls, not _billing_calls."""
+    pool = _pool_with_billing_last(num_keys=3)
+
+    def _behavior(key_index, model):
+        return _success_resp()
+
+    seen: list[tuple[int, str]] = []
+    _install_fake_clients(pool, _behavior, monkeypatch, seen)
+
+    await pool.generate_content(
+        contents="prompt",
+        starting_model="gemini-2.5-flash",
+        label="free-success",
+    )
+
+    # First key in the ordered chain is key[0] = free.
+    assert pool._free_calls == 1
+    assert pool._billing_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_success_increments_billing_calls_for_billing_key(monkeypatch):
+    """When the free keys 429 and the billing key serves the response,
+    _billing_calls advances rather than _free_calls."""
+    pool = _pool_with_billing_last(num_keys=3)
+
+    def _behavior(key_index, model):
+        if key_index in (0, 1):
+            raise _FakeClientError()
+        return _success_resp()
+
+    seen: list[tuple[int, str]] = []
+    _install_fake_clients(pool, _behavior, monkeypatch, seen)
+
+    _, _, key_used = await pool.generate_content(
+        contents="prompt",
+        starting_model="gemini-2.5-flash",
+        label="billing-success",
+    )
+    assert key_used == 2
+    assert pool._billing_calls == 1
+    assert pool._free_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_appends_event_with_kind_rate_limit(monkeypatch):
+    """Every 429 retry must append a kind='rate_limit' event to the ring."""
+    pool = _pool_with_billing_last(num_keys=3)
+
+    def _behavior(key_index, model):
+        if key_index in (0, 1):
+            raise _FakeClientError()
+        return _success_resp()
+
+    seen: list[tuple[int, str]] = []
+    _install_fake_clients(pool, _behavior, monkeypatch, seen)
+
+    await pool.generate_content(
+        contents="prompt",
+        starting_model="gemini-2.5-flash",
+        label="rate-limit-event",
+    )
+
+    rl_events = [ev for ev in pool._events if ev["kind"] == "rate_limit"]
+    assert len(rl_events) == 2, f"expected 2 rate_limit events, got {list(pool._events)}"
+    keys = {ev["key_index"] for ev in rl_events}
+    assert keys == {0, 1}
+    for ev in rl_events:
+        assert {"ts", "kind", "key_index", "model", "role", "attempt", "cooldown_secs"} <= ev.keys()
+
+
+@pytest.mark.asyncio
+async def test_quota_exhausted_appends_event_on_escalation(monkeypatch):
+    """When crossing free→billing the escalation alarm must also drop a
+    kind='quota_exhausted' event into the ring."""
+    pool = _pool_with_billing_last(num_keys=3)
+
+    def _behavior(key_index, model):
+        if key_index in (0, 1):
+            raise _FakeClientError()
+        return _success_resp()
+
+    seen: list[tuple[int, str]] = []
+    _install_fake_clients(pool, _behavior, monkeypatch, seen)
+
+    await pool.generate_content(
+        contents="prompt",
+        starting_model="gemini-2.5-flash",
+        label="quota-exhausted-event",
+    )
+
+    qe_events = [ev for ev in pool._events if ev["kind"] == "quota_exhausted"]
+    # Exactly one escalation event — from key[1] (last free) to key[2] (billing).
+    assert len(qe_events) == 1, f"expected 1 quota_exhausted event, got {list(pool._events)}"
+    assert qe_events[0]["role"] == "free"
+    assert qe_events[0]["key_index"] == 1

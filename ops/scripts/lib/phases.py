@@ -146,6 +146,58 @@ def _sha256_of_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _phase_a_complete(log_path: Path) -> bool:
+    """True iff run.log contains a phase_a-done marker.
+
+    W7 idempotency: prior runs that produced artifacts emit
+    ``phase_a done eval_hash=...`` to the log just before returning. If that
+    line is present, all artifacts (input.json, summary/eval, source_text,
+    atomic_facts, prompt) were written and re-running is wasted spend.
+    """
+    if not log_path.exists():
+        return False
+    try:
+        text = log_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "phase_a done eval_hash=" in text
+
+
+def _load_existing_payload(paths: dict) -> dict:
+    """Re-synthesize the run_phase_a return payload from existing artifacts.
+
+    Used when ``_phase_a_complete`` short-circuits the re-run. Mirrors the
+    shape returned at the end of run_phase_a (held_out vs single-URL).
+    """
+    input_path = paths.get("input")
+    prompt_path = paths.get("prompt")
+    held_out_dir = paths.get("held_out")
+    input_payload: dict = {}
+    if input_path is not None and input_path.exists():
+        loaded = read_json(input_path)
+        if isinstance(loaded, dict):
+            input_payload = loaded
+    urls = list(input_payload.get("urls") or [])
+    records = input_payload.get("records") or []
+    composites = [
+        r.get("composite", 0.0)
+        for r in records
+        if isinstance(r, dict) and isinstance(r.get("composite"), (int, float))
+    ]
+    composite_mean = sum(composites) / len(composites) if composites else 0.0
+    held_out_flag = bool(input_payload.get("held_out")) or (
+        held_out_dir is not None and held_out_dir.exists()
+    )
+    return {
+        "status": "awaiting_manual_review",
+        "path": str(prompt_path) if prompt_path is not None else "",
+        "composite_mean": composite_mean,
+        "urls": urls,
+        "held_out": held_out_flag,
+        "cached": True,
+    }
+
+
 def run_phase_a(
     *,
     source: str,
@@ -157,10 +209,21 @@ def run_phase_a(
     gemini_client_factory: Callable[[], Any],
     held_out: bool = False,
     env: str = "dev",
+    force: bool = False,
 ) -> dict:
-    """Run Phase A and write all artifacts.  Returns a status payload."""
+    """Run Phase A and write all artifacts.  Returns a status payload.
+
+    When ``force=False`` (default) and the log already shows a phase_a-done
+    marker, return the cached payload without re-running. Pass ``force=True``
+    to always re-execute (operator override).
+    """
     iter_dir.mkdir(parents=True, exist_ok=True)
     paths = iter_artifact_paths(iter_dir)
+
+    # W7: idempotency short-circuit. The 3-restart pattern in iter-N drivers
+    # repeatedly re-ran a completed phase_a, burning ~3× the Gemini spend.
+    if not force and _phase_a_complete(paths["log"]):
+        return _load_existing_payload(paths)
 
     started_at = datetime.now(timezone.utc).isoformat()
     append_log(paths["log"], f"[{started_at}] phase_a start source={source} iter={iter_num} urls={len(urls)} held_out={held_out}")
@@ -307,16 +370,11 @@ def run_phase_a(
     )
 
     # input.json — inputs + timing + key-pool stats
-    pool_stats = None
+    pool = None
     try:
         pool = client._pool  # type: ignore[attr-defined]
-        pool_stats = {
-            "key_count": getattr(pool, "_total_keys", None),
-            "billing_calls": getattr(pool, "_billing_calls", 0),
-            "free_calls": getattr(pool, "_free_calls", 0),
-        }
     except Exception:
-        pass
+        pool = None
 
     input_payload = {
         "source": source,
@@ -339,10 +397,10 @@ def run_phase_a(
         ],
         "gemini_calls": {
             "role_breakdown": {
-                "billing_calls": (pool_stats or {}).get("billing_calls", 0),
-                "free_calls": (pool_stats or {}).get("free_calls", 0),
+                "billing_calls": getattr(pool, "_billing_calls", 0),
+                "free_calls": getattr(pool, "_free_calls", 0),
             },
-            "quota_exhausted_events": [],
+            "quota_exhausted_events": list(getattr(pool, "_events", []) or []),
         },
     }
     write_json(paths["input"], input_payload)

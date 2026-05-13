@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 import json
 import logging
@@ -319,6 +320,16 @@ class GeminiKeyPool:
         self._cooldowns: dict[tuple[int, str], float] = {}
         self._next_gen_key = 0
         self._next_emb_key = 0
+        # W5 telemetry: split successful-call counters by role + bounded
+        # event ring for rate-limit / quota-exhausted occurrences. Consumed
+        # by phases.py when writing input.json.gemini_calls.
+        self._billing_calls: int = 0
+        self._free_calls: int = 0
+        self._billing_key_indices: set[int] = {
+            i for i, role in enumerate(self._key_roles) if role == "billing"
+        }
+        self._events: deque = deque(maxlen=200)
+        self._total_keys: int = len(self._keys)
 
     def _get_client(self, key_index: int) -> genai.Client:
         if key_index not in self._clients:
@@ -406,15 +417,49 @@ class GeminiKeyPool:
             model=attempt_model,
         )
 
+    def _record_event(
+        self,
+        *,
+        kind: str,
+        key_index: int,
+        model: str,
+        role: str,
+        attempt: int,
+        cooldown_secs: float,
+    ) -> None:
+        """Append a bounded telemetry event to the per-pool ring (maxlen=200).
+        Consumed by phases.py to populate input.json.gemini_calls.quota_exhausted_events."""
+        self._events.append({
+            "ts": time.time(),
+            "kind": kind,
+            "key_index": key_index,
+            "model": model,
+            "role": role,
+            "attempt": attempt,
+            "cooldown_secs": cooldown_secs,
+        })
+
     def _log_quota_exhausted(
         self,
         *,
         model: str,
         current_key_role: str,
         next_key_role: str | None,
+        key_index: int | None = None,
+        attempt: int = 0,
+        cooldown_secs: float = 0.0,
     ) -> None:
         if current_key_role == "free" and next_key_role == "billing":
             logger.warning("quota_exhausted_event model=%s escalating_to=billing", model)
+            if key_index is not None:
+                self._record_event(
+                    kind="quota_exhausted",
+                    key_index=key_index,
+                    model=model,
+                    role=current_key_role,
+                    attempt=attempt,
+                    cooldown_secs=cooldown_secs,
+                )
 
     def _build_attempt_chain(
         self,
@@ -505,6 +550,11 @@ class GeminiKeyPool:
                     config=config or {},
                 )
                 self._next_gen_key = (key_index + 1) % len(self._keys)
+                # W5: count successful calls per role for input.json rollup.
+                if key_index in self._billing_key_indices:
+                    self._billing_calls += 1
+                else:
+                    self._free_calls += 1
                 if telemetry_sink is not None:
                     fallback_reason: str | None = None
                     if attempts:
@@ -546,6 +596,9 @@ class GeminiKeyPool:
                         model=model,
                         current_key_role=self._role_for_key(key_index),
                         next_key_role=next_key_role,
+                        key_index=key_index,
+                        attempt=attempt_count,
+                        cooldown_secs=cooldown_secs,
                     )
                     if _is_rate_limited(exc):
                         reason = "rate-limited"
@@ -562,6 +615,15 @@ class GeminiKeyPool:
                         model,
                         len(failed_slots_this_request),
                         cooldown_secs,
+                    )
+                    # W5: record every rate-limit warning to the event ring.
+                    self._record_event(
+                        kind="rate_limit" if reason == "rate-limited" else reason,
+                        key_index=key_index,
+                        model=model,
+                        role=self._role_for_key(key_index),
+                        attempt=attempt_count,
+                        cooldown_secs=cooldown_secs,
                     )
                     # NB: no global retry-count cap here. The chain itself
                     # is finite (num_keys × num_models) and the failed-slots
@@ -711,6 +773,10 @@ class GeminiKeyPool:
                     config=config or {},
                 )
                 self._next_emb_key = (key_index + 1) % len(self._keys)
+                if key_index in self._billing_key_indices:
+                    self._billing_calls += 1
+                else:
+                    self._free_calls += 1
                 return response
             except Exception as exc:
                 last_exc = exc
@@ -727,11 +793,22 @@ class GeminiKeyPool:
                         model=model,
                         current_key_role=self._role_for_key(key_index),
                         next_key_role=next_key_role,
+                        key_index=key_index,
+                        attempt=position + 1,
+                        cooldown_secs=cooldown_secs,
                     )
                     logger.warning(
                         "Embedding rate-limited on key[%d]; cooldown %.1fs, trying next",
                         key_index,
                         cooldown_secs,
+                    )
+                    self._record_event(
+                        kind="rate_limit",
+                        key_index=key_index,
+                        model=model,
+                        role=self._role_for_key(key_index),
+                        attempt=position + 1,
+                        cooldown_secs=cooldown_secs,
                     )
                     continue
                 raise

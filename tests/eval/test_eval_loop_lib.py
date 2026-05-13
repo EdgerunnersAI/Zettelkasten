@@ -469,3 +469,103 @@ def test_run_phase_b_happy_path(tmp_path: Path):
     # churn ledger row recorded for this iter
     entries = churn_ledger.load(source_dir)
     assert any(entry.iter == 1 for entry in entries)
+
+
+# ── phase_a idempotency (W7) ────────────────────────────────────────────────
+
+
+def test_phase_a_complete_detects_done_line(tmp_path: Path):
+    """The phase_a-done marker emitted at end of run_phase_a is what powers
+    the W7 short-circuit. Make sure detection is tight."""
+    log = tmp_path / "run.log"
+    # Missing file is not "complete".
+    assert phases._phase_a_complete(log) is False
+
+    log.write_text("phase_a start source=foo iter=1\n", encoding="utf-8")
+    assert phases._phase_a_complete(log) is False
+
+    log.write_text(
+        "phase_a start ...\n[ts] phase_a done eval_hash=abc123def456\n",
+        encoding="utf-8",
+    )
+    assert phases._phase_a_complete(log) is True
+
+
+def test_run_phase_a_force_false_returns_cached_payload(tmp_path: Path):
+    """When a prior run has logged 'phase_a done', re-invoking run_phase_a
+    must short-circuit and return a cached payload WITHOUT calling the
+    Gemini factory."""
+    iter_dir = tmp_path / "docs" / "summary_eval" / "youtube" / "iter-01"
+    iter_dir.mkdir(parents=True)
+    paths = artifacts.iter_artifact_paths(iter_dir)
+    paths["log"].write_text(
+        "[2026-05-13T00:00:00Z] phase_a start\n"
+        "[2026-05-13T00:01:00Z] phase_a done eval_hash=deadbeef0123\n",
+        encoding="utf-8",
+    )
+    artifacts.write_json(paths["input"], {
+        "urls": ["https://example.com/a"],
+        "held_out": True,
+        "records": [{"url": "https://example.com/a", "composite": 72.5}],
+    })
+    paths["prompt"].write_text("prompt", encoding="utf-8")
+
+    factory_calls: list[int] = []
+
+    def _factory():
+        factory_calls.append(1)
+        raise RuntimeError("factory should not be called when cached")
+
+    result = phases.run_phase_a(
+        source="youtube",
+        iter_num=1,
+        urls=["https://example.com/a"],
+        iter_dir=iter_dir,
+        rubric_path=tmp_path / "rubric.yaml",
+        cache_root=tmp_path / "_cache",
+        gemini_client_factory=_factory,
+        held_out=True,
+        env="dev",
+        force=False,
+    )
+    assert factory_calls == []
+    assert result["status"] == "awaiting_manual_review"
+    assert result.get("cached") is True
+    assert result["composite_mean"] == pytest.approx(72.5)
+    assert result["urls"] == ["https://example.com/a"]
+
+
+def test_run_phase_a_force_true_bypasses_cache(tmp_path: Path):
+    """force=True must always re-run — confirmed by observing the factory
+    being invoked (we make it raise to abort before real work)."""
+    iter_dir = tmp_path / "docs" / "summary_eval" / "youtube" / "iter-01"
+    iter_dir.mkdir(parents=True)
+    paths = artifacts.iter_artifact_paths(iter_dir)
+    paths["log"].write_text(
+        "[2026-05-13T00:01:00Z] phase_a done eval_hash=deadbeef0123\n",
+        encoding="utf-8",
+    )
+
+    factory_calls: list[int] = []
+
+    class _ForceRun(RuntimeError):
+        pass
+
+    def _factory():
+        factory_calls.append(1)
+        raise _ForceRun("factory invoked — confirms bypass")
+
+    with pytest.raises(_ForceRun):
+        phases.run_phase_a(
+            source="youtube",
+            iter_num=1,
+            urls=["https://example.com/a"],
+            iter_dir=iter_dir,
+            rubric_path=tmp_path / "rubric.yaml",
+            cache_root=tmp_path / "_cache",
+            gemini_client_factory=_factory,
+            held_out=True,
+            env="dev",
+            force=True,
+        )
+    assert factory_calls == [1]
