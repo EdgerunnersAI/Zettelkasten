@@ -166,3 +166,89 @@ async def test_consolidated_evaluator_retries_malformed_json():
     assert isinstance(result, EvalResult)
     assert client.generate.await_count == 2
     assert result.evaluator_metadata["total_tokens_in"] == 101
+
+
+# ---------------------------------------------------------------------------
+# CF-2 R2: shape-aware judge prompt + editorialization_flags hard gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_judge_prompt_carries_shape_mask_text_for_academic_roundup():
+    """When summary_json._shape == academic_roundup, the rendered judge prompt
+    must contain the shape-mask override telling the judge NOT to apply
+    editorialization_penalty for paper-fact language."""
+    client = MagicMock()
+    client._config = MagicMock()
+    client._config.gemini.phase_tiers = {"evaluator": "flash"}
+    flagged = dict(_GOOD_RESPONSE)
+    flagged["editorialization_flags"] = [
+        {"sentence": "novel synthesis", "flag_type": "added_judgment", "explanation": ""},
+        {"sentence": "efficient route", "flag_type": "added_stance", "explanation": ""},
+        {"sentence": "broad scope", "flag_type": "added_framing", "explanation": ""},
+    ]
+    client.generate = AsyncMock(
+        return_value=MagicMock(
+            text=json.dumps(flagged),
+            input_tokens=100,
+            output_tokens=50,
+            model_used="gemini-2.5-flash",
+        )
+    )
+
+    evaluator = ConsolidatedEvaluator(client)
+    result = await evaluator.evaluate(
+        rubric_yaml={"version": "v1", "components": []},
+        atomic_facts=[],
+        source_text="source",
+        summary_json={"mini_title": "t", "_shape": "academic_roundup"},
+    )
+
+    sent_prompt = client.generate.await_args.args[0]
+    assert "CONTENT_SHAPE: academic_roundup" in sent_prompt
+    assert "do NOT apply editorialization_penalty" in sent_prompt
+    # Hard gate must zero editorialization_flags for shape-exempt newsletters.
+    assert result.editorialization_flags == []
+    assert (
+        result.evaluator_metadata["editorialization_zeroed_by_shape"]
+        == "academic_roundup"
+    )
+
+
+@pytest.mark.asyncio
+async def test_judge_prompt_defaults_shape_to_general_when_absent():
+    client = MagicMock()
+    client._config = MagicMock()
+    client._config.gemini.phase_tiers = {"evaluator": "flash"}
+    flagged = dict(_GOOD_RESPONSE)
+    flagged["editorialization_flags"] = [
+        {"sentence": "stance", "flag_type": "added_stance", "explanation": ""}
+    ]
+    client.generate = AsyncMock(
+        return_value=MagicMock(
+            text=json.dumps(flagged),
+            input_tokens=100,
+            output_tokens=50,
+            model_used="gemini-2.5-flash",
+        )
+    )
+
+    evaluator = ConsolidatedEvaluator(client)
+    result = await evaluator.evaluate(
+        rubric_yaml={"version": "v1", "components": []},
+        atomic_facts=[],
+        source_text="source",
+        summary_json={"mini_title": "t"},   # no _shape key
+    )
+
+    sent_prompt = client.generate.await_args.args[0]
+    assert "CONTENT_SHAPE: general" in sent_prompt
+    # General shape is NOT exempt; flags must be preserved.
+    assert len(result.editorialization_flags) == 1
+    assert "editorialization_zeroed_by_shape" not in result.evaluator_metadata
+
+
+def test_prompt_version_bumped_to_v6():
+    from website.features.summarization_engine.evaluator.prompts import PROMPT_VERSION
+
+    assert PROMPT_VERSION == "evaluator.v6"

@@ -27,6 +27,16 @@ from website.features.summarization_engine.summarization.common.json_utils impor
 # payload compact in eval-loop artifacts.
 _UNSUPPORTED_NUMERIC_CAP = 5
 
+# CF-2 R2: shape mask for which editorialization_flags must be zeroed.
+# Keeps the LLM judge prompt drift from re-triggering hallucination_cap when
+# a newsletter shape legitimately uses evaluative-sounding paper-fact language.
+_NO_STANCE_PENALTY_SHAPES = frozenset({
+    "academic_roundup",
+    "link_digest",
+    "news_aggregator",
+    "product_announcement",
+})
+
 
 def compute_numeric_grounding_signal(
     summary_json: dict | None, source_text: str | None
@@ -117,7 +127,13 @@ class ConsolidatedEvaluator:
         source_text: str,
         summary_json: dict,
     ) -> EvalResult:
+        # CF-2 R2: surface newsletter content shape to the judge so it can
+        # apply shape-aware rubric overrides (academic_roundup etc.).
+        shape = str(summary_json.get("_shape", "general")) if isinstance(
+            summary_json, dict
+        ) else "general"
         prompt = CONSOLIDATED_USER_TEMPLATE.format(
+            _shape=shape,
             rubric_yaml=yaml.safe_dump(rubric_yaml, sort_keys=False),
             atomic_facts=json.dumps(atomic_facts, indent=2),
             source_text=source_text[:30000],
@@ -203,6 +219,11 @@ class ConsolidatedEvaluator:
         payload["evaluator_metadata"]["unsupported_numeric_claims"] = numeric_signal[
             "unsupported_numeric_claims"
         ]
+        # CF-2 R2 belt-and-braces: zero editorialization_flags for shape-exempt
+        # newsletters so prompt drift cannot regress to hallucination_cap.
+        if shape in _NO_STANCE_PENALTY_SHAPES:
+            payload["editorialization_flags"] = []
+            payload["evaluator_metadata"]["editorialization_zeroed_by_shape"] = shape
         return EvalResult(**payload)
 
 

@@ -7,6 +7,7 @@ Tier 3 - confidence-reject (return GENERAL + low_confidence flag).
 Industry pattern: SELECT-THEN-ROUTE EMNLP 2025 + Refuel labeling-with-confidence.
 """
 from __future__ import annotations
+import os
 import re
 from dataclasses import dataclass
 from website.features.summarization_engine.summarization.newsletter.shapes import (
@@ -20,7 +21,7 @@ CONFIDENCE_THRESHOLD = 0.65
 class ShapeClassification:
     shape: NewsletterShape
     confidence: float
-    method: str  # "tier1_heuristic" | "tier2_llm" | "tier3_reject"
+    method: str  # "tier1_heuristic" | "tier1_academic_signals" | "tier2_llm" | "tier3_reject"
     signals: dict  # for debugging/telemetry
 
 
@@ -31,6 +32,37 @@ _PRODUCT_TITLE = re.compile(
 )
 _PERSONAL_PRONOUNS = re.compile(r"\b(I|my|me|myself|I've|I'm)\b")
 _HEADER_PATTERN = re.compile(r"^#{2,3}\s+\S", re.MULTILINE)
+
+# Pseudo-header detection: short bold-wrapped lines, OR known journal names
+# that beehiiv-style newsletters render without markdown ## prefixes.
+_PSEUDO_HEADER = re.compile(
+    r"(?:^\*\*[^*\n]{1,80}\*\*\s*$)"           # bold-wrapped line
+    r"|(?:^[A-Z][^\n]{1,60}$\n^[A-Z][a-z])",   # short title line followed by paragraph
+    re.MULTILINE,
+)
+
+# Curated journal-name detector. >=3 hits is a strong academic_roundup signal.
+_JOURNAL_HITS = re.compile(
+    r"\b(Science|Nature(?:\s+(?:Chemistry|Communications|Materials|Methods|Physics|Biotechnology|Medicine|Reviews))?|"
+    r"J(?:\.|ournal)?\s*Am\.?\s*Chem\.?\s*Soc\.?|JACS|"
+    r"Angew(?:andte)?\.?(?:\s+Chem(?:ie)?\.?)?|ACIE|"
+    r"Org\.?\s*Lett\.?|"
+    r"J(?:\.|ournal)?\s*Org\.?\s*Chem\.?|JOC|"
+    r"Chem\.?\s*Sci\.?|"
+    r"Cell|Lancet|NEJM|"
+    r"PNAS|ACS\s+Catal|"
+    r"Nano\s+Lett)\b",
+    re.I,
+)
+
+# Crossref DOI regex - 97% coverage of all 74.9M DOIs.
+_DOI_PATTERN = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
+
+# "et al." count
+_ET_AL = re.compile(r"\bet\s+al\.?\b", re.I)
+
+# Author-list pattern: "Smith, J. A." style citation byline
+_AUTHOR_LIST = re.compile(r"\b[A-Z][a-z]+,\s+[A-Z]\.\s*[A-Z]?\.?")
 
 
 def classify_tier1(markdown: str, title: str = "") -> ShapeClassification | None:
@@ -48,13 +80,39 @@ def classify_tier1(markdown: str, title: str = "") -> ShapeClassification | None
     pronoun_count = len(_PERSONAL_PRONOUNS.findall(markdown))
     pronoun_per_sentence = pronoun_count / max(1, markdown.count(".") + markdown.count("?"))
 
+    # CF-2 R2: academic content signals.
+    doi_count = len(_DOI_PATTERN.findall(markdown))
+    et_al_count = len(_ET_AL.findall(markdown))
+    journal_hits = len(_JOURNAL_HITS.findall(markdown))
+    author_list_count = len(_AUTHOR_LIST.findall(markdown))
+    pseudo_headers = len(_PSEUDO_HEADER.findall(markdown))
+    effective_headers = headers + pseudo_headers   # merge real + pseudo
+
     signals = {
         "link_density": round(link_density, 4),
         "list_ratio": round(list_ratio, 4),
         "headers": headers,
         "pronoun_per_sentence": round(pronoun_per_sentence, 4),
         "words": words,
+        "doi_count": doi_count,
+        "et_al_count": et_al_count,
+        "journal_hits": journal_hits,
+        "author_list_count": author_list_count,
+        "pseudo_headers": pseudo_headers,
+        "effective_headers": effective_headers,
     }
+
+    # ACADEMIC SHORT-CIRCUIT (CF-2 R2): high-confidence academic_roundup.
+    # Fires before commodity branches because pseudo-headerless papers
+    # otherwise mis-classify as commentary_essay.
+    if (
+        doi_count >= 2
+        or (journal_hits >= 3 and et_al_count >= 1)
+        or author_list_count >= 3
+    ):
+        return ShapeClassification(
+            NewsletterShape.ACADEMIC_ROUNDUP, 0.90, "tier1_academic_signals", signals,
+        )
 
     # Product announcement: title pattern + low body length
     if title and _PRODUCT_TITLE.search(title) and words < 1500:
@@ -68,14 +126,14 @@ def classify_tier1(markdown: str, title: str = "") -> ShapeClassification | None
             NewsletterShape.LINK_DIGEST, 0.80, "tier1_heuristic", signals,
         )
 
-    # Academic roundup: >=5 H2/H3 headers with similar pattern + low link density
-    if headers >= 5 and link_density < 0.03 and list_ratio < 0.3:
+    # Academic roundup: >=5 effective (real+pseudo) H2/H3 headers + low link density
+    if effective_headers >= 5 and link_density < 0.03 and list_ratio < 0.3:
         return ShapeClassification(
             NewsletterShape.ACADEMIC_ROUNDUP, 0.75, "tier1_heuristic", signals,
         )
 
     # News aggregator: many headers + medium link density (each headline has link)
-    if headers >= 5 and link_density >= 0.03 and link_density < 0.08:
+    if effective_headers >= 5 and link_density >= 0.03 and link_density < 0.08:
         return ShapeClassification(
             NewsletterShape.NEWS_AGGREGATOR, 0.75, "tier1_heuristic", signals,
         )
@@ -96,11 +154,30 @@ def classify_tier1(markdown: str, title: str = "") -> ShapeClassification | None
     return None
 
 
+def _gemini_flash_lite_classifier(markdown: str, title: str):
+    """Tier-2 LLM router scaffolding.
+
+    Disabled by default; set NEWSLETTER_SHAPE_LLM_ROUTER=1 to enable.
+    Targets gemini-2.5-flash-lite at ~600 input + 30 output tokens
+    (< $0.0001 per call). Only fires when Tier-1 conf < 0.65. Implementation
+    deferred to follow-up commit; stub returns None for now so the 3-call
+    cap invariant is preserved.
+    """
+    if not os.environ.get("NEWSLETTER_SHAPE_LLM_ROUTER"):
+        return None
+    try:
+        # Implementation deferred. Returning None preserves the existing
+        # tier3_reject fallback path until the few-shot router lands.
+        return None
+    except Exception:
+        return None
+
+
 def classify(
     markdown: str,
     *,
     title: str = "",
-    llm_classifier=None,  # callable(markdown, title) -> (shape, confidence) | None
+    llm_classifier=_gemini_flash_lite_classifier,  # callable(markdown, title) -> (shape, conf) | None
 ) -> ShapeClassification:
     """Run 3-tier classification. Returns ShapeClassification (never None)."""
     tier1 = classify_tier1(markdown, title)

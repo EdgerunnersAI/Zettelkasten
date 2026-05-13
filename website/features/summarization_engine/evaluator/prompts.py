@@ -1,7 +1,7 @@
 """Evaluator prompt templates. Bump PROMPT_VERSION on any edit."""
 from __future__ import annotations
 
-PROMPT_VERSION = "evaluator.v5"
+PROMPT_VERSION = "evaluator.v6"
 
 CONSOLIDATED_SYSTEM = (
     "You are a summary quality evaluator. Be strict, source-grounded, and terse. "
@@ -10,6 +10,22 @@ CONSOLIDATED_SYSTEM = (
 
 CONSOLIDATED_USER_TEMPLATE = """\
 Evaluate the following summary against the source. Return a JSON object matching the given schema.
+
+CONTENT_SHAPE: {_shape}   (from structured_payload._shape; "general" if absent)
+
+SHAPE-AWARE RUBRIC OVERRIDES:
+- academic_roundup: Sentences like "novel synthesis", "efficient route",
+  "practical methodology", "high yield", "broad substrate scope",
+  "first total synthesis" describe paper FACTS, not author editorializing -
+  do NOT apply editorialization_penalty for these. The newsletter's
+  job is to list paper claims verbatim.
+- news_aggregator / link_digest: short evaluative-sounding phrases are
+  acceptable headline shorthand - editorialization_penalty threshold
+  raised to a higher count.
+- product_announcement: feature-list framing ("introduces", "enables")
+  is the genre - do not flag as editorialization.
+- commentary_essay / deep_dive_technical / personal_essay / general:
+  full editorialization_penalty applies as defined elsewhere.
 
 RUBRIC:
 {rubric_yaml}
