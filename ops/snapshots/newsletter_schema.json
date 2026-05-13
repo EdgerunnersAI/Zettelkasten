@@ -2,6 +2,14 @@
   "$defs": {
     "NewsletterDetailedPayload": {
       "properties": {
+        "caveats": {
+          "description": "Author-stated disclaimers, hedges, conflicts-of-interest, scope limits \u2014 verbatim or near-verbatim from source.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
+          "type": "array"
+        },
         "conclusions_or_recommendations": {
           "items": {
             "type": "string"
