@@ -56,6 +56,12 @@ from website.features.summarization_engine.summarization.newsletter.guards impor
 from website.features.summarization_engine.summarization.newsletter.prompts import (
     STRUCTURED_EXTRACT_INSTRUCTION,
 )
+from website.features.summarization_engine.summarization.newsletter.shapes import (
+    NO_STANCE_PENALTY,
+)
+from website.features.summarization_engine.summarization.newsletter.templates import (
+    template_for as shape_template_for,
+)
 from website.features.summarization_engine.summarization.newsletter.schema import (
     NewsletterDetailedPayload,
     NewsletterSection,
@@ -86,11 +92,35 @@ class NewsletterSummarizer(BaseSummarizer):
             "fallback_reason": dv.fallback_reason,
         }]
 
+        # Shape classification (Tier-1 deterministic; 0 LLM calls). Per
+        # R-Newsletter-Coverage 2026-05-13: dispatch a shape-specific
+        # template tail so academic-roundup/link-digest/news-aggregator/
+        # product-announcement don't get penalized as commentary-essay.
+        # Lazy import breaks the source_ingest -> summarization.newsletter
+        # circular load order at module-collection time.
+        from website.features.summarization_engine.source_ingest.newsletter.shape_classifier import (
+            classify as classify_shape,
+        )
+        shape_classification = classify_shape(
+            markdown=ingest.raw_text or "",
+            title=str(
+                ingest.sections.get("Title")
+                or ingest.metadata.get("title")
+                or ""
+            ),
+            llm_classifier=None,  # Tier-2 deferred; Tier-1 only for now
+        )
+        shape_template = shape_template_for(shape_classification.shape)
+        suppress_stance_penalty = (
+            shape_classification.shape in NO_STANCE_PENALTY
+        )
+
         # Compose the structured prompt with DV hints. Newsletter retains its
         # bespoke template-artifact repair loop because the failure mode is
         # leaked Substack/beehiiv scaffolding, which the generic DV patch
         # substring probe cannot detect.
         prompt = STRUCTURED_EXTRACT_INSTRUCTION.format(summary_text=dv.dense_text or ingest.raw_text or "")
+        prompt = f"{prompt}\n\n{shape_template}"
         if dv.missing_facts:
             joined = "; ".join(f.strip() for f in dv.missing_facts if f.strip())
             if joined:
@@ -141,7 +171,11 @@ class NewsletterSummarizer(BaseSummarizer):
         # numeric verbatim verifier. Zero LLM cost. Conditional repair
         # stays MUTUALLY EXCLUSIVE with template-artifact repair — combined
         # ceiling: <=1 conditional Flash call (3-call cap preserved).
-        guard_audit = _run_hallucination_guards(payload, ingest.raw_text or "")
+        guard_audit = _run_hallucination_guards(
+            payload,
+            ingest.raw_text or "",
+            suppress_evaluative_strip=suppress_stance_penalty,
+        )
         if guard_audit["requires_repair"] and not repair_fired and not is_schema_fallback:
             get_budget().consume(role="repair")  # C6: 3-call budget
             numerals_blob = ", ".join(guard_audit["unverified_numerals"])
@@ -165,7 +199,11 @@ class NewsletterSummarizer(BaseSummarizer):
             except Exception:
                 pass  # keep prior payload — guards below still scrub adjectives
             # Re-run guards on the repaired payload to refresh audit
-            guard_audit = _run_hallucination_guards(payload, ingest.raw_text or "")
+            guard_audit = _run_hallucination_guards(
+                payload,
+                ingest.raw_text or "",
+                suppress_evaluative_strip=suppress_stance_penalty,
+            )
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         # Compute a lightweight newsletter archetype label so the _dense_verify
@@ -184,6 +222,9 @@ class NewsletterSummarizer(BaseSummarizer):
             "missing_fact_count": len(dv.missing_facts),
         }
         structured_payload_extras["_guard_audit"] = guard_audit
+        structured_payload_extras["_shape"] = shape_classification.shape.value
+        structured_payload_extras["_shape_confidence"] = shape_classification.confidence
+        structured_payload_extras["_shape_method"] = shape_classification.method
         # Newsletter personalization: byline author comes from the ingest
         # metadata (extractor parsed the Substack/beehiiv author field — not
         # LLM-inferred). Surface it on the payload so the frontend can render
@@ -235,7 +276,10 @@ register_summarizer(NewsletterSummarizer)
 
 
 def _run_hallucination_guards(
-    payload: NewsletterStructuredPayload, source_text: str
+    payload: NewsletterStructuredPayload,
+    source_text: str,
+    *,
+    suppress_evaluative_strip: bool = False,
 ) -> dict:
     """Apply deterministic guards to brief + each detailed bullet in place.
 
@@ -253,6 +297,7 @@ def _run_hallucination_guards(
     guarded_brief, b_audit = apply_newsletter_guards(
         summary_text=payload.brief_summary,
         source_text=source_text,
+        suppress_evaluative_strip=suppress_evaluative_strip,
     )
     payload.brief_summary = guarded_brief
     aggregate["banned_adjectives_stripped"].extend(b_audit["banned_adjectives_stripped"])
@@ -262,6 +307,7 @@ def _run_hallucination_guards(
         for i, bullet in enumerate(section.bullets):
             guarded_bullet, audit = apply_newsletter_guards(
                 summary_text=bullet, source_text=source_text,
+                suppress_evaluative_strip=suppress_evaluative_strip,
             )
             section.bullets[i] = guarded_bullet
             aggregate["banned_adjectives_stripped"].extend(

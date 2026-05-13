@@ -91,3 +91,32 @@ def test_apply_newsletter_guards_strips_but_no_repair():
     )
     assert "innovative" not in guarded.lower()
     assert audit["requires_repair"] is False
+
+
+def test_suppress_evaluative_strip_leaves_adjectives_intact():
+    # When suppress_evaluative_strip=True (e.g. academic_roundup shape),
+    # banned adjectives must pass through unchanged.
+    text = "The novel synthesis is impressive and groundbreaking."
+    source = "Some source text."
+    guarded, audit = apply_newsletter_guards(
+        summary_text=text,
+        source_text=source,
+        suppress_evaluative_strip=True,
+    )
+    assert guarded == text
+    assert audit["banned_adjectives_stripped"] == []
+
+
+def test_suppress_evaluative_strip_still_runs_numeric_verifier():
+    # Numeric verifier MUST still flag invented numbers even when suppress
+    # flag is set (invented numbers are wrong regardless of shape).
+    text = "The novel result used 1234 samples."
+    source = "The result used some samples."
+    guarded, audit = apply_newsletter_guards(
+        summary_text=text,
+        source_text=source,
+        suppress_evaluative_strip=True,
+    )
+    assert "novel" in guarded.lower()  # adjective preserved
+    assert "1234" in audit["unverified_numerals"]
+    assert audit["requires_repair"] is True

@@ -65,6 +65,7 @@ def apply_newsletter_guards(
     *,
     summary_text: str,
     source_text: str,
+    suppress_evaluative_strip: bool = False,
 ) -> tuple[str, dict]:
     """Run all guards. Returns (guarded_summary, audit_dict).
 
@@ -73,8 +74,16 @@ def apply_newsletter_guards(
       - unverified_numerals: list[str]
       - requires_repair: bool (true if any unverified numerals — caller
         decides whether to invoke conditional Flash repair)
+
+    When ``suppress_evaluative_strip`` is True, the banned-adjective strip
+    is skipped (shapes like academic_roundup legitimately echo "novel"/
+    "first" from paper abstracts). The numeric verifier always runs since
+    invented numbers are wrong regardless of shape.
     """
-    stripped, removed_adj = strip_banned_adjectives(summary_text)
+    if suppress_evaluative_strip:
+        stripped, removed_adj = summary_text, []
+    else:
+        stripped, removed_adj = strip_banned_adjectives(summary_text)
     unverified = find_unverified_numerals(stripped, source_text)
     return stripped, {
         "banned_adjectives_stripped": removed_adj,
