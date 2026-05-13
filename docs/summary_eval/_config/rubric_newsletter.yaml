@@ -3,6 +3,11 @@ source_type: "newsletter"
 composite_max_points: 100
 
 components:
+  # 2026-05-13: brief.caveats_addressed reweighted 3->5 (W8) per iter-09/11
+  # manual_review findings -- caveat-compression is dominant brief defect.
+  # brief.stance_preserved retired (0 pts) -- coverage now provided by
+  # editorialization_penalty + W4 banned-adjective regex strip.
+  # Total brief_summary points unchanged: 25.
   - id: "brief_summary"
     max_points: 25
     criteria:
@@ -24,11 +29,11 @@ components:
         maps_to_metric: ["finesure.completeness"]
       - id: "brief.caveats_addressed"
         description: "If explicit caveats or counterarguments present, how author addresses them is summarized."
-        max_points: 3
-        maps_to_metric: ["finesure.faithfulness"]
+        max_points: 5
+        maps_to_metric: ["finesure.faithfulness", "finesure.completeness"]
       - id: "brief.stance_preserved"
-        description: "Tone reflects author's stance without editorializing."
-        max_points: 2
+        description: "Tone reflects author's stance without editorializing. Retired 2026-05-13: coverage moved to editorialization_penalty + W4 guards."
+        max_points: 0
         maps_to_metric: ["summac"]
 
   - id: "detailed_summary"
