@@ -102,3 +102,7 @@ docs/rag_eval/common/**/timing_report.md
 docs/rag_eval/common/**/eval.json
 .scout-jwt-token
 _iter11_e2_sse_probe.py
+
+# Eval token + npm noise
+naruto_token.tmp
+package-lock.json
