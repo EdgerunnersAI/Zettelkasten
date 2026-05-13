@@ -54,3 +54,39 @@ def test_idempotent_no_duplicate_handlers(tmp_path: Path) -> None:
     second = len(logging.getLogger().handlers)
     # force=True clears prior handlers, so handler count must stay equal.
     assert second == first, f"handler count changed: {first} -> {second}"
+
+
+def test_console_handler_silenced_to_error_by_default(tmp_path: Path) -> None:
+    """StreamHandler is ERROR-only by default so INFO/WARNING noise stays
+    in driver_run.log and doesn't clutter operator's console."""
+    setup_driver_logging(tmp_path)
+    root = logging.getLogger()
+    stream_handlers = [
+        h for h in root.handlers if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    ]
+    assert stream_handlers, "no StreamHandler attached"
+    for sh in stream_handlers:
+        assert sh.level == logging.ERROR, (
+            f"console handler level={sh.level} (expected ERROR={logging.ERROR})"
+        )
+    # FileHandler still gets INFO+
+    file_handlers = [h for h in root.handlers if isinstance(h, logging.FileHandler)]
+    assert file_handlers, "no FileHandler attached"
+    for fh in file_handlers:
+        assert fh.level == logging.INFO, (
+            f"file handler level={fh.level} (expected INFO={logging.INFO})"
+        )
+
+
+def test_console_level_can_be_overridden(tmp_path: Path) -> None:
+    """Operator can opt into INFO/DEBUG on console via console_level kwarg."""
+    setup_driver_logging(tmp_path, console_level=logging.INFO)
+    root = logging.getLogger()
+    stream_handlers = [
+        h for h in root.handlers if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    ]
+    assert stream_handlers
+    for sh in stream_handlers:
+        assert sh.level == logging.INFO
