@@ -18,8 +18,9 @@ from website.features.api_key_switching.key_pool import (
 from website.features.summarization_engine.api.models import BatchV2Request, SummarizeV2Request, SummarizeV2Response
 from website.features.summarization_engine.batch.processor import BatchProcessor, progress_stream
 from website.features.summarization_engine.core.config import load_config
+from website.features.summarization_engine.core.confidence import grade as grade_confidence
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
-from website.features.summarization_engine.core.orchestrator import summarize_url
+from website.features.summarization_engine.core.orchestrator import summarize_url_bundle
 from website.features.summarization_engine.writers.supabase import SupabaseWriter
 
 router = APIRouter(prefix="/api/v2", tags=["summarization-engine-v2"])
@@ -32,11 +33,37 @@ async def summarize_v2(
 ):
     user_id = _user_id(user)
     client = _gemini_client()
-    result = await summarize_url(request.url, user_id=user_id, gemini_client=client)
+    bundle = await summarize_url_bundle(request.url, user_id=user_id, gemini_client=client)
+    result = bundle.summary_result
+
+    # H2/C4: two-tier hallucination prevention. Insufficient content + metadata-only
+    # tier -> HTTP 422 refusal (mirrors OpenAI structured-outputs refusal pattern).
+    ingest_meta = bundle.ingest_result.metadata or {}
+    source_tier = str(ingest_meta.get("tier_used") or "")
+    raw_text_len = len(bundle.ingest_result.raw_text or "")
+    conf, reason = grade_confidence(raw_text_len=raw_text_len, source_tier=source_tier)
+    quality_signals = {"input_chars": raw_text_len, "source_tier": source_tier}
+    if conf == "insufficient":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "insufficient_context",
+                "confidence": "insufficient",
+                "confidence_reason": reason,
+                "quality_signals": quality_signals,
+            },
+        )
+
     writers = []
     if request.write_to_supabase:
         writers.append(await SupabaseWriter().write(result, user_id=user_id))
-    return SummarizeV2Response(summary=result.model_dump(mode="json"), writers=writers)
+    return SummarizeV2Response(
+        summary=result.model_dump(mode="json"),
+        writers=writers,
+        confidence=conf,
+        confidence_reason=reason or None,
+        quality_signals=quality_signals,
+    )
 
 
 @router.post("/batch")

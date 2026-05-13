@@ -58,6 +58,10 @@ class YouTubeStructuredPayload(BaseModel):
     guests: list[str] | None = None
     entities_discussed: list[str] = Field(default_factory=list)
     detailed_summary: YouTubeDetailedPayload
+    # H2/C2: first-class attribution confidence (mirrors OpenAI structured-outputs
+    # `refusal` placement). "high" = all real names, "low" = mixed real+placeholder,
+    # "missing" = all-placeholder or fell back to channel/neutral label.
+    attribution_confidence: Literal["high", "low", "missing"] = "high"
 
     @model_validator(mode="after")
     def _normalize_note_facing_fields(self) -> "YouTubeStructuredPayload":
@@ -112,16 +116,21 @@ class YouTubeStructuredPayload(BaseModel):
         degrade cleanly to the neutral label, which the evaluator
         scores as "no speakers identified" rather than "wrong speaker".
         """
+        raw_speakers = [s for s in (self.speakers or []) if isinstance(s, str) and s.strip()]
         real = [
             s.strip()
-            for s in (self.speakers or [])
-            if isinstance(s, str)
-            and s.strip()
-            and not _is_placeholder_speaker(s.strip())
+            for s in raw_speakers
+            if not _is_placeholder_speaker(s.strip())
             and not _is_geographic_entity(s.strip())
         ]
+        # H2/C2: detect mixed real+placeholder for the "low" tier.
+        had_placeholder = any(
+            _is_placeholder_speaker(s.strip()) or _is_geographic_entity(s.strip())
+            for s in raw_speakers
+        )
         if real:
             self.speakers = real
+            self.attribution_confidence = "low" if had_placeholder else "high"
             return self
 
         # Step 3: first named human entity in entities_discussed.
@@ -132,10 +141,13 @@ class YouTubeStructuredPayload(BaseModel):
                 and not _is_geographic_entity(entity)
             ):
                 self.speakers = [entity.strip()]
+                # Coerced from entities — original speakers were all placeholders.
+                self.attribution_confidence = "missing"
                 return self
 
         # Step 4: deterministic neutral label.
         self.speakers = ["The speaker"]
+        self.attribution_confidence = "missing"
         return self
 
 

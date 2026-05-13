@@ -709,12 +709,22 @@ def _apply_identifier_hints(raw: dict, ingest: IngestResult) -> dict:
                 if isinstance(s, str) and s.strip()
                 and s.strip().lower() not in _YT_PLACEHOLDERS
             ]
+            had_placeholder = any(
+                isinstance(s, str) and s.strip()
+                and s.strip().lower() in _YT_PLACEHOLDERS
+                for s in speakers
+            )
             if not filtered and isinstance(channel, str) and channel.strip():
                 filtered = [channel.strip()]
+                # H2/C2: fell back to channel — speakers unknown.
+                raw["attribution_confidence"] = "missing"
+            elif filtered and had_placeholder:
+                raw["attribution_confidence"] = "low"
             if filtered:
                 raw["speakers"] = filtered
         elif isinstance(channel, str) and channel.strip():
             raw["speakers"] = [channel.strip()]
+            raw["attribution_confidence"] = "missing"
     return raw
 
 
