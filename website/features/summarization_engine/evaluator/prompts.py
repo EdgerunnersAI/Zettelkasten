@@ -1,7 +1,7 @@
 """Evaluator prompt templates. Bump PROMPT_VERSION on any edit."""
 from __future__ import annotations
 
-PROMPT_VERSION = "evaluator.v3"
+PROMPT_VERSION = "evaluator.v4"
 
 CONSOLIDATED_SYSTEM = (
     "You are a summary quality evaluator. Be strict, source-grounded, and terse. "
@@ -27,11 +27,16 @@ Return a JSON object matching EXACTLY this shape (no extra keys, no nesting beyo
 
 {{
   "g_eval": {{
-    "coherence": 0.0,       // float 0.0-5.0
-    "consistency": 0.0,     // float 0.0-5.0
-    "fluency": 0.0,         // float 0.0-5.0
-    "relevance": 0.0,       // float 0.0-5.0
-    "reasoning": ""         // brief prose
+    "coherence": {{
+      "score": 1,           // INTEGER 1-3 only
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": ""       // 1-sentence justification grounded in the summary
+    }},
+    "fluency": {{
+      "score": 1,           // INTEGER 1-3 only
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": ""       // 1-sentence justification grounded in the summary
+    }}
   }},
   "finesure": {{
     "faithfulness": {{ "score": 0.0, "items": [] }},   // score 0.0-1.0; items list factual errors
@@ -75,7 +80,8 @@ RULES:
 - For every anti_pattern in the rubric: if triggered, add to `rubric.anti_patterns_triggered` AND set the matching key in `caps_applied` to its cap value.
 - For `summac_lite.score`: classify each summary sentence as entailed / neutral / contradicted vs source; score = entailed_count / total.
 - For `editorialization_flags`: list summary sentences that introduce stance/judgment/framing absent from source.
-- For `maps_to_metric_summary`: aggregate rubric criterion scores by their `maps_to_metric` tags into 4 composites, each a FLAT float 0-100 (not a nested dict).
+- For `maps_to_metric_summary`: aggregate rubric criterion scores by their `maps_to_metric` tags into 4 composites, each a FLAT float 0-100 (not a nested dict). The `g_eval` composite uses ONLY g_eval.coherence + g_eval.fluency on the ternary 1-3 scale: `g_eval = ((coherence_score + fluency_score) / 6) * 100` (so (1+1)->33, (2+2)->67, (3+3)->100). The old g_eval.consistency and g_eval.relevance criteria have been REMOVED — they duplicated finesure.faithfulness and finesure.completeness. Treat any rubric `maps_to_metric` reference to `g_eval.relevance` as `finesure.completeness` and `g_eval.conciseness` as `finesure.conciseness`.
+- judge_facet_disagreement: if g_eval.coherence.score >= 3 AND finesure.faithfulness.score < 0.7, append the string `"judge_facet_disagreement"` to the `criteria_missed` of every rubric component whose `maps_to_metric` references `finesure.faithfulness`. This surfaces calibration drift between the LLM judge facet and the faithfulness facet.
 - For `finesure.*.items`: SKIP entries whose `claim`, `sentence`, or `span` fields are all null/empty. Only list concrete, quotable issues. Do NOT emit placeholder items to pad the list.
 - SCHEMA-FAILURE RULE: If the summary JSON is missing required fields for its source shape (e.g., YouTube missing `chapters_or_segments`; Reddit missing `op_intent`/`reply_clusters`; GitHub missing `architecture_overview`; Newsletter missing `issue_date`/`author`), OR the summary contains the `_schema_fallback_` tag, then: (a) score each affected rubric component at 0, (b) add `"schema_failure"` to that component's `criteria_missed`, (c) set `caps_applied.hallucination_cap` to cap the composite aggressively, (d) add a `{{ "id": "schema_failure", "source_region": "structured_payload", "auto_cap": <cap_value> }}` entry to `rubric.anti_patterns_triggered`.
 - Output JSON ONLY. No markdown fences, no commentary, no prose outside the JSON object.
