@@ -1,6 +1,7 @@
 """YouTube transcript fallback chain scaffold."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -27,6 +28,7 @@ _HEALTH_CACHE_PATH = (
 
 class TierName(str, Enum):
     YTDLP_PLAYER_ROTATION = "ytdlp_player_rotation"
+    GEMINI_FILEDATA = "gemini_filedata"
     TRANSCRIPT_API_DIRECT = "transcript_api_direct"
     PIPED_POOL = "piped_pool"
     INVIDIOUS_POOL = "invidious_pool"
@@ -495,6 +497,116 @@ def _first_available_key() -> str | None:
     return None
 
 
+async def tier_gemini_youtube_url(video_id: str, config: dict) -> TierResult:
+    """Tier 1: Gemini 2.5 fileData(YouTube URL). Google fetches video
+    server-side, bypassing client-IP bot detection. Public videos only.
+
+    Non-retryable signals (INVALID_ARGUMENT / FAILED_PRECONDITION / NOT_FOUND /
+    PERMISSION_DENIED / empty parts) fall through immediately. RESOURCE_EXHAUSTED
+    and transient 5xx are retried by the key-pool layer (key rotation + backoff).
+    Counts as 1 LLM call against the 3-call summarization budget.
+    """
+    start = time.monotonic()
+    cfg_gem = (
+        config.get("gemini_filedata", {}) if isinstance(config, dict) else {}
+    )
+    if not cfg_gem.get("enabled", True):
+        return TierResult(
+            tier=TierName.GEMINI_FILEDATA,
+            transcript="",
+            success=False,
+            latency_ms=0,
+            error="gemini-filedata-disabled-via-config",
+        )
+
+    try:
+        from website.features.api_key_switching import get_key_pool
+        from website.features.summarization_engine.core.budget import get_budget
+    except Exception as exc:  # noqa: BLE001
+        return TierResult(
+            tier=TierName.GEMINI_FILEDATA,
+            transcript="",
+            success=False,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            error=f"import-failure: {exc}",
+        )
+
+    prompt = (
+        "Transcribe the spoken content of this video verbatim. "
+        "Output plain text only — no timestamps, no speaker labels, no headers. "
+        "Do not summarize. If the video has no audible speech, output the "
+        "visible on-screen text. If the video is empty or unintelligible, "
+        "output the single token EMPTY."
+    )
+
+    try:
+        pool = get_key_pool()
+    except Exception as exc:  # noqa: BLE001
+        return TierResult(
+            tier=TierName.GEMINI_FILEDATA,
+            transcript="",
+            success=False,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            error=f"key-pool-unavailable: {exc}",
+        )
+
+    try:
+        # Transcript fetch is part of the summarization pipeline by spec —
+        # account this Gemini call against the 3-call budget.
+        get_budget().consume(role="gemini_filedata")
+        result = await pool.generate_content_youtube_url(
+            video_id=video_id,
+            prompt=prompt,
+            model_hint=cfg_gem.get("model", "gemini-2.5-flash"),
+            temperature=0.0,
+            max_output_tokens=cfg_gem.get("max_output_tokens", 8192),
+        )
+        text = (result.text or "").strip()
+        if text == "EMPTY" or len(text) < 100:
+            return TierResult(
+                tier=TierName.GEMINI_FILEDATA,
+                transcript="",
+                success=False,
+                latency_ms=int((time.monotonic() - start) * 1000),
+                error=f"empty-or-too-short: len={len(text)}",
+            )
+        return TierResult(
+            tier=TierName.GEMINI_FILEDATA,
+            transcript=text,
+            success=True,
+            confidence="high",
+            latency_ms=int((time.monotonic() - start) * 1000),
+            extra={
+                "path": "gemini_filedata",
+                "model": result.model,
+                "key_index": result.key_index,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc)
+        non_retryable = any(
+            sig in msg
+            for sig in (
+                "INVALID_ARGUMENT",
+                "FAILED_PRECONDITION",
+                "NOT_FOUND",
+                "PERMISSION_DENIED",
+                "must be public",
+                "contents.parts must not be empty",
+            )
+        )
+        return TierResult(
+            tier=TierName.GEMINI_FILEDATA,
+            transcript="",
+            success=False,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            error=(
+                f"{'non-retryable' if non_retryable else 'retryable'}: {msg[:200]}"
+            ),
+            extra={"non_retryable": non_retryable},
+        )
+
+
 async def tier_metadata_only(video_id: str, config: dict) -> TierResult:
     """Tier 6: yt-dlp metadata-only fallback, with oEmbed + HTML og-tags safety net.
 
@@ -584,6 +696,7 @@ async def tier_metadata_only(video_id: str, config: dict) -> TierResult:
 def build_default_chain(config: dict) -> TranscriptChain:
     return TranscriptChain(
         tiers=[
+            tier_gemini_youtube_url,
             tier_ytdlp_player_rotation,
             tier_transcript_api_direct,
             tier_piped_pool,

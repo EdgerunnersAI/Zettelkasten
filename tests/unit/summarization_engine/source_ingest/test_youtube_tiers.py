@@ -1,4 +1,5 @@
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -6,6 +7,8 @@ from website.features.summarization_engine.source_ingest.youtube.tiers import (
     TierName,
     TierResult,
     TranscriptChain,
+    build_default_chain,
+    tier_gemini_youtube_url,
 )
 
 
@@ -58,3 +61,71 @@ async def test_chain_stops_when_budget_exceeded():
     result = await chain.run(video_id="x", config={})
 
     assert not result.success
+
+
+def _mk_pool(result_obj):
+    pool = SimpleNamespace()
+    pool.generate_content_youtube_url = AsyncMock(return_value=result_obj)
+    return pool
+
+
+@pytest.mark.asyncio
+async def test_tier_gemini_youtube_url_success():
+    fake = SimpleNamespace(
+        text="a" * 500, model="gemini-2.5-flash", key_index=0
+    )
+    pool = _mk_pool(fake)
+    with patch(
+        "website.features.api_key_switching.get_key_pool",
+        return_value=pool,
+    ):
+        result = await tier_gemini_youtube_url("vid123", {})
+    assert result.success is True
+    assert result.tier == TierName.GEMINI_FILEDATA
+    assert result.extra["model"] == "gemini-2.5-flash"
+    assert result.extra["key_index"] == 0
+    assert len(result.transcript) == 500
+
+
+@pytest.mark.asyncio
+async def test_tier_gemini_youtube_url_invalid_argument_is_non_retryable():
+    pool = SimpleNamespace()
+    pool.generate_content_youtube_url = AsyncMock(
+        side_effect=RuntimeError("400 INVALID_ARGUMENT: must be public")
+    )
+    with patch(
+        "website.features.api_key_switching.get_key_pool",
+        return_value=pool,
+    ):
+        result = await tier_gemini_youtube_url("vid_private", {})
+    assert result.success is False
+    assert result.extra.get("non_retryable") is True
+    assert "non-retryable" in result.error
+
+
+@pytest.mark.asyncio
+async def test_tier_gemini_youtube_url_empty_text_is_failure():
+    fake = SimpleNamespace(text="EMPTY", model="gemini-2.5-flash", key_index=1)
+    pool = _mk_pool(fake)
+    with patch(
+        "website.features.api_key_switching.get_key_pool",
+        return_value=pool,
+    ):
+        result = await tier_gemini_youtube_url("vid_silent", {})
+    assert result.success is False
+    assert "empty-or-too-short" in result.error
+
+
+@pytest.mark.asyncio
+async def test_tier_gemini_youtube_url_disabled_via_config():
+    result = await tier_gemini_youtube_url(
+        "vid", {"gemini_filedata": {"enabled": False}}
+    )
+    assert result.success is False
+    assert "disabled" in result.error
+
+
+def test_build_default_chain_places_gemini_filedata_first():
+    chain = build_default_chain({})
+    first_tier = chain._tiers[0]
+    assert first_tier is tier_gemini_youtube_url

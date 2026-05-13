@@ -124,6 +124,10 @@ sources:
     use_ytdlp_fallback: true
     use_gemini_video_fallback: true
     webshare_proxy_env: "WEBSHARE_PROXY_URL"
+    gemini_filedata:
+      enabled: true
+      model: "gemini-2.5-flash"
+      max_output_tokens: 8192
   hackernews:
     api: "algolia"
     max_comments: 100

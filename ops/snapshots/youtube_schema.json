@@ -80,6 +80,16 @@
     }
   },
   "properties": {
+    "attribution_confidence": {
+      "default": "high",
+      "enum": [
+        "high",
+        "low",
+        "missing"
+      ],
+      "title": "Attribution Confidence",
+      "type": "string"
+    },
     "brief_summary": {
       "title": "Brief Summary",
       "type": "string"

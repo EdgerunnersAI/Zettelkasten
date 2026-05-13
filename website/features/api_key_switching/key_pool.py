@@ -589,6 +589,64 @@ class GeminiKeyPool:
         )
         raise last_exc  # type: ignore[misc]
 
+    async def generate_content_youtube_url(
+        self,
+        *,
+        video_id: str,
+        prompt: str,
+        model_hint: str = "gemini-2.5-flash",
+        temperature: float = 0.0,
+        max_output_tokens: int = 8192,
+        label: str = "gemini_filedata_youtube",
+    ):
+        """Gemini fileData(YouTube URL) helper — server-side YouTube fetch.
+
+        Reuses ``generate_content`` so key rotation + 429 retries + billing
+        escalation behave identically to every other Gemini call. Returns an
+        object with ``.text``, ``.model``, ``.key_index`` so the tier function
+        doesn't need to know about the underlying SDK response shape.
+        """
+        from google.genai import types as gtypes
+
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        contents = [
+            gtypes.Content(
+                role="user",
+                parts=[
+                    gtypes.Part(
+                        file_data=gtypes.FileData(
+                            file_uri=url, mime_type="video/*"
+                        )
+                    ),
+                    gtypes.Part(text=prompt),
+                ],
+            )
+        ]
+        config = {
+            "temperature": temperature,
+            "max_output_tokens": max_output_tokens,
+        }
+        response, model_used, key_index = await self.generate_content(
+            contents=contents,
+            config=config,
+            starting_model=model_hint,
+            label=label,
+        )
+
+        class _Result:
+            __slots__ = ("text", "model", "key_index")
+
+            def __init__(self, text: str, model: str, key_index: int) -> None:
+                self.text = text
+                self.model = model
+                self.key_index = key_index
+
+        return _Result(
+            text=getattr(response, "text", None) or "",
+            model=model_used,
+            key_index=key_index,
+        )
+
     async def generate_structured(
         self,
         *,
