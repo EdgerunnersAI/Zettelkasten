@@ -9,6 +9,7 @@ from uuid import UUID
 
 from website.core.url_utils import validate_url
 
+from website.features.summarization_engine.core.budget import budget_scope
 from website.features.summarization_engine.core.cache import FsContentCache
 from website.features.summarization_engine.core.config import load_config
 from website.features.summarization_engine.core.errors import (
@@ -140,7 +141,10 @@ async def summarize_url_bundle(
 
     summarizer_cls = get_summarizer(effective_source_type)
     summarizer = summarizer_cls(gemini_client, source_config)
-    summary_result = await summarizer.summarize(ingest_result)
+    # C6: enforce the per-request 3-call LLM budget. Scope wraps only the
+    # summarize() call so transcript/ingest work above is unaffected.
+    async with budget_scope(summarizer=effective_source_type.value):
+        summary_result = await summarizer.summarize(ingest_result)
     return OrchestratedSummary(
         ingest_result=ingest_result,
         summary_result=summary_result,

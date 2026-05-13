@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from website.features.summarization_engine.core.budget import get_budget
 from website.features.summarization_engine.core.config import EngineConfig
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.core.models import (
@@ -53,6 +54,7 @@ class StructuredExtractor:
             "Do NOT wrap in markdown code blocks. Return raw JSON only.\n\n"
             f"SUMMARY:\n{summary_text}"
         )
+        get_budget().consume(role="summarizer")  # C6: 3-call budget
         result = await self._client.generate(
             prompt,
             tier="flash",

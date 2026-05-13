@@ -17,6 +17,7 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel
 
+from website.features.summarization_engine.core.budget import get_budget
 from website.features.summarization_engine.core.config import EngineConfig
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.core.models import (
@@ -179,6 +180,8 @@ class StructuredExtractor:
 
         for attempt in range(max_attempts):
             _role = "summarizer" if attempt == 0 else "repair"
+            # C6: budget per call (each retry is a billable LLM round-trip).
+            get_budget().consume(role=_role)
             result = await self._client.generate(
                 prompt,
                 tier="flash",

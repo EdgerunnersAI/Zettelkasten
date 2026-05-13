@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 
+from website.features.summarization_engine.core.budget import get_budget
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.core.models import IngestResult
 from website.features.summarization_engine.summarization.common.dense_cache import (
@@ -103,6 +104,8 @@ async def maybe_patch_structured_brief(
         f"BRIEF:\n{current_brief}\n\nFACTS:\n{missing_block}"
     )
     try:
+        # C6: budget the optional patch call.
+        get_budget().consume(role="patch")
         result = await client.generate(
             prompt,
             tier="flash",

@@ -31,6 +31,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from website.features.summarization_engine.core.budget import get_budget
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.summarization.common.json_utils import (
     parse_json_object,
@@ -200,6 +201,11 @@ class DenseVerifier:
         last_exc: BaseException | None = None
         for attempt in range(2):
             try:
+                # C6: enforce 3-call LLM budget at the call site (only on the
+                # first attempt — retries are upstream-transient and must not
+                # double-charge).
+                if attempt == 0:
+                    get_budget().consume(role="dense_verify")
                 result = await self._client.generate(
                     prompt,
                     tier="pro",

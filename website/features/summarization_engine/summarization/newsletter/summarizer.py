@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import time
 
+from website.features.summarization_engine.core.budget import get_budget
 from website.features.summarization_engine.core.models import SummaryMetadata
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.core.models import (
@@ -93,6 +94,7 @@ class NewsletterSummarizer(BaseSummarizer):
                 prompt = f"{prompt}\n\nEnsure these facts are covered: {joined}"
 
         # Call 2 — structured extraction (flash).
+        get_budget().consume(role="summarizer")  # C6: 3-call budget
         result = await self._client.generate(
             prompt,
             tier="flash",
@@ -107,6 +109,7 @@ class NewsletterSummarizer(BaseSummarizer):
             payload = _parse_payload_with_ingest(result.text, ingest)
             # Call 3 (optional) — flash template-artifact repair.
             if _payload_contains_template_artifacts(payload):
+                get_budget().consume(role="repair")  # C6: 3-call budget
                 repair = await self._client.generate(
                     prompt
                     + "\n\nThe previous output contained metadata-template artifacts "
