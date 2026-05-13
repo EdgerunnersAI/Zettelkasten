@@ -39,6 +39,13 @@ class NewsletterDetailedPayload(BaseModel):
     conclusions_or_recommendations: list[str] = Field(default_factory=list)
     stance: Literal["optimistic", "skeptical", "cautionary", "neutral", "mixed"]
     cta: str | None = None
+    caveats: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Author-stated disclaimers, hedges, conflicts-of-interest, scope "
+            "limits — verbatim or near-verbatim from source."
+        ),
+    )
 
 
 class NewsletterStructuredPayload(BaseModel):
