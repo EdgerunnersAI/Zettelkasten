@@ -40,8 +40,9 @@ def test_prompt_lists_only_coherence_and_fluency():
     assert '"relevance"' not in schema_block
 
 
-def test_prompt_version_bumped_to_v4():
-    assert PROMPT_VERSION == "evaluator.v4"
+def test_prompt_version_bumped_to_v5():
+    # CF-1 (R1): v4 -> v5 narrows SCHEMA-FAILURE RULE + adds metadata_partial.
+    assert PROMPT_VERSION == "evaluator.v5"
 
 
 # ---------- pydantic schema ----------

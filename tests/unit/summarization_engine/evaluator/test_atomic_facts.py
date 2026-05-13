@@ -139,5 +139,7 @@ async def test_empty_result_is_not_cached(tmp_path: Path):
     assert client.generate.await_count == 2
 
 
-def test_prompt_version_is_v4():
-    assert PROMPT_VERSION == "evaluator.v4"
+def test_prompt_version_is_v5():
+    # Bumped from v4 -> v5 in CF-1 (R1): SCHEMA-FAILURE RULE narrowed to body
+    # fields; missing author/issue_date now flagged as advisory metadata_partial.
+    assert PROMPT_VERSION == "evaluator.v5"

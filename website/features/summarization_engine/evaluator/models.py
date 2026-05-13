@@ -220,6 +220,11 @@ class EvalResult(BaseModel):
     rubric: RubricBreakdown
     maps_to_metric_summary: dict[str, float]
     editorialization_flags: list[EditorializationFlag] = Field(default_factory=list)
+    # Advisory flag — true when ingest-side metadata (author/issue_date/etc.) is
+    # missing but the summary body itself is well-formed. NEVER feeds the
+    # composite cap; surfacing only. Paired with `missing_meta` listing keys.
+    metadata_partial: bool = False
+    missing_meta: list[str] = Field(default_factory=list)
     evaluator_metadata: dict
 
 

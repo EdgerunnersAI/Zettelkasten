@@ -1,7 +1,7 @@
 """Evaluator prompt templates. Bump PROMPT_VERSION on any edit."""
 from __future__ import annotations
 
-PROMPT_VERSION = "evaluator.v4"
+PROMPT_VERSION = "evaluator.v5"
 
 CONSOLIDATED_SYSTEM = (
     "You are a summary quality evaluator. Be strict, source-grounded, and terse. "
@@ -72,6 +72,8 @@ Return a JSON object matching EXACTLY this shape (no extra keys, no nesting beyo
     "summac": 0.0                           // FLAT float 0-100
   }},
   "editorialization_flags": [],             // each: {{ "sentence": "...", "flag_type": "added_stance|added_judgment|added_framing", "explanation": "..." }}
+  "metadata_partial": false,                // ADVISORY flag — true when ingest-side metadata (author, issue_date, etc) is missing but body is valid. MUST NOT cap composite.
+  "missing_meta": [],                       // list of missing metadata keys (e.g. ["author","issue_date"]); paired with metadata_partial
   "evaluator_metadata": {{}}                // leave empty; filled in by the harness
 }}
 
@@ -83,7 +85,24 @@ RULES:
 - For `maps_to_metric_summary`: aggregate rubric criterion scores by their `maps_to_metric` tags into 4 composites, each a FLAT float 0-100 (not a nested dict). The `g_eval` composite uses ONLY g_eval.coherence + g_eval.fluency on the ternary 1-3 scale: `g_eval = ((coherence_score + fluency_score) / 6) * 100` (so (1+1)->33, (2+2)->67, (3+3)->100). The old g_eval.consistency and g_eval.relevance criteria have been REMOVED — they duplicated finesure.faithfulness and finesure.completeness. Treat any rubric `maps_to_metric` reference to `g_eval.relevance` as `finesure.completeness` and `g_eval.conciseness` as `finesure.conciseness`.
 - judge_facet_disagreement: if g_eval.coherence.score >= 3 AND finesure.faithfulness.score < 0.7, append the string `"judge_facet_disagreement"` to the `criteria_missed` of every rubric component whose `maps_to_metric` references `finesure.faithfulness`. This surfaces calibration drift between the LLM judge facet and the faithfulness facet.
 - For `finesure.*.items`: SKIP entries whose `claim`, `sentence`, or `span` fields are all null/empty. Only list concrete, quotable issues. Do NOT emit placeholder items to pad the list.
-- SCHEMA-FAILURE RULE: If the summary JSON is missing required fields for its source shape (e.g., YouTube missing `chapters_or_segments`; Reddit missing `op_intent`/`reply_clusters`; GitHub missing `architecture_overview`; Newsletter missing `issue_date`/`author`), OR the summary contains the `_schema_fallback_` tag, then: (a) score each affected rubric component at 0, (b) add `"schema_failure"` to that component's `criteria_missed`, (c) set `caps_applied.hallucination_cap` to cap the composite aggressively, (d) add a `{{ "id": "schema_failure", "source_region": "structured_payload", "auto_cap": <cap_value> }}` entry to `rubric.anti_patterns_triggered`.
+- SCHEMA-FAILURE RULE (FIRE ONLY when one or more is true):
+    * `structured_payload` JSON is malformed or unparseable
+    * `mini_title` is empty or < 3 chars
+    * `brief_summary` is empty or < 20 chars
+    * `detailed_summary` is empty or < 80 chars
+    * Summary contains the `_schema_fallback_` tag
+    * (Body factually contradicts source is COVERED by faithfulness — do NOT double-count as schema_failure.)
+  DO NOT fire schema_failure for:
+    * missing author / issue_date / publication metadata (these are ingest-side METADATA; surface as `metadata_partial=true` with `missing_meta` listing the missing keys — no cap, no composite penalty)
+    * anonymous-author content (legitimate for community newsletters)
+  POSITIVE examples (fire schema_failure):
+    * `{{"mini_title":"","brief_summary":null,...}}` -> schema_failure
+    * malformed JSON / truncated payload -> schema_failure
+  NEGATIVE examples (DO NOT fire):
+    * valid body, author=null, date=null -> set `metadata_partial=true`, list keys in `missing_meta`, score normally
+    * body is short but well-formed (>=80 chars) -> score normally
+  When schema_failure fires: (a) score each affected rubric component at 0, (b) add `"schema_failure"` to that component's `criteria_missed`, (c) set `caps_applied.hallucination_cap` to cap the composite aggressively, (d) add a `{{ "id": "schema_failure", "source_region": "structured_payload", "auto_cap": <cap_value> }}` entry to `rubric.anti_patterns_triggered`.
+- METADATA-PARTIAL RULE: Set top-level `metadata_partial=true` and populate `missing_meta` (e.g. `["author","issue_date"]`) when ingest-side metadata is absent. This is ADVISORY only — it MUST NOT trigger any cap and does not feed the composite. Do not also fire schema_failure for the same condition.
 - Output JSON ONLY. No markdown fences, no commentary, no prose outside the JSON object.
 """
 
