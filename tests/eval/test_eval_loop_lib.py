@@ -205,8 +205,11 @@ def test_composite_from_eval_file_single(tmp_path: Path):
     path = tmp_path / "eval.json"
     artifacts.write_json(path, _canned_eval_payload())
     score = phases._composite_from_eval_file(path)
-    # 0.6*70 + 0.2*90 + 0.1*85 + 0.1*80 = 42 + 18 + 8.5 + 8 = 76.5
-    assert score == pytest.approx(76.5, abs=0.05)
+    # W3 baseline: g_eval is anchored-ternary {1,2,3}. Bare float 4.0 in the
+    # fixture coerces to score=3 for both coh+flu (n > 3.5 → 3), so
+    # g_eval_aggregate = (3+3)/6*100 = 100.
+    # 0.6*70 + 0.2*90 + 0.1*85 + 0.1*100 = 42 + 18 + 8.5 + 10 = 78.5
+    assert score == pytest.approx(78.5, abs=0.05)
 
 
 def test_composite_from_eval_file_list(tmp_path: Path):
@@ -217,9 +220,11 @@ def test_composite_from_eval_file_list(tmp_path: Path):
     ]
     artifacts.write_json(path, payloads)
     score = phases._composite_from_eval_file(path)
-    # second payload: 0.6*70 + 0.2*70 + 0.1*85 + 0.1*80 = 42 + 14 + 8.5 + 8 = 72.5
-    # avg(76.5, 72.5) = 74.5
-    assert score == pytest.approx(74.5, abs=0.05)
+    # W3 baseline (g_eval ternary, coh+flu both 3 → g_eval_agg=100):
+    # first:  0.6*70 + 0.2*90 + 0.1*85 + 0.1*100 = 78.5
+    # second: 0.6*70 + 0.2*70 + 0.1*85 + 0.1*100 = 74.5
+    # avg(78.5, 74.5) = 76.5
+    assert score == pytest.approx(76.5, abs=0.05)
 
 
 def test_composite_from_iter_dir_uses_held_out_when_no_top_eval(tmp_path: Path):
@@ -229,7 +234,8 @@ def test_composite_from_iter_dir_uses_held_out_when_no_top_eval(tmp_path: Path):
         d.mkdir(parents=True)
         artifacts.write_json(d / "eval.json", _canned_eval_payload(faithfulness=faith))
     score = phases._composite_from_iter_dir(tmp_path)
-    assert score == pytest.approx(74.5, abs=0.05)
+    # W3 baseline (see test_composite_from_eval_file_list): avg(78.5, 74.5) = 76.5
+    assert score == pytest.approx(76.5, abs=0.05)
 
 
 def test_composite_from_iter_dir_empty_returns_zero(tmp_path: Path):

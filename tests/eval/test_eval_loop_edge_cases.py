@@ -257,7 +257,13 @@ def _minimal_eval_payload(rubric_score=0.0, faith=0.0, complete=0.0, concise=0.0
 def test_composite_from_eval_file_all_zeros(tmp_path: Path):
     path = tmp_path / "eval.json"
     artifacts.write_json(path, _minimal_eval_payload())
-    assert phases._composite_from_eval_file(path) == 0.0
+    # W3 baseline shift: g_eval is now anchored-ternary {1,2,3}. The legacy-float
+    # back-compat path coerces 0.0 into the minimum band (score=1) per
+    # GEvalScores._coerce_criterion (n <= 1.5 → 1). Thus the g_eval contribution
+    # has a floor of 0.10 * ((1+1)/6 * 100) ≈ 3.33 even when every other signal
+    # is zero. Production never emits score=0 (ternary judge yields 1/2/3), so
+    # this floor only surfaces in legacy fixtures.
+    assert phases._composite_from_eval_file(path) == pytest.approx(3.33, abs=0.05)
 
 
 def test_composite_from_eval_file_perfect_scores(tmp_path: Path):
