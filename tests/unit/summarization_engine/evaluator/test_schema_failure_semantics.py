@@ -229,5 +229,5 @@ def test_prompt_text_mentions_metadata_partial_negative_example():
     assert "author" in text and "issue_date" in text
 
 
-def test_prompt_version_bumped_for_v6():
-    assert prompts.PROMPT_VERSION == "evaluator.v6"
+def test_prompt_version_bumped_for_v7():
+    assert prompts.PROMPT_VERSION == "evaluator.v7"

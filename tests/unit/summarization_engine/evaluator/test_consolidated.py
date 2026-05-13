@@ -248,7 +248,7 @@ async def test_judge_prompt_defaults_shape_to_general_when_absent():
     assert "editorialization_zeroed_by_shape" not in result.evaluator_metadata
 
 
-def test_prompt_version_bumped_to_v6():
+def test_prompt_version_bumped_to_v7():
     from website.features.summarization_engine.evaluator.prompts import PROMPT_VERSION
 
-    assert PROMPT_VERSION == "evaluator.v6"
+    assert PROMPT_VERSION == "evaluator.v7"

@@ -26,6 +26,9 @@ from ops.scripts.lib.artifacts import (
 from ops.scripts.lib import churn_ledger, git_helper
 from website.features.summarization_engine.core.orchestrator import summarize_url_bundle
 from website.features.summarization_engine.evaluator import composite_score
+from website.features.summarization_engine.summarization.newsletter.guards import (
+    find_unverified_substring,
+)
 from website.features.summarization_engine.evaluator.manual_review_writer import (
     verify_manual_review,
 )
@@ -43,6 +46,117 @@ EVAL_USER_UUID = UUID("00000000-0000-0000-0000-000000000001")
 
 
 # ── Phase A ──────────────────────────────────────────────────────────────────
+
+
+_HALLUCINATION_AP_IDS = {"invented_number", "stance_mismatch", "fabricated_quote"}
+
+
+def filter_judge_false_positives(eval_result, source_text: str):
+    """Drop judge flags whose flagged span is actually present in source.
+
+    Targets: invented_number anti-patterns and summac_lite.contradicted_sentences
+    whose span/sentence the judge claims isn't in source but is (whitespace /
+    digit-grouping tolerant verbatim match). Industry pattern: deterministic
+    post-judge filter (vLLM HaluGate, Patronus, Datadog, Maxim, Lakera).
+
+    Mutates ``eval_result`` (Pydantic ``EvalResult`` or dict) in place and
+    returns it. Appends a ``judge_false_positives_dropped`` entry to
+    ``evaluator_metadata`` for telemetry. Clears ``hallucination_cap`` when
+    the only remaining hallucination anti-patterns have been filtered out.
+    """
+    dropped: list[dict] = []
+    is_model = hasattr(eval_result, "summac_lite")
+
+    # --- summac_lite.contradicted_sentences ---
+    if is_model:
+        summac_list = list(eval_result.summac_lite.contradicted_sentences)
+    else:
+        summac = (eval_result.get("summac_lite") or {}) if isinstance(eval_result, dict) else {}
+        summac_list = list(summac.get("contradicted_sentences") or [])
+
+    kept_summac = []
+    for item in summac_list:
+        if item is None:
+            continue
+        if hasattr(item, "sentence"):
+            span = (item.sentence or "")
+        else:
+            span = (item.get("sentence") or item.get("span") or "")
+        if span and not find_unverified_substring(span, source_text):
+            dropped.append({"kind": "summac_contradicted_sentence", "span": span[:120]})
+            continue
+        kept_summac.append(item)
+
+    if is_model:
+        eval_result.summac_lite.contradicted_sentences = kept_summac
+    else:
+        if isinstance(eval_result, dict):
+            summac = eval_result.setdefault("summac_lite", {})
+            summac["contradicted_sentences"] = kept_summac
+
+    # --- rubric.anti_patterns_triggered ---
+    if is_model:
+        ap_list = list(eval_result.rubric.anti_patterns_triggered)
+    else:
+        rubric_d = (eval_result.get("rubric") or {}) if isinstance(eval_result, dict) else {}
+        ap_list = list(rubric_d.get("anti_patterns_triggered") or [])
+
+    kept_aps = []
+    for ap in ap_list:
+        if ap is None:
+            continue
+        if hasattr(ap, "id"):
+            pattern_id = ap.id or ""
+            source_region = ap.source_region or ""
+        else:
+            pattern_id = ap.get("id", "") or ""
+            source_region = ap.get("source_region", "") or ""
+        if pattern_id == "invented_number" and source_region:
+            if not find_unverified_substring(source_region, source_text):
+                dropped.append({"kind": "invented_number_fp", "region": source_region[:120]})
+                continue
+        kept_aps.append(ap)
+
+    if is_model:
+        eval_result.rubric.anti_patterns_triggered = kept_aps
+        caps = eval_result.rubric.caps_applied
+        if caps.get("hallucination_cap") is not None:
+            still_hallucinating = any(
+                (getattr(ap, "id", None) or (ap.get("id") if isinstance(ap, dict) else None))
+                in _HALLUCINATION_AP_IDS
+                for ap in kept_aps
+            )
+            if not still_hallucinating:
+                caps["hallucination_cap"] = None
+    else:
+        if isinstance(eval_result, dict):
+            rubric_d = eval_result.setdefault("rubric", {})
+            rubric_d["anti_patterns_triggered"] = kept_aps
+            caps = rubric_d.get("caps_applied") or {}
+            if caps.get("hallucination_cap") is not None:
+                still_hallucinating = any(
+                    (ap.get("id") if isinstance(ap, dict) else "")
+                    in _HALLUCINATION_AP_IDS
+                    for ap in kept_aps
+                )
+                if not still_hallucinating:
+                    caps["hallucination_cap"] = None
+                    rubric_d["caps_applied"] = caps
+
+    if dropped:
+        if is_model:
+            meta = eval_result.evaluator_metadata
+            meta.setdefault("judge_false_positives_dropped", []).extend(dropped)
+        elif isinstance(eval_result, dict):
+            eval_result.setdefault("judge_false_positives_dropped", []).extend(dropped)
+        logger.info(
+            "judge_false_positives_dropped count=%d kinds=%s",
+            len(dropped),
+            [d["kind"] for d in dropped][:5],
+        )
+
+    return eval_result
+
 
 async def _summarize_and_evaluate(
     *,
@@ -93,6 +207,8 @@ async def _summarize_and_evaluate(
         source_text=ingest.raw_text,
         summary_json=summary_json,
     )
+    # R3: post-judge deterministic FP filter (vLLM HaluGate pattern).
+    filter_judge_false_positives(eval_result, ingest.raw_text)
     if eval_result.finesure.faithfulness.score < 0.9:
         bridge = RagasBridge(gemini_client)
         ragas = await bridge.faithfulness(str(summary_json), ingest.raw_text)
@@ -849,6 +965,7 @@ async def _re_evaluate_from_summary(
         source_text=source_text,
         summary_json=summary_json,
     )
+    filter_judge_false_positives(eval_result, source_text)
     return composite_score(eval_result)
 
 

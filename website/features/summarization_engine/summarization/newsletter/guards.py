@@ -47,6 +47,29 @@ def _normalise_numeral(n: str) -> str:
     return n.replace(",", "").replace(" ", "").strip(".-/")
 
 
+def _normalise_for_substring(text: str) -> str:
+    """Collapse whitespace + digit-group separators for tolerant verbatim match."""
+    return re.sub(r"\s+", "", text).replace(",", "").replace("-", "")
+
+
+def find_unverified_substring(flag_substring: str, source: str) -> bool:
+    """Return True if the flagged substring is NOT in source (case-insensitive,
+    whitespace + digit-grouping normalised). Returns False (i.e., IT IS in source)
+    when the substring can be located — indicating a judge false positive.
+
+    Catches cases where the judge claims a card number / code / hash / URL
+    isn't in source but actually is (just with different spacing or separators).
+    Industry pattern: vLLM HaluGate two-stage filter, RAGAS faithfulness norm.
+    """
+    if not flag_substring or not source:
+        return True  # nothing to verify
+    flag_norm = _normalise_for_substring(flag_substring.lower())
+    if not flag_norm:
+        return True
+    source_norm = _normalise_for_substring(source.lower())
+    return flag_norm not in source_norm
+
+
 def find_unverified_numerals(summary: str, source: str) -> list[str]:
     """Return numerals in summary that don't appear (normalised) in source."""
     src_nums = {_normalise_numeral(n) for n in NUMERAL.findall(source)}

@@ -1,7 +1,7 @@
 """Evaluator prompt templates. Bump PROMPT_VERSION on any edit."""
 from __future__ import annotations
 
-PROMPT_VERSION = "evaluator.v6"
+PROMPT_VERSION = "evaluator.v7"
 
 CONSOLIDATED_SYSTEM = (
     "You are a summary quality evaluator. Be strict, source-grounded, and terse. "
@@ -92,6 +92,20 @@ Return a JSON object matching EXACTLY this shape (no extra keys, no nesting beyo
   "missing_meta": [],                       // list of missing metadata keys (e.g. ["author","issue_date"]); paired with metadata_partial
   "evaluator_metadata": {{}}                // leave empty; filled in by the harness
 }}
+
+VERBATIM-VERIFY BEFORE FLAGGING:
+Before flagging any span as `invented_number`, `invented_substring`,
+`contradicted_sentence`, or "not in source": (1) extract the exact substring
+you would flag, (2) perform a verbatim search for that substring in SOURCE
+(also try with whitespace collapsed and digit-grouping/comma removed),
+(3) only emit the flag if the substring is genuinely absent. If present,
+emit `verified_in_source` with the matched location and do NOT flag.
+
+Common false-positive triggers to verify carefully:
+- Long alphanumeric codes (card numbers, hashes, API tokens)
+- URLs and email addresses
+- Dates in non-standard formats
+- Currency values with different separators ($5,000 vs $5000)
 
 RULES:
 - For every criterion in the rubric, check whether the summary satisfies its description; tally scores per component into `rubric.components`.

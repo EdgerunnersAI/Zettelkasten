@@ -4,8 +4,39 @@ from __future__ import annotations
 from website.features.summarization_engine.summarization.newsletter.guards import (
     apply_newsletter_guards,
     find_unverified_numerals,
+    find_unverified_substring,
     strip_banned_adjectives,
 )
+
+
+def test_find_unverified_substring_present_returns_false():
+    assert find_unverified_substring("hello world", "say hello world today") is False
+
+
+def test_find_unverified_substring_absent_returns_true():
+    assert find_unverified_substring("nonexistent string", "real source text") is True
+
+
+def test_find_unverified_substring_whitespace_tolerant():
+    # source has spaces, flag has none → still verified
+    assert (
+        find_unverified_substring("4000000000009995", "card 4000 0000 0000 9995 here")
+        is False
+    )
+
+
+def test_find_unverified_substring_comma_tolerant():
+    assert find_unverified_substring("$5000000", "value is $5,000,000 total") is False
+
+
+def test_find_unverified_substring_empty_inputs():
+    assert find_unverified_substring("", "anything") is True
+    assert find_unverified_substring("anything", "") is True
+    assert find_unverified_substring("", "") is True
+
+
+def test_find_unverified_substring_case_insensitive():
+    assert find_unverified_substring("HELLO", "say hello world") is False
 
 
 def test_strip_banned_adjective_basic():

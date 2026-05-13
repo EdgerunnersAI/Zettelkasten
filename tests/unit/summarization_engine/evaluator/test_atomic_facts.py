@@ -139,8 +139,8 @@ async def test_empty_result_is_not_cached(tmp_path: Path):
     assert client.generate.await_count == 2
 
 
-def test_prompt_version_is_v6():
-    # Bumped from v5 -> v6 in CF-2 (R2): CONTENT_SHAPE block + shape-aware
-    # rubric overrides so academic_roundup paper-fact phrasing isn't flagged
-    # as editorialization.
-    assert PROMPT_VERSION == "evaluator.v6"
+def test_prompt_version_is_v7():
+    # Bumped from v6 -> v7 in CF-3 (R3): verbatim-verify-before-flagging clause
+    # for invented_number / contradicted_sentence — paired with the deterministic
+    # post-judge FP filter in ops.scripts.lib.phases.filter_judge_false_positives.
+    assert PROMPT_VERSION == "evaluator.v7"

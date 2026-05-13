@@ -40,9 +40,10 @@ def test_prompt_lists_only_coherence_and_fluency():
     assert '"relevance"' not in schema_block
 
 
-def test_prompt_version_bumped_to_v6():
-    # CF-2 (R2): v5 -> v6 adds CONTENT_SHAPE block + shape-aware rubric overrides.
-    assert PROMPT_VERSION == "evaluator.v6"
+def test_prompt_version_bumped_to_v7():
+    # CF-3 (R3): v6 -> v7 adds verbatim-verify-before-flagging clause for
+    # invented_number / contradicted_sentence; paired with post-judge FP filter.
+    assert PROMPT_VERSION == "evaluator.v7"
 
 
 # ---------- pydantic schema ----------
