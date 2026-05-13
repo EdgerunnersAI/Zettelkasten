@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import tempfile
 import time
@@ -97,16 +98,33 @@ class TranscriptChain:
         return final
 
 
-async def tier_ytdlp_player_rotation(video_id: str, config: dict) -> TierResult:
-    """Tier 1: yt-dlp with player-client rotation."""
+async def tier_ytdlp_cookies_impersonate(video_id: str, config: dict) -> TierResult:
+    """Tier 3: yt-dlp with --cookies-from-burner-account + --impersonate chrome
+    (curl_cffi) + PO-token from bgutil sidecar. Unlocks age-restricted +
+    members-only + bot-gate. Operator must configure YT_COOKIES_PATH,
+    YT_USER_AGENT, YTDLP_POT_PROVIDER_URL. See docs/runbooks/yt-fallback-stack.md.
+    Reuses TierName.YTDLP_PLAYER_ROTATION to avoid enum churn."""
     from yt_dlp import YoutubeDL
+
+    start = time.monotonic()
+    cookies_path = os.environ.get("YT_COOKIES_PATH", "")
+    user_agent = os.environ.get("YT_USER_AGENT", "")
+    pot_provider_url = os.environ.get("YTDLP_POT_PROVIDER_URL", "")
+
+    if not cookies_path or not os.path.exists(cookies_path):
+        return TierResult(
+            tier=TierName.YTDLP_PLAYER_ROTATION,
+            transcript="",
+            success=False,
+            latency_ms=0,
+            error="YT_COOKIES_PATH not set or missing — see docs/runbooks/yt-fallback-stack.md",
+        )
 
     clients = config.get(
         "ytdlp_player_clients",
-        ["android_embedded", "ios", "tv_embedded", "mweb", "web"],
+        ["tv_simply", "android_sdkless", "ios", "web_safari", "web"],
     )
     url = f"https://www.youtube.com/watch?v={video_id}"
-    start = time.monotonic()
 
     for client in clients:
         with tempfile.TemporaryDirectory() as tmp:
@@ -119,8 +137,22 @@ async def tier_ytdlp_player_rotation(video_id: str, config: dict) -> TierResult:
                 "subtitleslangs": config.get("transcript_languages", ["en"]),
                 "subtitlesformat": "vtt",
                 "outtmpl": str(Path(tmp) / "%(id)s.%(ext)s"),
-                "extractor_args": {"youtube": {"player_client": [client]}},
+                "cookiefile": cookies_path,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": [client],
+                        **(
+                            {"pot_provider_url": [pot_provider_url]}
+                            if pot_provider_url
+                            else {}
+                        ),
+                    }
+                },
+                # curl_cffi impersonation via yt-dlp's impersonate option
+                "impersonate": "chrome",
             }
+            if user_agent:
+                opts["user_agent"] = user_agent
             try:
                 with YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True) or {}
@@ -132,7 +164,9 @@ async def tier_ytdlp_player_rotation(video_id: str, config: dict) -> TierResult:
                     if len(transcript) > 100:
                         latency = int((time.monotonic() - start) * 1000)
                         logger.info(
-                            "[yt-tier1] player=%s success len=%d", client, len(transcript)
+                            "[yt-tier3] client=%s success len=%d",
+                            client,
+                            len(transcript),
                         )
                         return TierResult(
                             tier=TierName.YTDLP_PLAYER_ROTATION,
@@ -140,10 +174,17 @@ async def tier_ytdlp_player_rotation(video_id: str, config: dict) -> TierResult:
                             success=True,
                             confidence="high",
                             latency_ms=latency,
-                            extra={"player_client": client, "title": info.get("title", "")},
+                            extra={
+                                "player_client": client,
+                                "impersonate": "chrome",
+                                "pot_provider_url_configured": bool(pot_provider_url),
+                                "title": info.get("title", ""),
+                            },
                         )
             except Exception as exc:
-                logger.warning("[yt-tier1] player=%s failed: %s", client, exc)
+                logger.warning(
+                    "[yt-tier3] client=%s failed: %s", client, str(exc)[:200]
+                )
                 continue
 
     return TierResult(
@@ -151,7 +192,7 @@ async def tier_ytdlp_player_rotation(video_id: str, config: dict) -> TierResult:
         transcript="",
         success=False,
         latency_ms=int((time.monotonic() - start) * 1000),
-        error="all player clients failed",
+        error="all player clients failed even with cookies+impersonate+PO-token",
     )
 
 
@@ -226,41 +267,72 @@ def _format_vtt_timestamp(timestamp: str) -> str:
     return f"{int(hours)}:{minutes}:{seconds}"
 
 
-async def tier_transcript_api_direct(video_id: str, config: dict) -> TierResult:
-    """Tier 2: youtube-transcript-api direct fetch."""
-    start = time.monotonic()
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
+async def tier_transcript_api_via_webshare(video_id: str, config: dict) -> TierResult:
+    """Tier 2: youtube-transcript-api routed through Webshare free-tier residential
+    proxies. Handles cases where Gemini's US-edge fetcher can't reach the video
+    (region-lock visible from US but accessible from rotating residential IPs).
+    DO NOT call this tier from a datacenter IP without a proxy — it will fail
+    with `IpBlocked`. Reuses TierName.TRANSCRIPT_API_DIRECT to avoid enum churn."""
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api.proxies import WebshareProxyConfig
 
-        api = YouTubeTranscriptApi()
-        entries = api.fetch(
-            video_id,
-            languages=config.get("transcript_languages", ["en"]),
+    start = time.monotonic()
+    cfg = config.get("transcript_api", {}) if isinstance(config, dict) else {}
+    proxy_url = os.environ.get("YT_TRANSCRIPT_PROXY_URL", "")
+    languages = cfg.get(
+        "languages", config.get("transcript_languages", ["en", "en-US", "en-GB"])
+    )
+
+    if not proxy_url:
+        return TierResult(
+            tier=TierName.TRANSCRIPT_API_DIRECT,
+            transcript="",
+            success=False,
+            latency_ms=0,
+            error="YT_TRANSCRIPT_PROXY_URL not configured — see docs/runbooks/yt-fallback-stack.md",
         )
-        text = " ".join(item.text for item in entries)
-        if len(text) > 100:
+
+    try:
+        # WebshareProxyConfig expects username + password — operator sets them
+        # via YT_TRANSCRIPT_PROXY_USER / YT_TRANSCRIPT_PROXY_PASS or via combined
+        # YT_TRANSCRIPT_PROXY_URL=http://user:pass@proxy.webshare.io:port format.
+        user = os.environ.get("YT_TRANSCRIPT_PROXY_USER", "")
+        password = os.environ.get("YT_TRANSCRIPT_PROXY_PASS", "")
+        api = YouTubeTranscriptApi(
+            proxy_config=(
+                WebshareProxyConfig(proxy_username=user, proxy_password=password)
+                if user and password
+                else None
+            ),
+        )
+        result = await asyncio.to_thread(api.fetch, video_id, languages=languages)
+        text = "\n".join(
+            snippet.text for snippet in result.snippets if snippet.text
+        ).strip()
+        if len(text) < 100:
             return TierResult(
                 tier=TierName.TRANSCRIPT_API_DIRECT,
-                transcript=text,
-                success=True,
-                confidence="high",
+                transcript="",
+                success=False,
+                error=f"too-short: len={len(text)}",
                 latency_ms=int((time.monotonic() - start) * 1000),
             )
+        return TierResult(
+            tier=TierName.TRANSCRIPT_API_DIRECT,
+            transcript=text,
+            success=True,
+            confidence="high",
+            latency_ms=int((time.monotonic() - start) * 1000),
+            extra={"path": "transcript_api_webshare", "language": result.language},
+        )
     except Exception as exc:
         return TierResult(
             tier=TierName.TRANSCRIPT_API_DIRECT,
             transcript="",
             success=False,
-            error=str(exc),
+            error=str(exc)[:200],
             latency_ms=int((time.monotonic() - start) * 1000),
         )
-
-    return TierResult(
-        tier=TierName.TRANSCRIPT_API_DIRECT,
-        transcript="",
-        success=False,
-        latency_ms=int((time.monotonic() - start) * 1000),
-    )
 
 
 def _load_health() -> dict[str, str]:
@@ -696,13 +768,13 @@ async def tier_metadata_only(video_id: str, config: dict) -> TierResult:
 def build_default_chain(config: dict) -> TranscriptChain:
     return TranscriptChain(
         tiers=[
-            tier_gemini_youtube_url,
-            tier_ytdlp_player_rotation,
-            tier_transcript_api_direct,
-            tier_piped_pool,
-            tier_invidious_pool,
-            tier_gemini_audio,
-            tier_metadata_only,
+            tier_gemini_youtube_url,            # T1 — server-side fetch (H1)
+            tier_transcript_api_via_webshare,   # T2 — Webshare proxy (H3)
+            tier_ytdlp_cookies_impersonate,     # T3 — cookies+impersonate+POT (H3)
+            tier_invidious_pool,                # T4 — Invidious pool
+            tier_piped_pool,                    # T5 — Piped pool
+            tier_gemini_audio,                  # T6 — Gemini audio fallback
+            tier_metadata_only,                 # T7 — metadata-only (H2 gate refuses)
         ],
         budget_ms=config.get("transcript_budget_ms", 90000),
     )

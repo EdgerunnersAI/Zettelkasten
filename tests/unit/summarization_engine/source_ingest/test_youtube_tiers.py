@@ -8,7 +8,13 @@ from website.features.summarization_engine.source_ingest.youtube.tiers import (
     TierResult,
     TranscriptChain,
     build_default_chain,
+    tier_gemini_audio,
     tier_gemini_youtube_url,
+    tier_invidious_pool,
+    tier_metadata_only,
+    tier_piped_pool,
+    tier_transcript_api_via_webshare,
+    tier_ytdlp_cookies_impersonate,
 )
 
 
@@ -129,3 +135,42 @@ def test_build_default_chain_places_gemini_filedata_first():
     chain = build_default_chain({})
     first_tier = chain._tiers[0]
     assert first_tier is tier_gemini_youtube_url
+
+
+def test_build_default_chain_has_seven_tiers_in_h3_order():
+    chain = build_default_chain({})
+    assert chain._tiers == [
+        tier_gemini_youtube_url,
+        tier_transcript_api_via_webshare,
+        tier_ytdlp_cookies_impersonate,
+        tier_invidious_pool,
+        tier_piped_pool,
+        tier_gemini_audio,
+        tier_metadata_only,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tier_transcript_api_via_webshare_fails_when_proxy_unset(monkeypatch):
+    monkeypatch.delenv("YT_TRANSCRIPT_PROXY_URL", raising=False)
+    result = await tier_transcript_api_via_webshare("vid123", {})
+    assert result.success is False
+    assert "YT_TRANSCRIPT_PROXY_URL" in (result.error or "")
+    assert result.tier == TierName.TRANSCRIPT_API_DIRECT
+
+
+@pytest.mark.asyncio
+async def test_tier_ytdlp_cookies_impersonate_fails_when_cookies_missing(monkeypatch):
+    monkeypatch.setenv("YT_COOKIES_PATH", "/nonexistent/path/yt-cookies.txt")
+    result = await tier_ytdlp_cookies_impersonate("vid123", {})
+    assert result.success is False
+    assert "YT_COOKIES_PATH" in (result.error or "")
+    assert result.tier == TierName.YTDLP_PLAYER_ROTATION
+
+
+@pytest.mark.asyncio
+async def test_tier_ytdlp_cookies_impersonate_fails_when_cookies_env_unset(monkeypatch):
+    monkeypatch.delenv("YT_COOKIES_PATH", raising=False)
+    result = await tier_ytdlp_cookies_impersonate("vid123", {})
+    assert result.success is False
+    assert "YT_COOKIES_PATH" in (result.error or "")
