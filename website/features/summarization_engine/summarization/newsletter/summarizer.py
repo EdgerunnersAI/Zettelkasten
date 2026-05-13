@@ -50,6 +50,9 @@ from website.features.summarization_engine.summarization.common.structured impor
 from website.features.summarization_engine.summarization.newsletter.archetype import (
     archetype_from_signals as _newsletter_archetype_impl,
 )
+from website.features.summarization_engine.summarization.newsletter.guards import (
+    apply_newsletter_guards,
+)
 from website.features.summarization_engine.summarization.newsletter.prompts import (
     STRUCTURED_EXTRACT_INSTRUCTION,
 )
@@ -105,6 +108,7 @@ class NewsletterSummarizer(BaseSummarizer):
         call_trace.append(make_call_entry(role="summarizer", result=result))
         flash_tokens = result.input_tokens + result.output_tokens
         is_schema_fallback = False
+        repair_fired = False
         try:
             payload = _parse_payload_with_ingest(result.text, ingest)
             # Call 3 (optional) — flash template-artifact repair.
@@ -122,6 +126,7 @@ class NewsletterSummarizer(BaseSummarizer):
                 )
                 call_trace.append(make_call_entry(role="repair", result=repair))
                 flash_tokens += repair.input_tokens + repair.output_tokens
+                repair_fired = True
                 payload = _parse_payload_with_ingest(repair.text, ingest)
                 if _payload_contains_template_artifacts(payload):
                     raise ValueError(
@@ -131,6 +136,36 @@ class NewsletterSummarizer(BaseSummarizer):
             payload = _fallback_payload(ingest, dv.dense_text or ingest.raw_text or "", self._engine_config)
             is_schema_fallback = True
         payload = _apply_ingest_guardrails(payload, ingest)
+
+        # Deterministic hallucination guards: banned-adjective strip +
+        # numeric verbatim verifier. Zero LLM cost. Conditional repair
+        # stays MUTUALLY EXCLUSIVE with template-artifact repair — combined
+        # ceiling: <=1 conditional Flash call (3-call cap preserved).
+        guard_audit = _run_hallucination_guards(payload, ingest.raw_text or "")
+        if guard_audit["requires_repair"] and not repair_fired and not is_schema_fallback:
+            get_budget().consume(role="repair")  # C6: 3-call budget
+            numerals_blob = ", ".join(guard_audit["unverified_numerals"])
+            repair = await self._client.generate(
+                prompt
+                + "\n\nThe previous output contained numeric tokens not present "
+                "in the source: "
+                + numerals_blob
+                + ". Regenerate JSON; omit any numeral, code, identifier, or "
+                "proper-noun token that does not appear verbatim in the source.",
+                tier="flash",
+                response_schema=NewsletterStructuredPayload,
+                system_instruction=SYSTEM_PROMPT,
+                role="repair",
+            )
+            call_trace.append(make_call_entry(role="repair", result=repair))
+            flash_tokens += repair.input_tokens + repair.output_tokens
+            try:
+                payload = _parse_payload_with_ingest(repair.text, ingest)
+                payload = _apply_ingest_guardrails(payload, ingest)
+            except Exception:
+                pass  # keep prior payload — guards below still scrub adjectives
+            # Re-run guards on the repaired payload to refresh audit
+            guard_audit = _run_hallucination_guards(payload, ingest.raw_text or "")
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         # Compute a lightweight newsletter archetype label so the _dense_verify
@@ -148,6 +183,7 @@ class NewsletterSummarizer(BaseSummarizer):
             "stance": dv.stance,
             "missing_fact_count": len(dv.missing_facts),
         }
+        structured_payload_extras["_guard_audit"] = guard_audit
         # Newsletter personalization: byline author comes from the ingest
         # metadata (extractor parsed the Substack/beehiiv author field — not
         # LLM-inferred). Surface it on the payload so the frontend can render
@@ -196,6 +232,45 @@ class NewsletterSummarizer(BaseSummarizer):
 
 
 register_summarizer(NewsletterSummarizer)
+
+
+def _run_hallucination_guards(
+    payload: NewsletterStructuredPayload, source_text: str
+) -> dict:
+    """Apply deterministic guards to brief + each detailed bullet in place.
+
+    Aggregates banned-adjective strips and unverified-numeral flags across
+    the brief and every detailed bullet. Mutates the payload (strips
+    evaluative adjectives silently); numeric flags are reported only — the
+    caller decides whether to invoke conditional Flash repair.
+    """
+    aggregate: dict = {
+        "banned_adjectives_stripped": [],
+        "unverified_numerals": [],
+        "requires_repair": False,
+    }
+
+    guarded_brief, b_audit = apply_newsletter_guards(
+        summary_text=payload.brief_summary,
+        source_text=source_text,
+    )
+    payload.brief_summary = guarded_brief
+    aggregate["banned_adjectives_stripped"].extend(b_audit["banned_adjectives_stripped"])
+    aggregate["unverified_numerals"].extend(b_audit["unverified_numerals"])
+
+    for section in payload.detailed_summary.sections:
+        for i, bullet in enumerate(section.bullets):
+            guarded_bullet, audit = apply_newsletter_guards(
+                summary_text=bullet, source_text=source_text,
+            )
+            section.bullets[i] = guarded_bullet
+            aggregate["banned_adjectives_stripped"].extend(
+                audit["banned_adjectives_stripped"]
+            )
+            aggregate["unverified_numerals"].extend(audit["unverified_numerals"])
+
+    aggregate["requires_repair"] = bool(aggregate["unverified_numerals"])
+    return aggregate
 
 
 def _parse_payload_with_ingest(text: str, ingest: IngestResult) -> NewsletterStructuredPayload:
