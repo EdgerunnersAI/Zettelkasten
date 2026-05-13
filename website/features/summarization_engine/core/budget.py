@@ -7,6 +7,17 @@ code reviewers (decorator-only hides cost; middleware-only can't decrement
 per-call).
 
 Hard invariant: max 3 LLM calls per summarization. Test asserts this.
+
+SCOPE — production summarization only.
+    The budget covers Gemini calls inside ``summarizer.summarize()`` (extract /
+    verify / repair / structured-extract / patch). It MUST NOT be wired into
+    eval-side calls such as ``extract_atomic_facts``, ``ConsolidatedEvaluator``,
+    ``RagasBridge.faithfulness``, or any scoring/judge prompt — those are
+    test-harness measurements and are explicitly out-of-budget by operator
+    spec (2026-05-13). The scope is established in exactly one place
+    (``core/orchestrator.py`` ``budget_scope()`` context) and closes before
+    the harness invokes evaluators. Do NOT add ``get_budget().consume()``
+    inside any evaluator/atomic-facts/judge code path.
 """
 from __future__ import annotations
 
