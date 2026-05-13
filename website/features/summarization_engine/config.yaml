@@ -73,7 +73,9 @@ sources:
     doc_char_cap: 4000
   newsletter:
     extractors: ["trafilatura", "readability", "newspaper4k"]
-    paywall_fallbacks: ["googlebot", "wayback", "archive_ph", "twelveft", "freedium"]
+    # 2026-05-13 S2: dropped "twelveft" (12ft.io shut down July 2025).
+    # Active fallbacks: googlebot UA -> wayback -> archive.ph -> freedium (Medium).
+    paywall_fallbacks: ["googlebot", "wayback", "archive_ph", "freedium"]
     googlebot_ua: true
     min_text_length: 500
     site_specific_selectors_enabled: true

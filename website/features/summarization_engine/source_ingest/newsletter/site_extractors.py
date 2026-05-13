@@ -25,6 +25,8 @@ def _detect_site(url: str, soup: BeautifulSoup) -> str:
         return "beehiiv"
     if "medium.com" in host or "hackernoon.com" in host:
         return "medium"
+    if "buttondown.email" in host or "buttondown.com" in host:
+        return "buttondown"
     og_site = soup.find("meta", attrs={"property": "og:site_name"})
     if og_site and "substack" in (og_site.get("content") or "").lower():
         return "substack"
@@ -45,6 +47,10 @@ def _detect_site(url: str, soup: BeautifulSoup) -> str:
         return "medium"
     if soup.select_one("article.gh-article, .gh-content, .gh-post-upgrade-cta"):
         return "ghost"
+    if soup.select_one(
+        "article.email-content, div.email-body, section.email, a[href*='buttondown.email']"
+    ):
+        return "buttondown"
     return "unknown"
 
 
@@ -135,11 +141,40 @@ def _ghost(soup: BeautifulSoup) -> StructuredNewsletter:
     )
 
 
+def _buttondown(soup: BeautifulSoup) -> StructuredNewsletter:
+    """Buttondown native DOM extractor.
+
+    Buttondown archives expose post bodies under ``article.email-content`` /
+    ``div.email-body``; titles use ``h1.email-title`` (fallback to plain ``h1``).
+    """
+    title_el = soup.select_one("h1.email-title, h1")
+    subtitle_el = soup.find("meta", attrs={"name": "description"})
+    body_el = soup.select_one("article.email-content, div.email-body, section.email")
+    ctas = [
+        anchor.get("href", "")
+        for anchor in soup.select("a[href*='subscribe'], a.subscribe-button")
+    ]
+    og_site = soup.find("meta", attrs={"property": "og:site_name"})
+    publication = (og_site.get("content") or "").strip() if og_site else ""
+    subtitle = (
+        (subtitle_el.get("content") or "").strip() if subtitle_el else ""
+    )
+    return StructuredNewsletter(
+        site="buttondown",
+        title=title_el.get_text(strip=True) if title_el else "",
+        subtitle=subtitle,
+        body_text=body_el.get_text(separator="\n", strip=True) if body_el else "",
+        cta_links=[cta for cta in ctas if cta],
+        publication_identity=publication,
+    )
+
+
 _EXTRACTORS = {
     "substack": _substack,
     "beehiiv": _beehiiv,
     "medium": _medium,
     "ghost": _ghost,
+    "buttondown": _buttondown,
 }
 
 

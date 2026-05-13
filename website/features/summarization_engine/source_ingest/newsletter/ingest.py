@@ -50,9 +50,9 @@ _PROVIDER_ORDER = (
     "googlebot",
     "wayback",
     "archive_ph",
-    "twelveft",
     "freedium",
 )
+# 2026-05-13: dropped "twelveft" — 12ft.io decommissioned July 2025.
 
 _PREFLIGHT_TIMEOUT = 8.0
 _PREFLIGHT_GET_RANGE = "bytes=0-256"
@@ -322,8 +322,6 @@ async def _try_provider(name: str, url: str) -> tuple[str, dict[str, Any], str, 
         return await _wayback(url)
     if name == "archive_ph":
         return await _archive_ph(url)
-    if name == "twelveft":
-        return await _twelveft(url)
     if name == "freedium":
         return await _freedium(url)
     logger.debug("[newsletter] unknown provider %s; skipping", name)
@@ -350,11 +348,6 @@ async def _wayback(url: str) -> tuple[str, dict[str, Any], str, str]:
 
 async def _archive_ph(url: str) -> tuple[str, dict[str, Any], str, str]:
     target = f"https://archive.ph/newest/{url}"
-    return await _fetch_and_extract(target, headers={"User-Agent": _DEFAULT_UA})
-
-
-async def _twelveft(url: str) -> tuple[str, dict[str, Any], str, str]:
-    target = f"https://12ft.io/{url}"
     return await _fetch_and_extract(target, headers={"User-Agent": _DEFAULT_UA})
 
 

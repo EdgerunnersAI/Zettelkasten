@@ -76,6 +76,55 @@ def test_ghost_newsletter_extracts_publication_identity():
     assert result.title == "Substack promotes a Nazi"
 
 
+def test_buttondown_extracts_title_body_from_host():
+    html = """
+    <html>
+      <head>
+        <meta property="og:site_name" content="Some Buttondown Pub">
+        <meta name="description" content="Weekly notes">
+      </head>
+      <body>
+        <h1 class="email-title">Issue 42: On Curiosity</h1>
+        <article class="email-content">
+          <p>Body paragraph one.</p>
+          <p>Body paragraph two.</p>
+        </article>
+        <a href="https://buttondown.email/example/subscribe">Subscribe</a>
+      </body>
+    </html>
+    """
+    result = extract_structured(
+        html,
+        url="https://buttondown.email/example/archive/issue-42/",
+    )
+    assert result.site == "buttondown"
+    assert result.title == "Issue 42: On Curiosity"
+    assert "Body paragraph one" in result.body_text
+    assert result.publication_identity == "Some Buttondown Pub"
+    assert any("subscribe" in cta.lower() for cta in result.cta_links)
+
+
+def test_buttondown_custom_domain_uses_dom_markers():
+    html = """
+    <html><head><meta property="og:site_name" content="Pub"></head>
+    <body>
+      <h1>Hello</h1>
+      <div class="email-body"><p>Content here.</p></div>
+    </body></html>
+    """
+    result = extract_structured(html, url="https://news.example.com/p/hello")
+    assert result.site == "buttondown"
+    assert "Content here" in result.body_text
+
+
+def test_non_buttondown_html_returns_unknown():
+    result = extract_structured(
+        "<html><body><div>nothing special</div></body></html>",
+        url="https://example.org/post",
+    )
+    assert result.site == "unknown"
+
+
 def test_beehiiv_custom_domain_extracts_rendered_post():
     html = """
     <html>
