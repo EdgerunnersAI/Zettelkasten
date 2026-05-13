@@ -477,8 +477,13 @@ class GeminiKeyPool:
         """
         chain = self._build_attempt_chain(starting_model=starting_model)
         last_exc: Exception | None = None
-        retries = 0
-        max_retries = _max_retries()
+        # Track failed (key_index, model) slots so we never re-try the same
+        # slot inside one request. Gemini quotas are PER-MODEL, so a 429 on
+        # (key0, flash) does NOT mean (key0, flash-lite) is dead — but it
+        # DOES mean we shouldn't loop back to (key0, flash) again. The
+        # process-level self._cooldowns dict applies cross-request; this
+        # set is the per-request equivalent.
+        failed_slots_this_request: set[tuple[int, str]] = set()
         cooldown_secs = _rate_limit_cooldown_secs()
         attempts: list[dict] = []
         effective_starting = starting_model or (chain[0][1] if chain else None)
@@ -486,7 +491,12 @@ class GeminiKeyPool:
         if not chain:
             raise RuntimeError("All configured Gemini key/model slots are on cooldown")
 
+        num_keys = len(self._keys)
         for position, (key_index, model) in enumerate(chain):
+            # Skip slots we've already proven dead in this request — prevents
+            # the chain from looping back to a known-bad (key, model).
+            if (key_index, model) in failed_slots_this_request:
+                continue
             try:
                 client = self._get_client(key_index)
                 response = await client.aio.models.generate_content(
@@ -512,13 +522,26 @@ class GeminiKeyPool:
             except Exception as exc:
                 last_exc = exc
                 if _is_retryable(exc):
-                    retries += 1
+                    # 1-indexed attempt count for the per-key exp-backoff ladder.
+                    attempt_count = len(attempts) + 1
                     cooldown_secs = self._mark_cooldown(
-                        key_index, model, attempt=retries, exc=exc
+                        key_index, model, attempt=attempt_count, exc=exc
                     )
-                    next_key_role = None
-                    if position + 1 < len(chain):
-                        next_key_role = self._role_for_key(chain[position + 1][0])
+                    failed_slots_this_request.add((key_index, model))
+                    # Find the next key we'd actually try (skip already-failed
+                    # slots) so the "escalating_to=billing" alarm reflects the
+                    # real next attempt, not just the next chain position.
+                    next_key_role: str | None = None
+                    for la_pos in range(position + 1, len(chain)):
+                        la_key, la_model = chain[la_pos]
+                        if (la_key, la_model) in failed_slots_this_request:
+                            continue
+                        if la_key == key_index:
+                            # Same key, different model — not an escalation
+                            # for billing-tier purposes; keep scanning.
+                            continue
+                        next_key_role = self._role_for_key(la_key)
+                        break
                     self._log_quota_exhausted(
                         model=model,
                         current_key_role=self._role_for_key(key_index),
@@ -532,30 +555,36 @@ class GeminiKeyPool:
                         reason = "timeout"
                     attempts.append({"model": model, "key_index": key_index, "reason": reason})
                     logger.warning(
-                        "%s %s on key[%d]/%s; retry %d/%d, cooldown %.1fs",
+                        "%s %s on key[%d]/%s; failed %d slots, cooldown %.1fs",
                         label or "Gemini",
                         reason,
                         key_index,
                         model,
-                        retries,
-                        max_retries,
+                        len(failed_slots_this_request),
                         cooldown_secs,
                     )
-                    if retries >= max_retries:
-                        logger.error("%s exhausted %d retries; giving up", label or "Gemini", max_retries)
-                        _send_slack_alert(
-                            f":warning: *Gemini API failure* - `{label or 'generate_content'}` "
-                            f"exhausted {max_retries} retries. "
-                            f"Last error: `{reason}` on key[{key_index}]/{model}. "
-                            f"Exception: `{exc}`"
-                        )
-                        raise
+                    # NB: no global retry-count cap here. The chain itself
+                    # is finite (num_keys × num_models) and the failed-slots
+                    # set prevents revisiting any slot, so the loop is bounded.
+                    # The old GEMINI_MAX_RETRIES global cap was the bug — at
+                    # =1 it gave up after the first 429 on key[0] without
+                    # ever trying key[1] or the billing key[2].
                     continue
                 raise
 
+        # Fell off the end of the chain — every slot failed or was on cooldown.
+        # Emit a single all-exhausted alarm and re-raise the last upstream
+        # exception so callers can build raw-fallback metadata (KP-07).
+        cooled_keys = {ki for (ki, _m) in failed_slots_this_request}
+        logger.error(
+            "%s all %d keys cooled; quota exhausted (attempts=%d)",
+            label or "Gemini",
+            len(cooled_keys) or num_keys,
+            len(attempts),
+        )
         _send_slack_alert(
             f":warning: *Gemini API failure* - `{label or 'generate_content'}` "
-            f"all key/model slots exhausted after {retries} retries. "
+            f"all {num_keys} keys exhausted after {len(attempts)} attempts. "
             f"Last error: `{last_exc}`"
         )
         raise last_exc  # type: ignore[misc]
