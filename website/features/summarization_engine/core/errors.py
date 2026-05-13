@@ -68,6 +68,21 @@ class NewsletterURLUnreachable(ExtractionError):
         self.status = status
 
 
+class UnsupportedVideoError(EngineError):
+    """Raised when a YouTube URL is a hard-fail case detected at preflight.
+
+    Hard-fail reasons (no LLM call wasted): private, removed_or_unavailable,
+    active_livestream, premiere_or_post_live, members_only_or_age_restricted,
+    premiere_or_live. Surfaced as HTTP 422 with structured detail by the
+    route handler.
+    """
+
+    def __init__(self, *, reason: str, url: str = ""):
+        super().__init__(f"Unsupported video type: {reason} ({url})")
+        self.reason = reason
+        self.url = url
+
+
 class SummarizationError(EngineError):
     """Raised when the LLM summarization pipeline fails."""
 

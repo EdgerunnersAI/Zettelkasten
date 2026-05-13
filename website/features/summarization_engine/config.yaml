@@ -110,13 +110,13 @@ sources:
       - pipedapi.us.projectsegfau.lt
       - pipedapi.smnz.de
       - pipedapi.drgns.space
+    # Invidious instance list refreshed 2026-05-13 per docs.invidious.io;
+    # rotate via health-cache TTL; self-host NOT viable on 2GB droplet.
     invidious_instances:
-      - invidious.fdn.fr
-      - yewtu.be
-      - inv.tux.pizza
-      - iv.melmac.space
-      - invidious.privacydev.net
-      - vid.puffyan.us
+      - inv.nadeko.net          # CL — stable, track record
+      - invidious.nerdvpn.de    # UA — stable, track record
+      - inv.thepixora.com       # CA — newer, >=90% uptime
+      - yt.chocolatemoo53.com   # US — newer, >=90% uptime
     instance_health_ttl_hours: 1
     enable_gemini_audio_fallback: true
     gemini_audio_max_duration_min: 60

@@ -19,6 +19,7 @@ from website.features.summarization_engine.api.models import BatchV2Request, Sum
 from website.features.summarization_engine.batch.processor import BatchProcessor, progress_stream
 from website.features.summarization_engine.core.config import load_config
 from website.features.summarization_engine.core.confidence import grade as grade_confidence
+from website.features.summarization_engine.core.errors import UnsupportedVideoError
 from website.features.summarization_engine.core.gemini_client import TieredGeminiClient
 from website.features.summarization_engine.core.orchestrator import summarize_url_bundle
 from website.features.summarization_engine.writers.supabase import SupabaseWriter
@@ -33,7 +34,21 @@ async def summarize_v2(
 ):
     user_id = _user_id(user)
     client = _gemini_client()
-    bundle = await summarize_url_bundle(request.url, user_id=user_id, gemini_client=client)
+    try:
+        bundle = await summarize_url_bundle(request.url, user_id=user_id, gemini_client=client)
+    except UnsupportedVideoError as exc:
+        # H4/T7: preflight hard-fail (private/removed/livestream/premiere/members-only).
+        # Distinct from H2's post-chain 422 (metadata_only + <500 chars).
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unsupported_video_type",
+                "reason": exc.reason,
+                "confidence": "insufficient",
+                "confidence_reason": f"Video type cannot be ingested: {exc.reason}",
+                "quality_signals": {"input_chars": 0, "source_tier": "preflight_refused"},
+            },
+        )
     result = bundle.summary_result
 
     # H2/C4: two-tier hallucination prevention. Insufficient content + metadata-only

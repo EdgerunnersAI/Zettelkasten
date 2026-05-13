@@ -750,6 +750,14 @@ async def tier_metadata_only(video_id: str, config: dict) -> TierResult:
             logger.warning("[yt-tier6] og-scrape failed: %s", exc)
 
     text = "\n\n".join(part for part in (title, description) if part)
+    raw_text_len = len(text)
+    # H4/T6: emit explicit low-confidence signal so the route-boundary quality
+    # gate (api/routes.py) can refuse to summarize near-empty metadata via 422
+    # rather than silently letting Gemini hallucinate.
+    logger.info(
+        "[yt-tier-metadata_only] raw_text_len=%d title=%r channel=%r ytdlp_err=%s",
+        raw_text_len, title[:80], channel[:80], (ytdlp_err or "")[:120],
+    )
     return TierResult(
         tier=TierName.METADATA_ONLY,
         transcript=text,
@@ -761,6 +769,9 @@ async def tier_metadata_only(video_id: str, config: dict) -> TierResult:
             "title": title,
             "channel": channel,
             "duration": duration,
+            "path": "metadata_only",
+            "metadata_only": True,
+            "raw_text_len": raw_text_len,
         },
     )
 

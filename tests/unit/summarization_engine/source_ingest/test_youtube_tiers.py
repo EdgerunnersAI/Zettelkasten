@@ -174,3 +174,18 @@ async def test_tier_ytdlp_cookies_impersonate_fails_when_cookies_env_unset(monke
     result = await tier_ytdlp_cookies_impersonate("vid123", {})
     assert result.success is False
     assert "YT_COOKIES_PATH" in (result.error or "")
+
+
+def test_invidious_instances_refreshed_to_four():
+    """H4/T4 — config carries exactly the 4 refreshed Invidious instances."""
+    from website.features.summarization_engine.core.config import load_config
+
+    cfg = load_config()
+    youtube = cfg.sources.get("youtube", {})
+    instances = youtube.get("invidious_instances") or []
+    assert instances == [
+        "inv.nadeko.net",
+        "invidious.nerdvpn.de",
+        "inv.thepixora.com",
+        "yt.chocolatemoo53.com",
+    ]

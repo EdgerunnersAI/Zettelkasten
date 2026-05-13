@@ -16,6 +16,7 @@ from website.features.summarization_engine.core.errors import (
     ExtractionConfidenceError,
     NewsletterURLUnreachable,
     RoutingError,
+    UnsupportedVideoError,
 )
 from website.features.summarization_engine.core.models import (
     IngestResult,
@@ -30,6 +31,62 @@ logger = logging.getLogger("summarization_engine.orchestrator")
 
 _CACHE_ROOT = Path(__file__).resolve().parents[4] / "docs" / "summary_eval" / "_cache"
 _INGEST_CACHE = FsContentCache(root=_CACHE_ROOT, namespace="ingests")
+
+
+def _is_youtube_url(url: str) -> bool:
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return False
+    if host.startswith("www."):
+        host = host[4:]
+    return host in {"youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"} or host.endswith(".youtube.com")
+
+
+def _yt_preflight_refuse(url: str) -> tuple[bool, str] | None:
+    """H4/T7: cheap preflight refusal for hard-fail YouTube URLs.
+
+    Returns (True, refuse_reason) if the URL is a known hard-fail case
+    (private / removed / livestream / premiere / members-only); None if the
+    URL should proceed through the tier chain. Uses yt-dlp metadata-only
+    (--simulate --dump-single-json) — no LLM call, no proxy. Bot-detection
+    or transient errors fall through to the tier chain (cookies+impersonate
+    handles them).
+    """
+    if not _is_youtube_url(url):
+        return None
+    try:
+        from yt_dlp import YoutubeDL
+        opts = {
+            "quiet": True,
+            "skip_download": True,
+            "no_warnings": True,
+            "simulate": True,
+            "dump_single_json": True,
+            "extractor_args": {"youtube": {"player_client": ["tv_simply"]}},
+        }
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False) or {}
+        if info.get("is_live"):
+            return (True, "active_livestream")
+        if info.get("live_status") in {"is_upcoming", "post_live"}:
+            return (True, "premiere_or_post_live")
+        if info.get("availability") == "needs_auth":
+            return (True, "members_only_or_age_restricted")
+        if info.get("availability") == "private":
+            return (True, "private")
+        return None
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "private video" in msg or "is private" in msg:
+            return (True, "private")
+        if "removed" in msg or "no longer available" in msg or "not available" in msg:
+            return (True, "removed_or_unavailable")
+        if "premiere" in msg or "scheduled" in msg or "live event" in msg:
+            return (True, "premiere_or_live")
+        # Bot-detection / transient: let tier chain handle.
+        return None
 
 
 @dataclass(frozen=True)
@@ -77,6 +134,14 @@ async def summarize_url_bundle(
     """
     if not validate_url(url):
         raise RoutingError("Invalid or blocked URL", url=url)
+
+    # H4/T7: preflight refuse for hard-fail YouTube URLs (no LLM budget burned).
+    preflight = _yt_preflight_refuse(url)
+    if preflight is not None:
+        refused, reason = preflight
+        if refused:
+            logger.warning("orchestrator.yt_preflight_refuse url=%s reason=%s", url, reason)
+            raise UnsupportedVideoError(reason=reason, url=url)
 
     config = load_config()
     effective_source_type = source_type or detect_source_type(url)

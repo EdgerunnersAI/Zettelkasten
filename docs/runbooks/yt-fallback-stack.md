@@ -144,3 +144,66 @@ print(\"T3:\", r3.success, r3.error or r3.transcript[:80])
   PO-token; falls through fast.
 - All tiers failing → T7 metadata_only → H2 quality gate refuses with HTTP 422
   if raw_text < 500 chars.
+
+
+## Preflight refusal (H4/T7)
+
+Some YouTube URLs are known-bad up-front and should never enter the tier
+chain — running the chain (or worse, a Gemini call) just wastes LLM budget
+and risks hallucination. The orchestrator runs a cheap `yt-dlp --simulate
+--dump-single-json` preflight on every YouTube URL **before** the tier chain
+and short-circuits with `UnsupportedVideoError`, which the route handler
+translates to HTTP 422.
+
+### URLs that short-circuit at preflight
+
+| `detail.reason`                       | Trigger                                                  |
+|---------------------------------------|----------------------------------------------------------|
+| `private`                             | `availability == "private"` or "Private video" error     |
+| `removed_or_unavailable`              | "video removed" / "no longer available" / "not available"|
+| `active_livestream`                   | `is_live == True`                                        |
+| `premiere_or_post_live`               | `live_status in {is_upcoming, post_live}`                |
+| `premiere_or_live`                    | "premiere" / "scheduled" / "live event" in error         |
+| `members_only_or_age_restricted`     | `availability == "needs_auth"`                           |
+
+### HTTP 422 response shape
+
+```json
+{
+  "detail": {
+    "error": "unsupported_video_type",
+    "reason": "private",
+    "confidence": "insufficient",
+    "confidence_reason": "Video type cannot be ingested: private",
+    "quality_signals": {"input_chars": 0, "source_tier": "preflight_refused"}
+  }
+}
+```
+
+Distinct from H2's other 422: that one fires AFTER the chain runs and lands
+on `metadata_only` with <500 chars (`detail.error == "insufficient_context"`,
+`source_tier == "metadata_only"`). H4's 422 fires BEFORE the chain runs
+(`source_tier == "preflight_refused"`, `input_chars == 0`).
+
+### Reason-code interpretation
+
+- `private`, `removed_or_unavailable` → terminal; the URL will never work.
+- `active_livestream`, `premiere_or_post_live`, `premiere_or_live` →
+  retryable once the stream ends or the premiere airs.
+- `members_only_or_age_restricted` → would need authenticated cookies in T3;
+  currently rejected because the public chain cannot satisfy it.
+
+### Why preflight saves budget
+
+A private video that reaches T1 (`gemini_youtube_url`) burns a Gemini call
+on `Part.from_uri(...)` only to get `INVALID_ARGUMENT: file must be public`.
+A livestream that reaches T6 (`gemini_audio`) burns an even larger audio
+upload only for "no audio stream". Preflight skips all of that with a single
+local yt-dlp metadata dump — zero LLM tokens, zero proxy traffic.
+
+### What does NOT trigger preflight refusal
+
+Bot-detection (`Sign in to confirm you're not a bot`) and other transient
+yt-dlp errors fall through. The tier chain (cookies + curl_cffi impersonate
++ PO-token in T3) is designed to handle those, so preflight must not steal
+those URLs from it.
