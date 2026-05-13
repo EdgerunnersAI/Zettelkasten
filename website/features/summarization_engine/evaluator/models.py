@@ -1,25 +1,51 @@
 """Pydantic models for evaluator output and composite score calculation."""
 from __future__ import annotations
 
-from statistics import mean
-
 from pydantic import BaseModel, Field, field_validator
 
 
-class GEvalScores(BaseModel):
-    coherence: float = Field(ge=0.0, le=5.0)
-    consistency: float = Field(ge=0.0, le=5.0)
-    fluency: float = Field(ge=0.0, le=5.0)
-    relevance: float = Field(ge=0.0, le=5.0)
+class GEvalCriterion(BaseModel):
+    """One anchored-ternary G-Eval criterion (score in {1, 2, 3})."""
+
+    score: int = Field(ge=1, le=3)
+    anchor: str = ""
     reasoning: str = ""
 
-    @field_validator("coherence", "consistency", "fluency", "relevance", mode="before")
+    @field_validator("score", mode="before")
     @classmethod
-    def _coerce_score_scale(cls, value):
-        numeric = float(value)
-        if numeric > 5.0:
-            numeric = numeric / 20.0
-        return max(0.0, min(5.0, numeric))
+    def _coerce_ternary(cls, value):
+        # Tolerate float emissions from the judge by rounding into the ternary
+        # band, then clamping. Anything below 1 -> 1, anything above 3 -> 3.
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return value
+        numeric = round(numeric)
+        return max(1, min(3, int(numeric)))
+
+
+class GEvalScores(BaseModel):
+    """G-Eval (coherence + fluency only). consistency/relevance removed in
+    evaluator.v4 — they overlapped with finesure.faithfulness/completeness."""
+
+    coherence: GEvalCriterion
+    fluency: GEvalCriterion
+
+    @field_validator("coherence", "fluency", mode="before")
+    @classmethod
+    def _coerce_criterion(cls, value):
+        # Back-compat: accept a bare numeric (legacy 0-5 float) by mapping
+        # into the new ternary band so old fixtures parse without crashing.
+        if isinstance(value, (int, float)):
+            n = float(value)
+            if n <= 1.5:
+                s = 1
+            elif n <= 3.5:
+                s = 2
+            else:
+                s = 3
+            return {"score": s, "anchor": "", "reasoning": ""}
+        return value
 
 
 class FineSurEItem(BaseModel):
@@ -207,20 +233,16 @@ def apply_caps(score: float, caps: dict[str, int | None]) -> float:
     return score
 
 
+def g_eval_aggregate(scores: GEvalScores) -> float:
+    """Anchored-ternary aggregate -> 0-100. (1+1)=33, (2+2)=67, (3+3)=100."""
+    return ((scores.coherence.score + scores.fluency.score) / 6.0) * 100.0
+
+
 def composite_score(result: EvalResult) -> float:
     base = (
         0.60 * result.rubric.total_of_100
         + 0.20 * result.finesure.faithfulness.score * 100
         + 0.10 * result.finesure.completeness.score * 100
-        + 0.10
-        * mean(
-            [
-                result.g_eval.coherence,
-                result.g_eval.consistency,
-                result.g_eval.fluency,
-                result.g_eval.relevance,
-            ]
-        )
-        * 20
+        + 0.10 * g_eval_aggregate(result.g_eval)
     )
     return round(apply_caps(base, result.rubric.caps_applied), 2)

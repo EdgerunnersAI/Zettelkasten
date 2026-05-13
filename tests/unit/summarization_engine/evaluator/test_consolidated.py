@@ -13,11 +13,8 @@ from website.features.summarization_engine.evaluator.models import EvalResult
 
 _GOOD_RESPONSE = {
     "g_eval": {
-        "coherence": 4.5,
-        "consistency": 4.2,
-        "fluency": 4.8,
-        "relevance": 4.0,
-        "reasoning": "ok",
+        "coherence": {"score": 3, "anchor": "1=disjointed,2=minor jumps,3=logical", "reasoning": "ok"},
+        "fluency": {"score": 3, "anchor": "1=ungrammatical,2=minor errors,3=clean", "reasoning": "ok"},
     },
     "finesure": {
         "faithfulness": {"score": 0.95, "items": []},

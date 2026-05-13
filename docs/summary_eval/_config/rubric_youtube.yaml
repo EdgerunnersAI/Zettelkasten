@@ -9,11 +9,11 @@ components:
       - id: "brief.thesis_capture"
         description: "Brief summary states the video's central thesis or learning objective in one sentence."
         max_points: 5
-        maps_to_metric: ["g_eval.relevance", "finesure.completeness"]
+        maps_to_metric: ["finesure.completeness", "finesure.completeness"]
       - id: "brief.format_identified"
         description: "Brief identifies the video format explicitly (tutorial/interview/lecture/commentary/etc.)."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "brief.speakers_captured"
         description: "Brief names the host/channel and any guests or key products/libraries discussed."
         max_points: 4
@@ -25,11 +25,11 @@ components:
       - id: "brief.takeaways_surfaced"
         description: "Brief highlights 2-3 takeaways a viewer would remember after watching."
         max_points: 4
-        maps_to_metric: ["finesure.completeness", "g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness", "finesure.completeness"]
       - id: "brief.length_5_to_7_sentences"
         description: "Brief is 5-7 sentences."
         max_points: 2
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
       - id: "brief.no_clickbait"
         description: "Brief does not reproduce clickbait/hook phrasing from the source title."
         max_points: 2
@@ -81,11 +81,11 @@ components:
       - id: "tags.topical_specificity"
         description: "Tags capture specific subject matter, not generic terms."
         max_points: 4
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.format_tag_present"
         description: "Includes a tag for content type (tutorial/interview/beginner/advanced)."
         max_points: 2
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.technologies_named"
         description: "Named technologies/libraries/frameworks from the video are tagged."
         max_points: 3
@@ -101,11 +101,11 @@ components:
       - id: "label.content_first_3_to_5_words"
         description: "Label is 3-5 words (max 50 chars), content-first, declarative."
         max_points: 5
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
       - id: "label.reflects_primary_topic"
         description: "Label reflects the primary topic, not side tangents."
         max_points: 5
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "label.no_clickbait_retention"
         description: "Label removes clickbait/hook fragments from the original title."
         max_points: 5

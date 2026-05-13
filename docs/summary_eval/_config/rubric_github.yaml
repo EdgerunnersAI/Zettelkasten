@@ -9,7 +9,7 @@ components:
       - id: "brief.user_facing_purpose"
         description: "Brief states what the repo does in user-facing terms."
         max_points: 6
-        maps_to_metric: ["g_eval.relevance", "finesure.completeness"]
+        maps_to_metric: ["finesure.completeness", "finesure.completeness"]
       - id: "brief.architecture_high_level"
         description: "Brief identifies main components/architecture at a high level."
         max_points: 5
@@ -73,7 +73,7 @@ components:
       - id: "tags.domain_tag"
         description: "Main domain/application tag present."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.languages"
         description: "Primary language(s) tagged."
         max_points: 3
@@ -81,7 +81,7 @@ components:
       - id: "tags.technical_concepts"
         description: "Key technical concepts ('rest-api','cli-tool','ml-serving') present."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.no_unsupported_claims"
         description: "No tags claim 'production-ready' without evidence."
         max_points: 4
@@ -97,7 +97,7 @@ components:
       - id: "label.no_extra_descriptors"
         description: "No prepended/appended descriptors; qualifiers belong in summary or tags."
         max_points: 5
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
 
 anti_patterns:
   - id: "production_ready_claim_no_evidence"

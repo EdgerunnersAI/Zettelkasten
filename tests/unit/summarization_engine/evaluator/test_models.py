@@ -12,28 +12,22 @@ from website.features.summarization_engine.evaluator.models import (
 )
 
 
-def test_g_eval_scores_coerce_percent_scale():
+def test_g_eval_scores_legacy_float_coerced_into_ternary():
+    """Back-compat: legacy 0-5 float fixtures map into the new {1,2,3} band."""
     scores = GEvalScores(
-        coherence=71.11,
-        consistency=100,
-        fluency=4.5,
-        relevance=65.21,
+        coherence=4.5,   # legacy float -> 3
+        fluency=2.0,     # legacy float -> 2
     )
 
-    assert scores.coherence == 71.11 / 20
-    assert scores.consistency == 5.0
-    assert scores.fluency == 4.5
-    assert scores.relevance == 65.21 / 20
+    assert scores.coherence.score == 3
+    assert scores.fluency.score == 2
 
 
 def test_composite_score_hallucination_cap_overrides_high_scores():
     result = EvalResult(
         g_eval=GEvalScores(
-            coherence=5,
-            consistency=5,
-            fluency=5,
-            relevance=5,
-            reasoning="",
+            coherence={"score": 3, "anchor": "", "reasoning": ""},
+            fluency={"score": 3, "anchor": "", "reasoning": ""},
         ),
         finesure=FineSurEScores(
             faithfulness=FineSurEDimension(score=1.0, items=[]),

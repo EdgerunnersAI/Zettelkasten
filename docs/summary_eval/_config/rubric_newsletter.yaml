@@ -9,7 +9,7 @@ components:
       - id: "brief.main_topic_thesis"
         description: "Brief states main topic or thesis in one sentence."
         max_points: 6
-        maps_to_metric: ["g_eval.relevance", "finesure.completeness"]
+        maps_to_metric: ["finesure.completeness", "finesure.completeness"]
       - id: "brief.argument_structure"
         description: "Brief summarizes how the author structures their argument."
         max_points: 5
@@ -61,7 +61,7 @@ components:
       - id: "detailed.bullets_specific"
         description: "Bullets concise yet specific; no vague paraphrase."
         max_points: 5
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
 
   - id: "tags"
     max_points: 15
@@ -73,7 +73,7 @@ components:
       - id: "tags.domain_subdomain"
         description: "Main domain and subdomain tagged."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.key_concepts"
         description: "Key concepts or frameworks introduced in the piece tagged."
         max_points: 3
@@ -81,7 +81,7 @@ components:
       - id: "tags.type_intent"
         description: "Piece type tagged (opinion, research-summary, how-to, case-study)."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.no_stance_misrepresentation"
         description: "Tags don't misrepresent stance (no 'bullish-call' on neutral piece)."
         max_points: 4
@@ -93,15 +93,15 @@ components:
       - id: "label.compact_declarative"
         description: "Label is a compact, declarative phrase reflecting main thesis."
         max_points: 6
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "label.branded_source_rule"
         description: "For branded sources (Stratechery/Platformer/etc.), label includes publication name."
         max_points: 5
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "label.informative_not_catchy"
         description: "Informative over catchy; obvious what the Zettel is about."
         max_points: 4
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
 
 anti_patterns:
   - id: "stance_mismatch"

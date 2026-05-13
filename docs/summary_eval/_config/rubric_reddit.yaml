@@ -9,7 +9,7 @@ components:
       - id: "brief.op_intent_captured"
         description: "Brief states OP's core question, problem, or claim in neutral wording."
         max_points: 6
-        maps_to_metric: ["g_eval.relevance", "finesure.completeness"]
+        maps_to_metric: ["finesure.completeness", "finesure.completeness"]
       - id: "brief.response_range"
         description: "Brief summarizes the range of responses (main solution, common advice, dissent)."
         max_points: 6
@@ -29,7 +29,7 @@ components:
       - id: "brief.length_5_to_7_sentences"
         description: "Brief is 5-7 sentences."
         max_points: 2
-        maps_to_metric: ["g_eval.conciseness"]
+        maps_to_metric: ["finesure.conciseness"]
 
   - id: "detailed_summary"
     max_points: 45
@@ -73,11 +73,11 @@ components:
       - id: "tags.subreddit_present"
         description: "Subreddit appears as a tag (e.g., 'r-askhistorians')."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.thread_type"
         description: "Thread type tag present ('q-and-a', 'experience-report', 'best-practices')."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "tags.no_value_judgments"
         description: "No tags encode value judgments unless widely agreed in thread."
         max_points: 4
@@ -85,7 +85,7 @@ components:
       - id: "tags.topical_specificity"
         description: "Tags are specific, not generic."
         max_points: 3
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
 
   - id: "label"
     max_points: 15
@@ -93,11 +93,11 @@ components:
       - id: "label.rsubreddit_prefix"
         description: "Label starts with 'r/<subreddit> ' followed by compact title."
         max_points: 6
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "label.central_issue"
         description: "Label captures central issue that majority of comments address."
         max_points: 5
-        maps_to_metric: ["g_eval.relevance"]
+        maps_to_metric: ["finesure.completeness"]
       - id: "label.neutral"
         description: "Label is neutral, not outrage/meme framing."
         max_points: 4
