@@ -226,7 +226,7 @@ async def _pullpush_fallback(url: str, config: dict[str, Any]) -> IngestResult |
             "pullpush_enabled": True,
         },
         extraction_confidence="medium",
-        confidence_reason="Reddit blocked JSON/HTML; recovered comments from pullpush.io",
+        confidence_reason="JSON blocked; Reddit HTML thin/blocked; recovered comments from pullpush.io",
         fetched_at=utc_now(),
         ingestor_version="2.0.0",
     )
