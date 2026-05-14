@@ -331,3 +331,25 @@ def test_add_zettel_problem_detail_failure_is_json(facade_client, monkeypatch):
     assert body["status"] == 500
     assert body["title"] == "Add Zettel failed"
     assert body["instance"] == "/api/zettels/add/fail-1"
+
+
+def test_add_zettel_validation_failure_is_problem_json(facade_client):
+    client, _zettels_routes, _runner = facade_client
+
+    resp = client.post(
+        "/api/zettels/add",
+        json={
+            "url": "not-a-url",
+            "client_action_id": "invalid-1",
+            "persist": True,
+            "surface": "landing",
+            "mode": "sync",
+        },
+    )
+
+    assert resp.status_code == 422
+    assert resp.headers["content-type"].startswith("application/problem+json")
+    body = resp.json()
+    assert body["type"].endswith("/errors/invalid-add-zettel-request")
+    assert body["status"] == 422
+    assert body["instance"] == "/api/zettels/add"

@@ -11,6 +11,9 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
@@ -207,6 +210,23 @@ def create_app(lifespan=None) -> FastAPI:
     # Slack channel via notify_app_error, then returns a generic 500 to the
     # client. Missing SLACK_WEBHOOK_APP_ERRORS falls back to a logged warning
     # (see post_to_slack); the handler itself never raises on Slack failure.
+    @app.exception_handler(RequestValidationError)
+    async def _on_request_validation_error(request: Request, exc: RequestValidationError):
+        if request.url.path != "/api/zettels/add":
+            return await request_validation_exception_handler(request, exc)
+        return JSONResponse(
+            {
+                "type": "https://zettelkasten.in/problems/errors/invalid-add-zettel-request",
+                "title": "Invalid Add Zettel request",
+                "status": 422,
+                "detail": "The Add Zettel request body did not match the API contract.",
+                "instance": "/api/zettels/add",
+                "errors": jsonable_encoder(exc.errors()),
+            },
+            status_code=422,
+            media_type="application/problem+json",
+        )
+
     @app.exception_handler(Exception)
     async def _on_unhandled_exception(request: Request, exc: Exception):
         try:
