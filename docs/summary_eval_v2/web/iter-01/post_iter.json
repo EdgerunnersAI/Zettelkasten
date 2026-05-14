@@ -1,0 +1,15 @@
+{
+  "source": "web",
+  "iter": 1,
+  "status": "soft_target_met",
+  "composite_score": 95.0,
+  "baseline_score": null,
+  "delta": null,
+  "checks": {
+    "summary_json": true,
+    "eval_json": true,
+    "baseline_score_json": true,
+    "manual_review_prompt": true
+  },
+  "next_actions": []
+}

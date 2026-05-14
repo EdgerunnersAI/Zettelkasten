@@ -1,0 +1,100 @@
+{
+  "mini_title": "Acquired",
+  "brief_summary": "The 'Acquired' podcast, created by Ben Gilbert and David Rosenthal, ran from 2015 to 2026, producing 213 episodes. Its premise is to teach listeners the playbooks that built the world\u2019s greatest companies and how to apply them. The show has a 'Clean' rating and is copyrighted in 2025 by ACQ, LLC.",
+  "tags": [
+    "podcast",
+    "business",
+    "company-playbooks",
+    "acquired"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Show Overview",
+      "bullets": [
+        "Title: Acquired",
+        "Creators: Ben Gilbert and David Rosenthal",
+        "Active Period: 2015 to 2026",
+        "Total Episodes: 213",
+        "Rating: Clean",
+        "Copyright: 2025 by ACQ, LLC",
+        "Website: A show website is mentioned"
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Show Premise",
+      "bullets": [
+        "Teaches listeners the 'playbooks that built the world\u2019s greatest companies'.",
+        "Focuses on how to apply these playbooks."
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "podcast",
+    "url": "https://podcasts.apple.com/us/podcast/acquired/id1050462261",
+    "author": null,
+    "date": null,
+    "extraction_confidence": "medium",
+    "confidence_reason": "podcast page show notes extracted",
+    "total_tokens_used": 641,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 641,
+    "total_latency_ms": 22585,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "Acquired",
+      "brief_summary": "The 'Acquired' podcast, created by Ben Gilbert and David Rosenthal, ran from 2015 to 2026, producing 213 episodes. Its premise is to teach listeners the playbooks that built the world\u2019s greatest companies and how to apply them. The show has a 'Clean' rating and is copyrighted in 2025 by ACQ, LLC.",
+      "tags": [
+        "Podcast",
+        "Business",
+        "Company Playbooks",
+        "Acquired"
+      ],
+      "detailed_summary": [
+        {
+          "heading": "Show Overview",
+          "bullets": [
+            "Title: Acquired",
+            "Creators: Ben Gilbert and David Rosenthal",
+            "Active Period: 2015 to 2026",
+            "Total Episodes: 213",
+            "Rating: Clean",
+            "Copyright: 2025 by ACQ, LLC",
+            "Website: A show website is mentioned"
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Show Premise",
+          "bullets": [
+            "Teaches listeners the 'playbooks that built the world\u2019s greatest companies'.",
+            "Focuses on how to apply these playbooks."
+          ],
+          "sub_sections": {}
+        }
+      ],
+      "route_subtype": "episode",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": "gemini-2.5-flash-rate-limited"
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}

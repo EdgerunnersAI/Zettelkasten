@@ -1,0 +1,124 @@
+{
+  "facts": [
+    {
+      "claim": "The distutils package has been removed from the standard library.",
+      "importance": 5
+    },
+    {
+      "claim": "PEP 695 introduces a new, more compact and explicit syntax for declaring generic classes and functions.",
+      "importance": 5
+    },
+    {
+      "claim": "PEP 701 lifts f-string restrictions, allowing any valid Python expression, including quote reuse, multi-line expressions, comments, and backslashes.",
+      "importance": 5
+    },
+    {
+      "claim": "PEP 684 introduces a per-interpreter GIL, enabling sub-interpreters to utilize multiple CPU cores (currently C-API only).",
+      "importance": 5
+    },
+    {
+      "claim": "Builtin hashlib implementations for SHA1, SHA3, SHA2-384, SHA2-512, and MD5 are replaced with formally verified code from the HACL* project for security.",
+      "importance": 5
+    },
+    {
+      "claim": "PEP 709, comprehension inlining, speeds up dictionary, list, and set comprehensions by up to two times.",
+      "importance": 5
+    },
+    {
+      "claim": "The asyncio package has received significant performance improvements, with some benchmarks showing a 75% speed up.",
+      "importance": 5
+    },
+    {
+      "claim": "A new `type` statement is introduced for declaring type aliases, which can also be generic.",
+      "importance": 4
+    },
+    {
+      "claim": "PEP 669 defines a new low-impact monitoring API for profilers and debuggers, supporting near-zero overhead.",
+      "importance": 4
+    },
+    {
+      "claim": "PEP 688 makes the buffer protocol accessible from Python code, allowing classes with `__buffer__()` to be used as buffer types.",
+      "importance": 4
+    },
+    {
+      "claim": "isinstance() checks against runtime-checkable protocols are 2 to 20 times faster.",
+      "importance": 4
+    },
+    {
+      "claim": "Producing tokens via the tokenize module is up to 64% faster due to PEP 701 changes.",
+      "importance": 4
+    },
+    {
+      "claim": "The `wstr` field is removed from Unicode objects in Python’s C API, reducing the size of every `str` object by at least 8 bytes.",
+      "importance": 4
+    },
+    {
+      "claim": "Setuptools is no longer pre-installed in virtual environments created with `venv`, requiring explicit installation if needed.",
+      "importance": 4
+    },
+    {
+      "claim": "The `asynchat`, `asyncore`, and `imp` modules have been removed from the standard library.",
+      "importance": 4
+    },
+    {
+      "claim": "F-strings can now be arbitrarily nested due to lifted restrictions on expression components.",
+      "importance": 4
+    },
+    {
+      "claim": "Stack overflow protection is implemented on supported platforms.",
+      "importance": 4
+    },
+    {
+      "claim": "The `tarfile` and `shutil.unpack_archive()` functions have a new `filter` argument to limit dangerous features during extraction.",
+      "importance": 4
+    },
+    {
+      "claim": "Support for the `perf` profiler is added via a new environment variable, command-line option, and `sys` functions.",
+      "importance": 4
+    },
+    {
+      "claim": "Writing to sockets in `asyncio` has been significantly improved, avoiding unnecessary copying and using `sendmsg()`.",
+      "importance": 4
+    },
+    {
+      "claim": "New `asyncio.eager_task_factory()` functions allow opting into eager task execution, speeding up some use-cases by 2x to 5x.",
+      "importance": 4
+    },
+    {
+      "claim": "Improved 'Did you mean …' suggestions are provided for `NameError`, `ImportError`, and `SyntaxError` exceptions.",
+      "importance": 3
+    },
+    {
+      "claim": "The `pathlib.Path` class now supports subclassing.",
+      "importance": 3
+    },
+    {
+      "claim": "A command-line interface has been added to the `sqlite3` module.",
+      "importance": 3
+    },
+    {
+      "claim": "The `typing.override()` decorator (PEP 698) is introduced.",
+      "importance": 3
+    },
+    {
+      "claim": "Type aliases and type variable bounds/constraints declared via the new syntax are lazy-evaluated, allowing forward references.",
+      "importance": 3
+    },
+    {
+      "claim": "Error messages for f-strings are now more precise, showing the exact location of the error.",
+      "importance": 3
+    },
+    {
+      "claim": "Slice objects are now hashable, enabling their use as dictionary keys and set items.",
+      "importance": 3
+    },
+    {
+      "claim": "sum() now uses Neumaier summation to improve accuracy and commutativity when summing floats or mixed ints and floats.",
+      "importance": 3
+    },
+    {
+      "claim": "The `sys.last_exc` attribute is added for the last unhandled exception, deprecating `sys.last_type`, `sys.last_value`, and `sys.last_traceback`.",
+      "importance": 3
+    }
+  ]
+}

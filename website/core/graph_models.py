@@ -46,6 +46,12 @@ class KGGraphLink(BaseModel):
     description: str | None = Field(
         default=None, description="Human-readable link description"
     )
+    connection_strength: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Normalized strength used by /api/graph min_strength filtering",
+    )
 
 
 class KGGraph(BaseModel):

@@ -76,6 +76,12 @@ def test_normal_video_proceeds():
     assert result is None
 
 
+def test_requested_format_unavailable_does_not_refuse():
+    with _patch_ydl(exc=RuntimeError("Requested format is not available")):
+        result = _yt_preflight_refuse("https://www.youtube.com/watch?v=abc")
+    assert result is None
+
+
 def test_private_via_exception_refuses():
     with _patch_ydl(exc=RuntimeError("ERROR: Private video. Sign in.")):
         result = _yt_preflight_refuse("https://www.youtube.com/watch?v=abc")

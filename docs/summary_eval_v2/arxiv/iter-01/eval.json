@@ -1,0 +1,167 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary follows a clear and logical structure, progressing from purpose to method and findings, with well-organized bullet points."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The summary is well-written with no grammatical errors or awkward phrasing, ensuring a clean and easy reading experience."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 0.375,
+      "items": [
+        {
+          "claim": "The citation includes 'Advances in Neural Information Processing Systems, 30'.",
+          "fact": null,
+          "sentence": "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \u0141., & Polosukhin, I. (2017). Attention Is All You Need. *Advances in Neural Information Processing Systems*, 30.",
+          "span": "Advances in Neural Information Processing Systems, 30",
+          "importance": null
+        }
+      ]
+    },
+    "completeness": {
+      "score": 0.9516129032258065,
+      "items": [
+        {
+          "claim": "The summary's tags are missing a source-type marker.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 0.4444444444444444,
+      "items": [
+        {
+          "claim": "The brief summary is only 2 sentences long, falling short of the 5-7 sentence requirement.",
+          "fact": null,
+          "sentence": "Ashish Vaswani et al. (2017) introduced the Transformer, a novel neural network architecture for sequence transduction tasks. It replaces traditional RNNs/CNNs with an attention-only mechanism, demonstrating superior quality, parallelizability, and reduced training time in machine translation.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "The summary contains only 5 tags, which is fewer than the required 7-10 tags.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        }
+      ]
+    }
+  },
+  "summac_lite": {
+    "score": 0.9444444444444444,
+    "contradicted_sentences": [],
+    "neutral_sentences": [
+      {
+        "sentence": "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \u0141., & Polosukhin, I. (2017). Attention Is All You Need. *Advances in Neural Information Processing Systems*, 30.",
+        "reason": "The specific journal/conference details 'Advances in Neural Information Processing Systems, 30' are not present in the provided source abstract, making this part of the sentence not directly supported by the given source text."
+      }
+    ]
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 23.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.what_this_is",
+          "brief.main_topic",
+          "brief.major_units",
+          "brief.distinctive_signal",
+          "brief.no_fabrication"
+        ],
+        "criteria_missed": [
+          "brief.length_5_to_7_sentences",
+          "judge_facet_disagreement"
+        ]
+      },
+      {
+        "id": "detailed_summary",
+        "score": 35.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.one_bullet_per_unit",
+          "detailed.logical_order",
+          "detailed.bullets_focused",
+          "detailed.bullets_specific"
+        ],
+        "criteria_missed": [
+          "detailed.no_invented_content",
+          "judge_facet_disagreement"
+        ]
+      },
+      {
+        "id": "tags",
+        "score": 9.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.topical_specificity",
+          "tags.no_unsupported"
+        ],
+        "criteria_missed": [
+          "tags.count_7_to_10",
+          "tags.source_type_marker",
+          "judge_facet_disagreement"
+        ]
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.fast_identifier",
+          "label.makes_sense_alone"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": [
+      {
+        "id": "invented_fact",
+        "source_region": "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \u0141., & Polosukhin, I. (2017). Attention Is All You Need. *Advances in Neural Information Processing Systems*, 30.",
+        "auto_cap": 60
+      }
+    ]
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 79.3103448275862,
+    "qafact": 0.0,
+    "summac": 94.44444444444444
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_universal.v1",
+    "implementation_fingerprint": "0beada178f4fc60c9a47b401c38c42cc041d964974a43afddd12d8d85aced84f",
+    "rubric_sha256": "88ac2921ff4de203726d4ec2c67434eb71e83c88c91440284a02c5606fd61134",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 6064,
+    "total_tokens_out": 1561,
+    "latency_ms": 38304,
+    "numeric_grounding_score": 0.5,
+    "unsupported_numeric_claims": [
+      "1706",
+      "03762"
+    ],
+    "ragas_faithfulness": 0.9
+  }
+}

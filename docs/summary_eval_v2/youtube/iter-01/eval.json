@@ -1,0 +1,287 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary follows a clear and logical flow, mirroring the chronological structure of Steve Jobs's three stories."
+    },
+    "fluency": {
+      "score": 1,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The brief summary and detailed overview contain a significant repetition of 'steve jobs argues that steve jobs argues that', making the prose awkward."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 1.0,
+      "items": []
+    },
+    "completeness": {
+      "score": 0.9333333333333333,
+      "items": [
+        {
+          "claim": "Brief highlights 2-3 takeaways a viewer would remember after watching.",
+          "fact": null,
+          "sentence": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "Named technologies/libraries/frameworks from the video are tagged.",
+          "fact": null,
+          "sentence": null,
+          "span": "Macintosh, NeXT",
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 0.8888888888888888,
+      "items": [
+        {
+          "claim": "Brief is 5-7 sentences.",
+          "fact": null,
+          "sentence": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect. The lecture moves through Connecting the Dots, Love and Loss, and Death. Along the way Steve Jobs references Apple, Reed College, and Macintosh.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "Redundant phrasing or information.",
+          "fact": null,
+          "sentence": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect.",
+          "span": "steve jobs argues that steve jobs argues that",
+          "importance": null
+        },
+        {
+          "claim": "Redundant phrasing or information.",
+          "fact": null,
+          "sentence": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect.",
+          "span": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect.",
+          "importance": null
+        },
+        {
+          "claim": "Redundant phrasing or information.",
+          "fact": null,
+          "sentence": "Format: lecture.",
+          "span": "Format: lecture.",
+          "importance": null
+        },
+        {
+          "claim": "Redundant phrasing or information.",
+          "fact": null,
+          "sentence": "Speakers: Steve Jobs.",
+          "span": "Speakers: Steve Jobs.",
+          "importance": null
+        }
+      ]
+    }
+  },
+  "summac_lite": {
+    "score": 1.0,
+    "contradicted_sentences": [],
+    "neutral_sentences": []
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief.thesis_capture",
+        "score": 4.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "brief.format_identified",
+        "score": 3.0,
+        "max_points": 3,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "brief.speakers_captured",
+        "score": 4.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "brief.major_segments_outlined",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "brief.takeaways_surfaced",
+        "score": 2.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": [
+          "brief.takeaways_surfaced"
+        ]
+      },
+      {
+        "id": "brief.length_5_to_7_sentences",
+        "score": 0.0,
+        "max_points": 2,
+        "criteria_fired": [],
+        "criteria_missed": [
+          "brief.length_5_to_7_sentences"
+        ]
+      },
+      {
+        "id": "brief.no_clickbait",
+        "score": 2.0,
+        "max_points": 2,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.chronological_order",
+        "score": 6.0,
+        "max_points": 6,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.all_chapters_covered",
+        "score": 10.0,
+        "max_points": 10,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.demonstrations_preserved",
+        "score": 6.0,
+        "max_points": 6,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.caveats_preserved",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.examples_purpose_not_verbatim",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.entities_named",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.closing_takeaway",
+        "score": 4.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed.no_sponsor_padding",
+        "score": 4.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags.count_7_to_10",
+        "score": 2.0,
+        "max_points": 2,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags.topical_specificity",
+        "score": 4.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags.format_tag_present",
+        "score": 2.0,
+        "max_points": 2,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags.technologies_named",
+        "score": 2.0,
+        "max_points": 3,
+        "criteria_fired": [],
+        "criteria_missed": [
+          "tags.technologies_named"
+        ]
+      },
+      {
+        "id": "tags.no_unsupported_claims",
+        "score": 4.0,
+        "max_points": 4,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "label.content_first_3_to_5_words",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "label.reflects_primary_topic",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      },
+      {
+        "id": "label.no_clickbait_retention",
+        "score": 5.0,
+        "max_points": 5,
+        "criteria_fired": [],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": []
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 66.66666666666666,
+    "finesure": 93.33333333333333,
+    "qafact": 100.0,
+    "summac": 100.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author",
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_youtube.v1",
+    "implementation_fingerprint": "0beada178f4fc60c9a47b401c38c42cc041d964974a43afddd12d8d85aced84f",
+    "rubric_sha256": "b20be43c36661e966cc93b58c78a2ca05a1cc54913d77fc544c7918506d5dd64",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 10302,
+    "total_tokens_out": 2624,
+    "latency_ms": 54617,
+    "numeric_grounding_score": 0.0,
+    "unsupported_numeric_claims": [
+      "11971"
+    ]
+  }
+}

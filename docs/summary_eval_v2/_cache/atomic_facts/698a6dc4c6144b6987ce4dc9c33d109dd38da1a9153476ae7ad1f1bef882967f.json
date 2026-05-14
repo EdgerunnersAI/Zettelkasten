@@ -1,0 +1,16 @@
+{
+  "facts": [
+    {
+      "claim": "They are using reinforcement learning on user retention.",
+      "importance": 4
+    },
+    {
+      "claim": "Using reinforcement learning on user retention could have some undesired effects.",
+      "importance": 3
+    },
+    {
+      "claim": "The described system seems like a fun way to discover new and exciting basilisk variations.",
+      "importance": 2
+    }
+  ]
+}

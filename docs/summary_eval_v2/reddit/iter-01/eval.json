@@ -1,0 +1,124 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "3=fully logical flow",
+      "reasoning": "The summary is well-structured with clear headings and bullet points, presenting information in a logical and easy-to-follow manner."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "3=clean prose",
+      "reasoning": "The summary uses clean, professional prose with no grammatical errors or awkward phrasing that impede reading."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 0.909,
+      "items": []
+    },
+    "completeness": {
+      "score": 1.0,
+      "items": []
+    },
+    "conciseness": {
+      "score": 1.0,
+      "items": []
+    }
+  },
+  "summac_lite": {
+    "score": 1.0,
+    "contradicted_sentences": [],
+    "neutral_sentences": []
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 22.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.op_intent_captured",
+          "brief.response_range",
+          "brief.consensus_signal",
+          "brief.neutral_tone",
+          "brief.length_5_to_7_sentences"
+        ],
+        "criteria_missed": [
+          "brief.caveats_surfaced"
+        ]
+      },
+      {
+        "id": "detailed_summary",
+        "score": 45.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.reply_clusters",
+          "detailed.hedged_attribution",
+          "detailed.counterarguments_included",
+          "detailed.external_refs_captured",
+          "detailed.unresolved_questions",
+          "detailed.moderation_context",
+          "detailed.no_joke_chains"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.count_7_to_10",
+          "tags.subreddit_present",
+          "tags.thread_type",
+          "tags.no_value_judgments",
+          "tags.topical_specificity"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.rsubreddit_prefix",
+          "label.central_issue",
+          "label.neutral"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": []
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 97.0,
+    "qafact": 100.0,
+    "summac": 100.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_reddit.v1",
+    "implementation_fingerprint": "0beada178f4fc60c9a47b401c38c42cc041d964974a43afddd12d8d85aced84f",
+    "rubric_sha256": "ce1e2befba93e5b2183870f8692ef59b8eb303e63a3d73c558ce042800c3d384",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 16644,
+    "total_tokens_out": 893,
+    "latency_ms": 66988,
+    "numeric_grounding_score": 0.5,
+    "unsupported_numeric_claims": [
+      "86.47%",
+      "103",
+      "761"
+    ]
+  }
+}

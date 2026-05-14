@@ -1,0 +1,148 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary is well-structured with clear headings and sub-sections, presenting information in a logical and easy-to-follow manner."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The summary uses clean, grammatical prose with no noticeable errors that impede reading."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 1.0,
+      "items": []
+    },
+    "completeness": {
+      "score": 0.966,
+      "items": [
+        {
+          "claim": "Requests is ready for the demands of building robust and reliable HTTP\u2013speaking applications.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 0.93,
+      "items": [
+        {
+          "claim": null,
+          "fact": null,
+          "sentence": "Core public interfaces mentioned include the `json` method, `Session` objects, `HTTPDigestAuth`, and `PreparedRequest.copy()`.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": null,
+          "fact": null,
+          "sentence": "Public surface: json method, Session objects, HTTPDigestAuth, PreparedRequest.copy().",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": null,
+          "fact": null,
+          "sentence": "Roadmap: Core public interfaces mentioned include the `json` method, `Session` objects, `HTTPDigestAuth`, and `PreparedRequest.copy()`.",
+          "span": null,
+          "importance": null
+        }
+      ]
+    }
+  },
+  "summac_lite": {
+    "score": 1.0,
+    "contradicted_sentences": [],
+    "neutral_sentences": []
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 25.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.user_facing_purpose",
+          "brief.architecture_high_level",
+          "brief.languages_and_frameworks",
+          "brief.usage_pattern",
+          "brief.public_surface",
+          "brief.no_maturity_fabrication"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed_summary",
+        "score": 45.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.features_bullets",
+          "detailed.architecture_modules",
+          "detailed.interfaces_exact",
+          "detailed.operational",
+          "detailed.limitations_docs",
+          "detailed.benchmarks_tests_examples",
+          "detailed.bullets_focused"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.count_7_to_10",
+          "tags.domain_tag",
+          "tags.languages",
+          "tags.technical_concepts",
+          "tags.no_unsupported_claims"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.owner_slash_repo",
+          "label.no_extra_descriptors"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": []
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 92.2,
+    "qafact": 100.0,
+    "summac": 100.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_github.v1",
+    "implementation_fingerprint": "0beada178f4fc60c9a47b401c38c42cc041d964974a43afddd12d8d85aced84f",
+    "rubric_sha256": "e346dca731e7308c4da09d1559e10484251657e03596e45293b53d37141c4462",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 11112,
+    "total_tokens_out": 1197,
+    "latency_ms": 42741,
+    "numeric_grounding_score": 1.0,
+    "unsupported_numeric_claims": []
+  }
+}

@@ -95,19 +95,21 @@ async def test_fenced_object_with_facts_is_parsed(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_malformed_json_raises_not_silent_empty(tmp_path: Path):
+async def test_malformed_json_degrades_to_empty_facts(tmp_path: Path):
     client = MagicMock()
     fake_result = MagicMock(text="this is not json at all <<<>>>")
     client.generate = AsyncMock(return_value=fake_result)
 
-    with pytest.raises(Exception):
-        await extract_atomic_facts(
-            client=client,
-            source_text="src",
-            cache_root=tmp_path,
-            url="https://a.com",
-            ingestor_version="1.0.0",
-        )
+    facts = await extract_atomic_facts(
+        client=client,
+        source_text="src",
+        cache_root=tmp_path,
+        url="https://a.com",
+        ingestor_version="1.0.0",
+    )
+
+    assert facts == []
+    assert client.generate.await_count == 2
 
 
 @pytest.mark.asyncio

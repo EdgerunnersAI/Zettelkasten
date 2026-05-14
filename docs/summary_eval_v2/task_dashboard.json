@@ -1,0 +1,120 @@
+{
+  "target": {
+    "soft_composite_score": 90,
+    "hard_composite_score": 80
+  },
+  "status": "verification",
+  "major_tasks": [
+    {
+      "id": "P1-route-contracts",
+      "priority": "P1",
+      "title": "Route subtype contracts and unsupported/thin-source gates",
+      "components": [
+        "RouteDecision source subtypes",
+        "unsupported URL shape refusal",
+        "source-surface completeness metadata",
+        "config-code drift tests"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P1-v2-db-ui",
+      "priority": "P1",
+      "title": "v2 Supabase write/read/UI correctness",
+      "components": [
+        "Naruto-only write validation",
+        "workspace-scoped graph reads",
+        "connection_strength on v2 links",
+        "UI graph visibility checks"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P1-youtube",
+      "priority": "P1",
+      "title": "YouTube transcript provenance and video-only contract",
+      "components": [
+        "video-like URL support only",
+        "metadata-only degraded output",
+        "caption URL dereference test",
+        "segment/section coverage monitors"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P1-github",
+      "priority": "P1",
+      "title": "GitHub object subtype and repo-shape hardening",
+      "components": [
+        "repo/issue/pull_request/commit/release/blob/tree subtypes",
+        "manifest-driven repo map",
+        "thin README fallback",
+        "object-specific eval fixtures"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P2-newsletter",
+      "priority": "P2",
+      "title": "Newsletter faithfulness and identity hardening",
+      "components": [
+        "extractor fusion scoring",
+        "publication identity confidence",
+        "CTA/caveat/constraint preservation",
+        "custom-domain routing regression"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P2-reddit",
+      "priority": "P2",
+      "title": "Reddit thread depth and caveat retention",
+      "components": [
+        "nested reply traversal",
+        "contention map",
+        "moderation/recovery metadata",
+        "brief caveat retention monitor"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P2-default-sources",
+      "priority": "P2",
+      "title": "Default-source coverage for HN/LinkedIn/arXiv/Podcast/Twitter/Web",
+      "components": [
+        "HN linked article plus discussion",
+        "LinkedIn public/authwall contract",
+        "arXiv HTML-first bounded sections",
+        "Podcast RSS transcript/chapters",
+        "X/Twitter thread/quote-aware metadata",
+        "Generic web multi-extractor fusion"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P1-eval-loop",
+      "priority": "P1",
+      "title": "summary_eval_v2 iteration loop",
+      "components": [
+        "source folders",
+        "baseline_score script",
+        "run_iter script",
+        "post_iter metrics",
+        "Naruto write validation script"
+      ],
+      "progress": 100
+    },
+    {
+      "id": "P1-tests",
+      "priority": "P1",
+      "title": "Tests and final verification",
+      "components": [
+        "unit route/source contract tests",
+        "v2 write/read tests",
+        "source ingestor smoke tests",
+        "eval scaffold validation"
+      ],
+      "progress": 100
+    }
+  ]
+}

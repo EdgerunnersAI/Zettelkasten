@@ -1,0 +1,27 @@
+[
+  {
+    "url": "https://twitter.com/jack/status/20",
+    "facts": [
+      {
+        "claim": "Jack Dorsey posted a tweet with the content \"just setting up my twttr\" on March 21, 2006.",
+        "importance": 5
+      },
+      {
+        "claim": "The content of the tweet posted by Jack Dorsey was \"just setting up my twttr\".",
+        "importance": 4
+      },
+      {
+        "claim": "Jack Dorsey posted a tweet on March 21, 2006.",
+        "importance": 4
+      },
+      {
+        "claim": "The tweet was posted on March 21, 2006.",
+        "importance": 3
+      },
+      {
+        "claim": "Jack Dorsey is the user associated with the Twitter handle @jack.",
+        "importance": 3
+      }
+    ]
+  }
+]

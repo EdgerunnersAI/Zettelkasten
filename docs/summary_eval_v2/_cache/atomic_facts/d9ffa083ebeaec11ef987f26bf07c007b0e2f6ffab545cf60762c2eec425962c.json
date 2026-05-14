@@ -1,0 +1,64 @@
+{
+  "facts": [
+    {
+      "claim": "The authors propose a new simple network architecture, the Transformer.",
+      "importance": 5
+    },
+    {
+      "claim": "The Transformer is based solely on attention mechanisms.",
+      "importance": 5
+    },
+    {
+      "claim": "The Transformer dispenses with recurrence and convolutions entirely.",
+      "importance": 5
+    },
+    {
+      "claim": "The Transformer achieves 28.4 BLEU on the WMT 2014 English-to-German translation task.",
+      "importance": 5
+    },
+    {
+      "claim": "The Transformer improves over existing best results, including ensembles, by over 2 BLEU on WMT 2014 English-to-German translation.",
+      "importance": 5
+    },
+    {
+      "claim": "The Transformer establishes a new single-model state-of-the-art BLEU score of 41.8 on the WMT 2014 English-to-French translation task.",
+      "importance": 5
+    },
+    {
+      "claim": "Transformer models are superior in quality on machine translation tasks.",
+      "importance": 4
+    },
+    {
+      "claim": "Transformer models are more parallelizable.",
+      "importance": 4
+    },
+    {
+      "claim": "Transformer models require significantly less time to train.",
+      "importance": 4
+    },
+    {
+      "claim": "The Transformer achieved a 41.8 BLEU score on WMT 2014 English-to-French after training for 3.5 days on eight GPUs.",
+      "importance": 4
+    },
+    {
+      "claim": "The Transformer's training costs for WMT 2014 English-to-French were a small fraction of the best models from the literature.",
+      "importance": 4
+    },
+    {
+      "claim": "The Transformer generalizes well to other tasks.",
+      "importance": 4
+    },
+    {
+      "claim": "The Transformer was successfully applied to English constituency parsing.",
+      "importance": 4
+    },
+    {
+      "claim": "Dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration.",
+      "importance": 3
+    },
+    {
+      "claim": "The best performing sequence transduction models connect the encoder and decoder through an attention mechanism.",
+      "importance": 3
+    }
+  ]
+}

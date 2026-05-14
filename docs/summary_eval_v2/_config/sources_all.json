@@ -1,0 +1,44 @@
+{
+  "sources": {
+    "github": {
+      "baseline_from": "docs/summary_eval/github",
+      "urls": ["https://github.com/psf/requests"]
+    },
+    "newsletter": {
+      "baseline_from": "docs/summary_eval/newsletter",
+      "urls": ["https://newsletter.pragmaticengineer.com/p/the-product-minded-engineer"]
+    },
+    "reddit": {
+      "baseline_from": "docs/summary_eval/reddit",
+      "urls": ["https://www.reddit.com/r/IAmA/comments/9ke63/i_did_heroin_yesterday_i_am_not_a_drug_user_and/"]
+    },
+    "youtube": {
+      "baseline_from": "docs/summary_eval/youtube",
+      "urls": ["https://www.youtube.com/watch?v=UF8uR6Z6KLc"]
+    },
+    "hackernews": {
+      "baseline_from": null,
+      "urls": ["https://news.ycombinator.com/item?id=8863"]
+    },
+    "linkedin": {
+      "baseline_from": null,
+      "urls": ["https://www.linkedin.com/company/openai/"]
+    },
+    "arxiv": {
+      "baseline_from": null,
+      "urls": ["https://arxiv.org/abs/1706.03762"]
+    },
+    "podcast": {
+      "baseline_from": null,
+      "urls": ["https://podcasts.apple.com/us/podcast/acquired/id1050462261"]
+    },
+    "twitter": {
+      "baseline_from": null,
+      "urls": ["https://twitter.com/jack/status/20"]
+    },
+    "web": {
+      "baseline_from": null,
+      "urls": ["https://peps.python.org/pep-0701/"]
+    }
+  }
+}

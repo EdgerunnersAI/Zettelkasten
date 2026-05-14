@@ -1,0 +1,127 @@
+[
+  {
+    "url": "https://peps.python.org/pep-0701/",
+    "facts": [
+      {
+        "claim": "PEP 701 proposes a formalized grammar for f-strings, integrating it directly into the parser and lifting restrictions originally formulated in PEP 498.",
+        "importance": 5
+      },
+      {
+        "claim": "The proposed syntactic formalization provides considerable advantages for end users and library developers while dramatically reducing the maintenance cost of f-string parsing code.",
+        "importance": 5
+      },
+      {
+        "claim": "The new grammar allows f-string expression components to be defined as \"any applicable Python expression,\" eliminating previous obscure limitations.",
+        "importance": 5
+      },
+      {
+        "claim": "The expression component of f-strings can now include any string literal, enabling nesting of string literals (formatted or not) with the same quote type.",
+        "importance": 5
+      },
+      {
+        "claim": "All previous restrictions on f-string literals, such as disallowing same-quote strings, backslashes, newlines, and comments, are lifted by the new grammar.",
+        "importance": 5
+      },
+      {
+        "claim": "PEP 701 introduces no backwards incompatible syntactic or semantic changes to the Python language.",
+        "importance": 5
+      },
+      {
+        "claim": "The PEP simplifies teaching f-strings, as the rule becomes \"you can place any valid Python expression inside an f-string expression.\"",
+        "importance": 5
+      },
+      {
+        "claim": "The previous f-string implementation in CPython had high maintenance costs due to hand-written parsing code and could not leverage the new PEG parser's improved error messages.",
+        "importance": 4
+      },
+      {
+        "claim": "Other Python implementations lacked a formal grammar for f-strings, making correct implementation and verification difficult.",
+        "importance": 4
+      },
+      {
+        "claim": "The PEP builds on the new Python PEG Parser (PEP 617) to redefine f-strings with a clear separation of string and expression components.",
+        "importance": 4
+      },
+      {
+        "claim": "Backslashes are now allowed within f-string expression components, resolving a common unintuitive limitation.",
+        "importance": 4
+      },
+      {
+        "claim": "New lines and comments (using the # character) are now allowed within f-string expression parts.",
+        "importance": 4
+      },
+      {
+        "claim": "The PEP specifies a lower bound of 5 levels of f-string nesting, though implementations are free to impose their own limits.",
+        "importance": 4
+      },
+      {
+        "claim": "The new grammar preserves the Abstract Syntax Tree (AST) of the current implementation, ensuring no semantic changes to existing f-string code.",
+        "importance": 4
+      },
+      {
+        "claim": "Three new tokens (FSTRING_START, FSTRING_MIDDLE, FSTRING_END) are introduced and must be produced by the lexer when processing f-strings.",
+        "importance": 4
+      },
+      {
+        "claim": "The `tokenize` module will be updated to emit these new f-string tokens, allowing tools to leverage the new tokenization schema.",
+        "importance": 4
+      },
+      {
+        "claim": "Allowing quote reuse and backslashes simplifies code generators by enabling regular Python expression logic inside f-strings without special treatment.",
+        "importance": 4
+      },
+      {
+        "claim": "The PEP decided not to reject quote reuse at the parser level, recommending linters and code style tools handle readability concerns instead.",
+        "importance": 4
+      },
+      {
+        "claim": "Limiting quote reuse would have significantly increased the complexity of the proposed implementation due to parser context requirements.",
+        "importance": 4
+      },
+      {
+        "claim": "F-strings were originally introduced without a formal grammar, leading to restrictions imposed to avoid modifying the existing lexer.",
+        "importance": 3
+      },
+      {
+        "claim": "Previous attempts (PEP 536) to lift f-string limitations were never implemented.",
+        "importance": 3
+      },
+      {
+        "claim": "Arbitrary nesting of expressions without escape sequence expansion is a feature present in string interpolation methods of many other languages (e.g., Ruby, JavaScript, C#).",
+        "importance": 3
+      },
+      {
+        "claim": "The formal handling of f-string debug expressions (e.g., `f\"{1+1=}\"`) requires the lexer to keep track of raw string contents of the expression part.",
+        "importance": 3
+      },
+      {
+        "claim": "Some users find quote reuse within the same string confusing and hard to read, violating a simple Python string delimitation rule.",
+        "importance": 3
+      },
+      {
+        "claim": "Concerns were raised that quote reuse might break existing lexer and syntax highlighting tools that rely on simpler parsing mechanisms.",
+        "importance": 3
+      },
+      {
+        "claim": "Many other popular languages allow quote reuse in string interpolation, which could make Python more familiar to users from those languages.",
+        "importance": 3
+      },
+      {
+        "claim": "The `tokenize` module update represents a minor incompatibility for tools that rely on its previous f-string tokenization behavior.",
+        "importance": 3
+      },
+      {
+        "claim": "Expressions allowing a colon (':') character at the top level within an f-string still need to be enclosed in parentheses to avoid being interpreted as a format specification.",
+        "importance": 3
+      },
+      {
+        "claim": "The PEP decided not to lift the restriction that some expressions (e.g., lambdas) need parentheses at the top level if they contain ':' or '!'.",
+        "importance": 3
+      },
+      {
+        "claim": "The PEP decided to disallow (for the time being) using escaped braces (\\{ and \\}) in addition to the `{{` and `}}` syntax.",
+        "importance": 2
+      }
+    ]
+  }
+]

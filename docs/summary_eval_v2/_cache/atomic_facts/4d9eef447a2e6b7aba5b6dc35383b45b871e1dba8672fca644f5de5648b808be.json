@@ -1,0 +1,124 @@
+{
+  "facts": [
+    {
+      "claim": "Chess looks like a board game, but it's an infinity simulator.",
+      "importance": 5
+    },
+    {
+      "claim": "Chess teaches humans how to confront the horrible infinite.",
+      "importance": 5
+    },
+    {
+      "claim": "Chess began about 1500 years ago in India with a game called Chataranga.",
+      "importance": 4
+    },
+    {
+      "claim": "Chataranga evolved into a similar game called Shatrange in Persia a century or so later.",
+      "importance": 4
+    },
+    {
+      "claim": "The Persians introduced the idea of checkmates, derived from 'Shak' (king) and 'Shakmat' (the king is boned), which ends the game.",
+      "importance": 4
+    },
+    {
+      "claim": "Europe introduced castling and two-square advancing pawns to chess.",
+      "importance": 4
+    },
+    {
+      "claim": "Originally, the queen piece was called the adviser and could only move one diagonal square.",
+      "importance": 4
+    },
+    {
+      "claim": "In the 15th century, the queen's movement was expanded to its modern powerful form, possibly in honor of powerful ladies like Queen Isabella of Spain.",
+      "importance": 4
+    },
+    {
+      "claim": "Originally in chess, the bishop pieces were elephants.",
+      "importance": 4
+    },
+    {
+      "claim": "Chess is really useful for metaphors.",
+      "importance": 4
+    },
+    {
+      "claim": "Zwang is a chess concept where a player finds themselves in a position where every move is a bad one, but they have to move.",
+      "importance": 4
+    },
+    {
+      "claim": "Chess is a collaboration, but ultimately players are completely alone in their mistakes, similar to life.",
+      "importance": 4
+    },
+    {
+      "claim": "Chess is all about learning to be defeated with dignity.",
+      "importance": 4
+    },
+    {
+      "claim": "Great chess players are artists, not computers.",
+      "importance": 4
+    },
+    {
+      "claim": "Great chess players dance with infinity.",
+      "importance": 4
+    },
+    {
+      "claim": "Mikall Tal's strategy was to take opponents into a deep dark forest where two and two make five and the path leading out is only wide enough for one.",
+      "importance": 4
+    },
+    {
+      "claim": "The chess opening D4, D5, then C4 is known as the Queen's Gambit declined.",
+      "importance": 3
+    },
+    {
+      "claim": "The early game Chataranga had no queen but included elephants, and a four-player version existed.",
+      "importance": 3
+    },
+    {
+      "claim": "Emperor Teima in Central Asia introduced variations to chess that included giraffes, camels, and war engines.",
+      "importance": 3
+    },
+    {
+      "claim": "The Chinese added cannons to chess variations.",
+      "importance": 3
+    },
+    {
+      "claim": "By the 1800s, chess rules were largely the same as the modern rules.",
+      "importance": 3
+    },
+    {
+      "claim": "The king piece can move one square in any direction.",
+      "importance": 3
+    },
+    {
+      "claim": "The knight pieces have always moved in an L-shape.",
+      "importance": 3
+    },
+    {
+      "claim": "Europeans dropped the elephant piece (which became the bishop) from chess because they didn't use war elephants.",
+      "importance": 3
+    },
+    {
+      "claim": "Rooks, also known as castles, were originally called chariots.",
+      "importance": 3
+    },
+    {
+      "claim": "Rooks can only move vertically and horizontally.",
+      "importance": 3
+    },
+    {
+      "claim": "Fisher random is a chess variation where the back rank pieces are scrambled.",
+      "importance": 3
+    },
+    {
+      "claim": "Anti-chess is a variation where the goal is to lose as hard as possible.",
+      "importance": 3
+    },
+    {
+      "claim": "Islamic philosophers believed chess taught patience and reasoning.",
+      "importance": 3
+    },
+    {
+      "claim": "For Europeans, chess was seen as a miniaturized battleground.",
+      "importance": 3
+    }
+  ]
+}

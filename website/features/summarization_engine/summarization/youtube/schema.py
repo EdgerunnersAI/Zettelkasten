@@ -122,6 +122,7 @@ class YouTubeStructuredPayload(BaseModel):
             for s in raw_speakers
             if not _is_placeholder_speaker(s.strip())
             and not _is_geographic_entity(s.strip())
+            and not _is_non_human_speaker_entity(s.strip())
         ]
         # H2/C2: detect mixed real+placeholder for the "low" tier.
         had_placeholder = any(
@@ -139,6 +140,7 @@ class YouTubeStructuredPayload(BaseModel):
                 isinstance(entity, str)
                 and _looks_like_named_human(entity)
                 and not _is_geographic_entity(entity)
+                and not _is_non_human_speaker_entity(entity)
             ):
                 self.speakers = [entity.strip()]
                 # Coerced from entities — original speakers were all placeholders.
@@ -190,6 +192,19 @@ _GEOGRAPHIC_OF_PHRASE_RE = re.compile(
     r"(?i)^\s*(the\s+)?(?P<head>\w+)\s+of\s+(the\s+)?\w[\w\s\-']*$"
 )
 
+_NON_HUMAN_SPEAKER_TERMS = frozenset({
+    "anti-chess",
+    "chataranga",
+    "chess",
+    "declined",
+    "defence",
+    "defense",
+    "fischer",
+    "gambit",
+    "opening",
+    "shatranj",
+})
+
 
 def _is_geographic_entity(name: str) -> bool:
     """Return True if ``name`` looks like a location, landmark, or
@@ -238,6 +253,20 @@ def _is_geographic_entity(name: str) -> bool:
     return False
 
 
+def _is_non_human_speaker_entity(name: str) -> bool:
+    """Return True for titled concepts that look person-like but are topics.
+
+    Some YouTube transcripts mention capitalized game openings, works, or
+    concepts often enough that the model tries to use them as speakers. A
+    neutral/no-speaker fallback is better than rendering a topic as a human.
+    """
+    cleaned = (name or "").strip().lower()
+    if not cleaned:
+        return False
+    tokens = {re.sub(r"[^\w-]", "", tok) for tok in cleaned.split()}
+    return any(tok in _NON_HUMAN_SPEAKER_TERMS for tok in tokens)
+
+
 def _looks_like_named_human(name: str) -> bool:
     """Heuristic check: does ``name`` look like a real person's name?
 
@@ -248,7 +277,7 @@ def _looks_like_named_human(name: str) -> bool:
     least one token longer than 2 characters that is NOT fully uppercase.
     """
     cleaned = (name or "").strip()
-    if not cleaned or _is_placeholder_speaker(cleaned):
+    if not cleaned or _is_placeholder_speaker(cleaned) or _is_non_human_speaker_entity(cleaned):
         return False
     tokens = cleaned.split()
     if len(tokens) < 2:

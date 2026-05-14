@@ -1,0 +1,124 @@
+{
+  "facts": [
+    {
+      "claim": "Requests is a simple, yet elegant, HTTP library.",
+      "importance": 5
+    },
+    {
+      "claim": "Requests allows you to send HTTP/1.1 requests extremely easily.",
+      "importance": 5
+    },
+    {
+      "claim": "Requests is one of the most downloaded Python packages today.",
+      "importance": 5
+    },
+    {
+      "claim": "Requests is depended upon by 4,000,000+ repositories.",
+      "importance": 5
+    },
+    {
+      "claim": "Requests is a Python library.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests pulls in around 300M downloads / week.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests is available on PyPI.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests officially supports Python 3.10+.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests is ready for the demands of building robust and reliable HTTP–speaking applications.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests supports Keep-Alive & Connection Pooling.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests supports Sessions with Cookie Persistence.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests supports Browser-style TLS/SSL Verification.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests supports Basic & Digest Authentication.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests provides Automatic Content Decompression and Decoding.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests supports Connection Timeouts.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests is adding inline type annotations.",
+      "importance": 4
+    },
+    {
+      "claim": "The Requests library is accessible via 'import requests'.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests simplifies adding query strings to URLs and form-encoding PUT & POST data.",
+      "importance": 4
+    },
+    {
+      "claim": "Requests recommends using the 'json' method for PUT & POST data.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests supports International Domains and URLs.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests handles dict–like Cookies.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests supports Multi-part File Uploads.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests supports SOCKS Proxy.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests supports Streaming Downloads.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests automatically honors .netrc.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests supports Chunked HTTP Requests.",
+      "importance": 3
+    },
+    {
+      "claim": "The REQUESTS_CA_BUNDLE environment variable can override session.verify=False, causing TLS verification to still happen.",
+      "importance": 3
+    },
+    {
+      "claim": "The 'requests-docs-l10n' project is published for localization of Requests documentation.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests fixes an issue where S3 presigned URLs with leading slashes were incorrectly modified.",
+      "importance": 3
+    },
+    {
+      "claim": "Requests adds RFC 7616 support for non-Latin credentials in HTTPDigestAuth.",
+      "importance": 3
+    }
+  ]
+}

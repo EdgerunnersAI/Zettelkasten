@@ -1,0 +1,15 @@
+{
+  "source": "newsletter",
+  "iter": 1,
+  "status": "soft_target_met",
+  "composite_score": 98.0,
+  "baseline_score": 88.6,
+  "delta": 9.4,
+  "checks": {
+    "summary_json": true,
+    "eval_json": true,
+    "baseline_score_json": true,
+    "manual_review_prompt": true
+  },
+  "next_actions": []
+}

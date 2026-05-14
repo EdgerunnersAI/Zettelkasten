@@ -1,0 +1,84 @@
+{
+  "facts": [
+    {
+      "claim": "Product-minded engineers are increasingly in demand, capable of both implementing products and generating strong product/feature ideas, a trend accelerated by AI tools.",
+      "importance": 5
+    },
+    {
+      "claim": "Crafting well-structured diagnostics with useful messages is an incredibly valuable and high-leverage way to spend time, as diagnostics often serve as the primary interface for users dealing with complex applications.",
+      "importance": 5
+    },
+    {
+      "claim": "Diagnostics may be the most important interface of your product, especially as autonomous agents increasingly rely on helpful error messages to correct their actions.",
+      "importance": 5
+    },
+    {
+      "claim": "To be more product-minded, engineers should frequently ask \"why,\" switch between system and user viewpoints, simulate user interactions with scenarios, and engage in customer support to identify permanent fixes.",
+      "importance": 4
+    },
+    {
+      "claim": "Error and warning messages should be actionable, providing users with suggestions or instructions on what to do, which saves time and prevents product churn.",
+      "importance": 4
+    },
+    {
+      "claim": "The best place to raise errors is at the interface between the system and the user, combining knowledge of what happened internally with what the user was trying to accomplish, rather than deep in the processing code.",
+      "importance": 4
+    },
+    {
+      "claim": "\"Shifting left\" by giving diagnostics to users as early as possible offers numerous benefits, including reducing resource usage, protecting code from bad inputs, and saving users time by providing quick feedback.",
+      "importance": 4
+    },
+    {
+      "claim": "When crafting errors, it's essential to consider two main categories of user scenarios: the human one (end-user) and the programmer one (developer), tailoring messages to the right persona and circumstance.",
+      "importance": 3
+    },
+    {
+      "claim": "Users and developers should never have to understand a system's internal implementation details to understand an error message.",
+      "importance": 3
+    },
+    {
+      "claim": "Drew Hoskins, author of \"The Product-Minded Engineer,\" has over two decades of experience as a software engineer at companies like Microsoft, Facebook, and Stripe, and is now a product manager at Temporal.",
+      "importance": 3
+    },
+    {
+      "claim": "AI tools can significantly help developers be more product-minded by gathering user signals from various sources like Slack, Miro, GitHub, and Gong, and aggregating them into reports.",
+      "importance": 3
+    },
+    {
+      "claim": "Key aspects for crafting refreshingly useful warnings and errors include understanding the scenario/persona, providing context, suggesting actionable steps, choosing appropriate error codes, raising errors at the API/UI layer, and shifting left.",
+      "importance": 3
+    },
+    {
+      "claim": "Techniques for shifting left include static validations (cheap checks early), upfront validations (before expensive operations), letting users test with fakes, and requesting user confirmations for critical actions.",
+      "importance": 3
+    },
+    {
+      "claim": "For developer services, building \"fakes\" (high-fidelity versions of production systems for testing) helps customers adopt the service faster by allowing them to test in local environments.",
+      "importance": 3
+    },
+    {
+      "claim": "John Carmack is highlighted as an exemplary product-minded engineer due to his deep technical expertise combined with a relentless pursuit of important product goals, such as mentoring the VR community or bringing major apps to the Oculus platform.",
+      "importance": 2
+    },
+    {
+      "claim": "Engineers can be seen as product-minded and invited to do more product work by helping author use cases/scenarios, joining customer calls, and justifying their ideas with scenarios.",
+      "importance": 2
+    },
+    {
+      "claim": "Upfront validations are a technique for raising errors proactively at the API boundary, capturing the caller's intent more completely and providing a strong basis for great error messages.",
+      "importance": 2
+    },
+    {
+      "claim": "Repackaging lower-level errors into appropriate forms, often using mechanisms like Python's chained exceptions, allows for preserving inner error details while providing user-friendly context.",
+      "importance": 2
+    },
+    {
+      "claim": "The book \"The Product-Minded Engineer\" by Drew Hoskins, published by O'Reilly, originated from an API design outline but pivoted to product-thinking due to O'Reilly's interest in those themes.",
+      "importance": 1
+    },
+    {
+      "claim": "The book \"The Product-Minded Engineer\" took 18 months to write, with author Drew Hoskins writing it himself, utilizing friends and Claude for research, and gathering extensive Alpha and Beta feedback.",
+      "importance": 1
+    }
+  ]
+}

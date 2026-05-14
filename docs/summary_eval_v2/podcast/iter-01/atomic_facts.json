@@ -1,0 +1,35 @@
+[
+  {
+    "url": "https://podcasts.apple.com/us/podcast/acquired/id1050462261",
+    "facts": [
+      {
+        "claim": "The show is hosted by Ben Gilbert and David Rosenthal.",
+        "importance": 5
+      },
+      {
+        "claim": "The show's purpose is to teach listeners the playbooks that built the world\u2019s greatest companies and how to apply them.",
+        "importance": 5
+      },
+      {
+        "claim": "The show's core premise or tagline is 'Every company has a story.'",
+        "importance": 4
+      },
+      {
+        "claim": "The show was active from 2015 to 2026.",
+        "importance": 3
+      },
+      {
+        "claim": "The show has 213 episodes.",
+        "importance": 3
+      },
+      {
+        "claim": "The show has a 'Clean' content rating.",
+        "importance": 2
+      },
+      {
+        "claim": "The show is copyrighted by ACQ, LLC in 2025.",
+        "importance": 1
+      }
+    ]
+  }
+]

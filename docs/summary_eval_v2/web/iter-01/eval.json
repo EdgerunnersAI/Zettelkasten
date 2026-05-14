@@ -1,0 +1,140 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary follows a clear and logical flow, progressing from the core proposal and motivation to specific details, user impact, and rejected ideas, mirroring the source's structure."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The summary is well-written with clean prose and no grammatical errors or awkward phrasing."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 1.0,
+      "items": []
+    },
+    "completeness": {
+      "score": 0.95,
+      "items": [
+        {
+          "claim": "The `tokenize` module update represents a minor incompatibility for tools that rely on its previous f-string tokenization behavior.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 0.78,
+      "items": [
+        {
+          "claim": null,
+          "fact": null,
+          "sentence": "PEP 701, accepted for Python 3.12, formalizes the f-string grammar and integrates it into the parser. This change lifts previous restrictions from PEP 498, reduces maintenance costs of the old C parsing code, and allows f-strings to benefit from the new PEG parser's improved error messages, enhancing consistency and ease of implementation for alternative Python versions.",
+          "span": null,
+          "importance": null
+        }
+      ]
+    }
+  },
+  "summac_lite": {
+    "score": 1.0,
+    "contradicted_sentences": [],
+    "neutral_sentences": []
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 23.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.what_this_is",
+          "brief.main_topic",
+          "brief.major_units",
+          "brief.distinctive_signal",
+          "brief.no_fabrication"
+        ],
+        "criteria_missed": [
+          "brief.length_5_to_7_sentences"
+        ]
+      },
+      {
+        "id": "detailed_summary",
+        "score": 45.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.one_bullet_per_unit",
+          "detailed.no_invented_content",
+          "detailed.logical_order",
+          "detailed.bullets_focused",
+          "detailed.bullets_specific"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "tags",
+        "score": 12.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.count_7_to_10",
+          "tags.topical_specificity",
+          "tags.no_unsupported"
+        ],
+        "criteria_missed": [
+          "tags.source_type_marker"
+        ]
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.fast_identifier",
+          "label.makes_sense_alone"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": 90
+    },
+    "anti_patterns_triggered": [
+      {
+        "id": "generic_tags_or_ambiguous_label",
+        "source_region": "tags",
+        "auto_cap": 90
+      }
+    ]
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 95.0,
+    "qafact": 100.0,
+    "summac": 100.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author",
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_universal.v1",
+    "implementation_fingerprint": "cd268f44bbd74fc4814db4f316611ab20af8341651ff8d16b0711c35405da730",
+    "rubric_sha256": "88ac2921ff4de203726d4ec2c67434eb71e83c88c91440284a02c5606fd61134",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 13819,
+    "total_tokens_out": 1178,
+    "latency_ms": 41078,
+    "numeric_grounding_score": 1.0,
+    "unsupported_numeric_claims": []
+  }
+}

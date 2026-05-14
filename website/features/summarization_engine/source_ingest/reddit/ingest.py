@@ -46,9 +46,10 @@ class RedditIngestor(BaseIngestor):
         payload, final_url = await fetch_json(json_url, headers=headers)
         post = payload[0]["data"]["children"][0]["data"] if payload else {}
         comment_children = payload[1]["data"]["children"] if len(payload) > 1 else []
-        comments = _comment_texts(
+        comments, nested_reply_count = _comment_tree_texts(
             comment_children,
             int(config.get("max_comments", 50)),
+            max_depth=int(config.get("comment_depth", 3)),
         )
         sections = {
             "Post": f"{post.get('title') or ''}\n{post.get('selftext') or ''}\n{post.get('url') or ''}",
@@ -108,6 +109,7 @@ class RedditIngestor(BaseIngestor):
                 "score": post.get("score"),
                 "num_comments": num_comments,
                 "rendered_comment_count": rendered_count,
+                "nested_reply_count": nested_reply_count,
                 "comment_divergence_pct": divergence_pct,
                 "permalink": post.get("permalink"),
                 "pullpush_fetched": pullpush_fetched,
@@ -161,6 +163,10 @@ class RedditIngestor(BaseIngestor):
         title = metadata.get("title", "").replace(" : ", " — ").strip()
         if not title:
             title = _title_from_url_slug(url)
+        if len(text.strip()) < int(config.get("min_html_chars", 400)):
+            pullpush_result = await _pullpush_fallback(url, config)
+            if pullpush_result is not None:
+                return pullpush_result
         sections = {"Post": text}
         return IngestResult(
             source_type=self.source_type,
@@ -179,9 +185,62 @@ class RedditIngestor(BaseIngestor):
         )
 
 
+async def _pullpush_fallback(url: str, config: dict[str, Any]) -> IngestResult | None:
+    if not config.get("pullpush_enabled", True):
+        return None
+    link_id = _extract_link_id(url)
+    if not link_id:
+        return None
+    pp = await recover_removed_comments(
+        link_id=link_id,
+        base_url=config.get("pullpush_base_url", "https://api.pullpush.io"),
+        timeout_sec=int(config.get("pullpush_timeout_sec", 10)),
+        max_recovered=int(config.get("pullpush_max_recovered_comments", 25)),
+    )
+    if not pp.success or not pp.comments:
+        return None
+    title = _title_from_url_slug(url) or "Reddit Post"
+    sections = {
+        "Post": title,
+        "Recovered Comments": "\n".join(
+            [
+                (
+                    f"[u/{comment.author}, score {comment.score}, "
+                    f"recovered from pullpush.io] {comment.body}"
+                )
+                for comment in pp.comments
+            ]
+        ),
+    }
+    return IngestResult(
+        source_type=SourceType.REDDIT,
+        url=url,
+        original_url=url,
+        raw_text=join_sections(sections),
+        sections=sections,
+        metadata={
+            "title": title,
+            "subreddit": _extract_subreddit(url),
+            "link_id": link_id,
+            "pullpush_fetched": len(pp.comments),
+            "pullpush_enabled": True,
+        },
+        extraction_confidence="medium",
+        confidence_reason="Reddit blocked JSON/HTML; recovered comments from pullpush.io",
+        fetched_at=utc_now(),
+        ingestor_version="2.0.0",
+    )
+
+
 def _extract_subreddit(url: str) -> str | None:
     import re
     match = re.search(r"/r/([^/]+)", url)
+    return match.group(1) if match else None
+
+
+def _extract_link_id(url: str) -> str | None:
+    import re
+    match = re.search(r"/comments/([^/?#]+)", url)
     return match.group(1) if match else None
 
 
@@ -244,15 +303,47 @@ def _strip_tail_stopwords(words: list[str]) -> str:
 
 
 def _comment_texts(children: list[dict[str, Any]], limit: int) -> list[str]:
+    return _comment_tree_texts(children, limit, max_depth=1)[0]
+
+
+def _comment_tree_texts(
+    children: list[dict[str, Any]],
+    limit: int,
+    *,
+    max_depth: int,
+) -> tuple[list[str], int]:
     out: list[str] = []
-    for child in children:
-        if len(out) >= limit:
-            break
-        data = child.get("data") or {}
-        body = compact_text(data.get("body") or "", max_chars=700)
-        if body:
-            out.append(f"{data.get('author') or 'unknown'}: {body}")
-    return out
+    nested_reply_count = 0
+
+    def walk(nodes: list[dict[str, Any]], depth: int) -> None:
+        nonlocal nested_reply_count
+        if depth > max_depth:
+            return
+        for child in nodes:
+            if len(out) >= limit:
+                return
+            if child.get("kind") != "t1":
+                continue
+            data = child.get("data") or {}
+            body = compact_text(data.get("body") or "", max_chars=700)
+            if body:
+                prefix = f"{data.get('author') or 'unknown'}"
+                if depth > 1:
+                    nested_reply_count += 1
+                    prefix = f"reply depth {depth} by {prefix}"
+                out.append(f"{prefix}: {body}")
+            replies = data.get("replies")
+            if isinstance(replies, dict):
+                reply_children = (
+                    ((replies.get("data") or {}).get("children") or [])
+                    if isinstance(replies.get("data"), dict)
+                    else []
+                )
+                if reply_children:
+                    walk(reply_children, depth + 1)
+
+    walk(children, 1)
+    return out, nested_reply_count
 
 
 def _compute_divergence(*, num_comments: int, rendered_count: int) -> float:

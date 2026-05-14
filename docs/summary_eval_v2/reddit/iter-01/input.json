@@ -1,0 +1,109 @@
+{
+  "source": "reddit",
+  "iter": 1,
+  "urls": [
+    "https://www.reddit.com/r/IAmA/comments/9ke63/i_did_heroin_yesterday_i_am_not_a_drug_user_and/"
+  ],
+  "started_at": "2026-05-14T16:33:39.318472+00:00",
+  "ended_at": "2026-05-14T16:36:41.703531+00:00",
+  "env": "dev",
+  "held_out": false,
+  "prompt_version": "evaluator.v7",
+  "records": [
+    {
+      "url": "https://www.reddit.com/r/IAmA/comments/9ke63/i_did_heroin_yesterday_i_am_not_a_drug_user_and/",
+      "composite": 96.38,
+      "extraction_confidence": "high",
+      "latency_ms": 182352,
+      "ingestor_version": "2.0.0"
+    }
+  ],
+  "gemini_calls": {
+    "role_breakdown": {
+      "billing_calls": 0,
+      "free_calls": 4
+    },
+    "quota_exhausted_events": [
+      {
+        "ts": 1778776422.8722577,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 1.227908052894609
+      },
+      {
+        "ts": 1778776425.8810565,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778776430.54055,
+        "kind": "unavailable",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 1.0
+      },
+      {
+        "ts": 1778776432.9484365,
+        "kind": "unavailable",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 1.8643534617821846
+      },
+      {
+        "ts": 1778776496.0301545,
+        "kind": "unavailable",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 1.06099748397622
+      },
+      {
+        "ts": 1778776497.279473,
+        "kind": "unavailable",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 2.189720322094726
+      },
+      {
+        "ts": 1778776554.8708372,
+        "kind": "unavailable",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 1.0
+      },
+      {
+        "ts": 1778776556.7536309,
+        "kind": "unavailable",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 2.165394256879821
+      }
+    ]
+  }
+}

@@ -12,6 +12,8 @@ from website.features.summarization_engine.source_ingest import get_ingestor, li
 from website.features.summarization_engine.source_ingest.github.ingest import GitHubIngestor
 from website.features.summarization_engine.source_ingest.hackernews.ingest import HackerNewsIngestor
 from website.features.summarization_engine.source_ingest.newsletter.ingest import NewsletterIngestor
+from website.features.summarization_engine.source_ingest.arxiv.ingest import ArxivIngestor
+from website.features.summarization_engine.source_ingest.podcast.ingest import PodcastIngestor
 from website.features.summarization_engine.source_ingest.web.ingest import WebIngestor
 
 
@@ -52,6 +54,45 @@ async def test_github_ingest_public_repo(httpx_mock: HTTPXMock):
     assert "Official SDK" in result.raw_text
     assert result.metadata["stars"] == 12
     assert result.extraction_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_github_ingest_issue_url_uses_issue_surface(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="https://api.github.com/repos/foo/repo",
+        json={
+            "name": "repo",
+            "full_name": "foo/repo",
+            "description": "A test repo",
+            "stargazers_count": 12,
+            "forks_count": 2,
+            "language": "Python",
+            "topics": [],
+            "license": None,
+            "updated_at": "2026-04-01T00:00:00Z",
+        },
+    )
+    httpx_mock.add_response(
+        url="https://api.github.com/repos/foo/repo/issues/7",
+        json={
+            "number": 7,
+            "title": "Important bug",
+            "body": "The issue body describes the concrete failure.",
+            "state": "open",
+            "user": {"login": "octo"},
+            "comments": 3,
+        },
+    )
+
+    result = await GitHubIngestor().ingest(
+        "https://github.com/foo/repo/issues/7",
+        config={"fetch_issues": False, "fetch_commits": False, "fetch_docs": False},
+    )
+
+    assert "Important bug" in result.raw_text
+    assert "concrete failure" in result.raw_text
+    assert result.metadata["github_subtype"] == "issue"
+    assert result.url == "https://github.com/foo/repo/issues/7"
 
 
 @pytest.mark.asyncio
@@ -211,6 +252,143 @@ async def test_hackernews_ingest_flattens_comments(httpx_mock: HTTPXMock):
 
 
 @pytest.mark.asyncio
+async def test_hackernews_ingest_includes_linked_article_when_configured(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="https://hn.algolia.com/api/v1/items/123",
+        json={
+            "id": 123,
+            "title": "Article discussion",
+            "url": "https://example.com/article",
+            "points": 42,
+            "author": "pg",
+            "children": [{"author": "a", "text": "HN reaction"}],
+        },
+    )
+    httpx_mock.add_response(
+        url="https://example.com/article",
+        html="<html><head><title>Linked Article</title></head><body><article><p>"
+        + ("Primary article body. " * 40)
+        + "</p></article></body></html>",
+    )
+
+    result = await HackerNewsIngestor().ingest(
+        "https://news.ycombinator.com/item?id=123",
+        config={"max_comments": 10, "include_linked_article": True},
+    )
+
+    assert "Primary article body" in result.raw_text
+    assert "HN reaction" in result.raw_text
+    assert result.sections["Linked Article"]
+    assert result.metadata["linked_article_fetched"] is True
+
+
+@pytest.mark.asyncio
+async def test_reddit_ingest_recurses_nested_replies(httpx_mock: HTTPXMock):
+    from website.features.summarization_engine.source_ingest.reddit.ingest import RedditIngestor
+
+    httpx_mock.add_response(
+        json=[
+            {
+                "data": {
+                    "children": [
+                        {
+                            "data": {
+                                "id": "abc",
+                                "title": "Nested thread",
+                                "selftext": "OP asks for tradeoffs.",
+                                "url": "https://reddit.com/r/test/comments/abc/nested/",
+                                "subreddit": "test",
+                                "author": "op",
+                                "score": 10,
+                                "num_comments": 3,
+                                "permalink": "/r/test/comments/abc/nested/",
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "data": {
+                    "children": [
+                        {
+                            "kind": "t1",
+                            "data": {
+                                "author": "top",
+                                "body": "Consensus answer.",
+                                "score": 12,
+                                "replies": {
+                                    "data": {
+                                        "children": [
+                                            {
+                                                "kind": "t1",
+                                                "data": {
+                                                    "author": "reply",
+                                                    "body": "Important dissent caveat.",
+                                                    "score": 8,
+                                                    "replies": "",
+                                                },
+                                            }
+                                        ]
+                                    }
+                                },
+                            },
+                        }
+                    ]
+                }
+            },
+        ]
+    )
+
+    result = await RedditIngestor().ingest(
+        "https://www.reddit.com/r/test/comments/abc/nested/",
+        config={"max_comments": 10, "comment_depth": 3, "pullpush_enabled": False},
+    )
+
+    assert "Consensus answer" in result.raw_text
+    assert "Important dissent caveat" in result.raw_text
+    assert result.metadata["nested_reply_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reddit_html_fallback_uses_pullpush_when_page_is_blocked(monkeypatch):
+    from website.features.summarization_engine.source_ingest.reddit import ingest as reddit_ingest
+    from website.features.summarization_engine.source_ingest.reddit import pullpush
+    from website.features.summarization_engine.source_ingest.reddit.ingest import RedditIngestor
+
+    async def fake_fetch_json(*args, **kwargs):
+        raise RuntimeError("blocked")
+
+    async def fake_fetch_text(*args, **kwargs):
+        return "<html><title>Blocked</title><p>blocked</p></html>", "https://old.reddit.com/r/test/comments/abc123/thread_slug/"
+
+    async def fake_recover_removed_comments(**kwargs):
+        return pullpush.PullPushResult(
+            comments=[
+                pullpush.PullPushComment(
+                    id="c1",
+                    body="Recovered comment with useful context.",
+                    author="alice",
+                    score=12,
+                )
+            ],
+            success=True,
+        )
+
+    monkeypatch.setattr(reddit_ingest, "fetch_json", fake_fetch_json)
+    monkeypatch.setattr(reddit_ingest, "fetch_text", fake_fetch_text)
+    monkeypatch.setattr(reddit_ingest, "recover_removed_comments", fake_recover_removed_comments)
+
+    result = await RedditIngestor().ingest(
+        "https://www.reddit.com/r/test/comments/abc123/thread_slug/",
+        config={"pullpush_enabled": True},
+    )
+
+    assert result.extraction_confidence == "medium"
+    assert result.metadata["pullpush_fetched"] == 1
+    assert "Recovered comment with useful context" in result.raw_text
+
+
+@pytest.mark.asyncio
 async def test_newsletter_direct_fetch_succeeds_without_fallback(httpx_mock: HTTPXMock):
     """If the direct fetch returns enough content, no bypass provider is called."""
     long_article = (
@@ -346,3 +524,94 @@ async def test_web_ingest_extracts_html_text(httpx_mock: HTTPXMock):
     assert "Hello world" in result.raw_text
     assert result.metadata["title"] == "Demo"
     assert result.extraction_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_arxiv_ingest_prefers_html_sections_when_configured(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://export.arxiv.org/api/query?id_list=2402.08954",
+        text="""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>HTML Papers</title>
+    <summary>Abstract text.</summary>
+    <published>2024-02-01T00:00:00Z</published>
+    <author><name>Ada Lovelace</name></author>
+    <link type="application/pdf" href="https://arxiv.org/pdf/2402.08954"/>
+  </entry>
+</feed>""",
+    )
+    httpx_mock.add_response(
+        url="https://ar5iv.labs.arxiv.org/html/2402.08954",
+        html="<html><body><section><h2>Introduction</h2><p>Intro section text.</p></section>"
+        "<section><h2>Conclusion</h2><p>Conclusion section text.</p></section></body></html>",
+    )
+
+    result = await ArxivIngestor().ingest(
+        "https://arxiv.org/abs/2402.08954",
+        config={"prefer_html": True},
+    )
+
+    assert "Intro section text" in result.raw_text
+    assert "Conclusion section text" in result.raw_text
+    assert result.metadata["html_fetched"] is True
+
+
+@pytest.mark.asyncio
+async def test_arxiv_ingest_uses_html_when_api_rate_limited(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://export.arxiv.org/api/query?id_list=2402.08954",
+        status_code=429,
+        text="rate limited",
+    )
+    httpx_mock.add_response(
+        url="https://ar5iv.labs.arxiv.org/html/2402.08954",
+        html="<html><body><section><h2>Abstract</h2><p>Fallback abstract text.</p></section>"
+        "<section><h2>Conclusion</h2><p>Fallback conclusion text.</p></section></body></html>",
+    )
+
+    result = await ArxivIngestor().ingest(
+        "https://arxiv.org/abs/2402.08954",
+        config={"prefer_html": True},
+    )
+
+    assert result.extraction_confidence == "medium"
+    assert result.metadata["html_fetched"] is True
+    assert result.metadata["api_fetched"] is False
+    assert "Fallback abstract text" in result.raw_text
+
+
+@pytest.mark.asyncio
+async def test_podcast_ingest_prefers_rss_transcript_and_chapters(httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="https://example.com/feed.xml",
+        text="""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <item>
+      <title>Episode One</title>
+      <link>https://example.com/episode-one</link>
+      <podcast:transcript url="https://example.com/transcript.txt" type="text/plain"/>
+      <podcast:chapters url="https://example.com/chapters.json" type="application/json"/>
+    </item>
+  </channel>
+</rss>""",
+    )
+    httpx_mock.add_response(
+        url="https://example.com/transcript.txt",
+        text="Transcript text from RSS feed with enough content to use as primary podcast surface.",
+    )
+    httpx_mock.add_response(
+        url="https://example.com/chapters.json",
+        json={"chapters": [{"startTime": 0, "title": "Opening"}]},
+    )
+
+    result = await PodcastIngestor().ingest(
+        "https://example.com/episode-one",
+        config={"feed_url": "https://example.com/feed.xml"},
+    )
+
+    assert "Transcript text from RSS feed" in result.raw_text
+    assert "Opening" in result.raw_text
+    assert result.metadata["transcript_source"] == "rss"
+    assert result.metadata["chapters_source"] == "rss"

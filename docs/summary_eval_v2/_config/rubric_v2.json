@@ -1,0 +1,20 @@
+{
+  "composite_axes": {
+    "coverage": 0.30,
+    "faithfulness": 0.35,
+    "conciseness": 0.15,
+    "coherence": 0.20
+  },
+  "required_metadata": [
+    "route_subtype",
+    "route_supported",
+    "raw_metadata"
+  ],
+  "gates": {
+    "hard_composite_score": 80,
+    "soft_composite_score": 90,
+    "min_faithfulness": 0.90,
+    "max_llm_calls": 3,
+    "requires_v2_write_visibility": true
+  }
+}

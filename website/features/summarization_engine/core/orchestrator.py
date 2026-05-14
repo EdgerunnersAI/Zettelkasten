@@ -16,6 +16,7 @@ from website.features.summarization_engine.core.errors import (
     ExtractionConfidenceError,
     NewsletterURLUnreachable,
     RoutingError,
+    UnsupportedURLShapeError,
     UnsupportedVideoError,
 )
 from website.features.summarization_engine.core.models import (
@@ -23,7 +24,7 @@ from website.features.summarization_engine.core.models import (
     SourceType,
     SummaryResult,
 )
-from website.features.summarization_engine.core.router import detect_source_type
+from website.features.summarization_engine.core.router import detect_route_decision
 from website.features.summarization_engine.source_ingest import get_ingestor
 from website.features.summarization_engine.summarization import get_summarizer
 
@@ -81,7 +82,9 @@ def _yt_preflight_refuse(url: str) -> tuple[bool, str] | None:
         msg = str(exc).lower()
         if "private video" in msg or "is private" in msg:
             return (True, "private")
-        if "removed" in msg or "no longer available" in msg or "not available" in msg:
+        if "requested format is not available" in msg:
+            return None
+        if "removed" in msg or "no longer available" in msg or "video unavailable" in msg:
             return (True, "removed_or_unavailable")
         if "premiere" in msg or "scheduled" in msg or "live event" in msg:
             return (True, "premiere_or_live")
@@ -135,6 +138,23 @@ async def summarize_url_bundle(
     if not validate_url(url):
         raise RoutingError("Invalid or blocked URL", url=url)
 
+    route_decision = detect_route_decision(url)
+    if source_type is not None and source_type != route_decision.source_type:
+        route_decision = route_decision.__class__(
+            source_type=source_type,
+            subtype=route_decision.subtype,
+            supported=route_decision.supported,
+            reason=route_decision.reason,
+        )
+    if not route_decision.supported:
+        raise UnsupportedURLShapeError(
+            source_type=route_decision.source_type.value,
+            subtype=route_decision.subtype,
+            reason=route_decision.reason or "unsupported_url_shape",
+            url=url,
+        )
+    effective_source_type = route_decision.source_type
+
     # H4/T7: preflight refuse for hard-fail YouTube URLs (no LLM budget burned).
     preflight = _yt_preflight_refuse(url)
     if preflight is not None:
@@ -144,7 +164,6 @@ async def summarize_url_bundle(
             raise UnsupportedVideoError(reason=reason, url=url)
 
     config = load_config()
-    effective_source_type = source_type or detect_source_type(url)
     logger.info(
         "orchestrator.start url=%s user_id=%s source_type=%s",
         url,
@@ -181,6 +200,11 @@ async def summarize_url_bundle(
             raise
         _INGEST_CACHE.put(ingest_cache_key, ingest_result.model_dump(mode="json"))
 
+    ingest_result.metadata.setdefault("route_subtype", route_decision.subtype)
+    ingest_result.metadata.setdefault("route_supported", route_decision.supported)
+    if route_decision.reason:
+        ingest_result.metadata.setdefault("route_reason", route_decision.reason)
+
     if ingest_result.extraction_confidence == "low":
         logger.warning(
             "orchestrator.low_confidence url=%s reason=%s raw_text_len=%d",
@@ -210,6 +234,10 @@ async def summarize_url_bundle(
     # summarize() call so transcript/ingest work above is unaffected.
     async with budget_scope(summarizer=effective_source_type.value):
         summary_result = await summarizer.summarize(ingest_result)
+    structured_payload = dict(summary_result.metadata.structured_payload or {})
+    structured_payload.setdefault("route_subtype", route_decision.subtype)
+    structured_payload.setdefault("route_supported", route_decision.supported)
+    summary_result.metadata.structured_payload = structured_payload
     return OrchestratedSummary(
         ingest_result=ingest_result,
         summary_result=summary_result,

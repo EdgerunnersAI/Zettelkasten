@@ -1,0 +1,145 @@
+{
+  "mini_title": "OpenAI's Recent Strategic and Product Updates",
+  "brief_summary": "OpenAI has announced significant developments, including a rebuilt voice infrastructure with new GPT-Realtime models, the formation of the OpenAI Deployment Company via the acquisition of Tomoro and a multi-firm partnership, and new features like 'Trusted Contact' for user safety and 'Daybreak' for cyber defense. The company also released ChatGPT Images 2.0 and provided insights into enterprise AI adoption and the mainstreaming of ChatGPT for various tasks.",
+  "tags": [
+    "openai",
+    "ai-research",
+    "voice-ai",
+    "chatgpt",
+    "enterprise-solutions",
+    "business-partnerships",
+    "acquisitions",
+    "ai-safety",
+    "cyber-security",
+    "image-generation"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Product & Feature Announcements",
+      "bullets": [
+        "Rebuilt voice infrastructure for ChatGPT and the Realtime API.",
+        "Launched GPT-Realtime-2 in the API, a voice model with GPT-5-class reasoning.",
+        "Introduced streaming models GPT-Realtime-Translate and GPT-Realtime-Whisper.",
+        "Launched 'Trusted Contact' in ChatGPT, an optional safety feature for eligible adult users to notify a trusted person during a self-harm crisis, developed with input from the American Psychological Association.",
+        "Introduced 'Daybreak' for cyber defense, utilizing OpenAI models and Codex with security partners.",
+        "Released ChatGPT Images 2.0, an image model featuring web search and self-checking capabilities."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Business Expansion & Strategic Partnerships",
+      "bullets": [
+        "Launched the OpenAI Deployment Company to embed engineers in businesses.",
+        "Initiated this venture with the acquisition of Tomoro, adding approximately 150 Forward Deployed Engineers and Deployment Specialists.",
+        "The new company is a partnership with 19 firms, majority-owned by OpenAI.",
+        "TPG serves as the lead partner.",
+        "Advent, Bain Capital, and Brookfield are co-lead founding partners.",
+        "B Capital, BBVA, Emergence Capital, Goanna, Goldman Sachs, SoftBank Corp., Warburg Pincus LLC, and WCAS are founding partners.",
+        "Bain & Company, Capgemini, and McKinsey & Company are investors."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Company Context & AI Adoption Trends",
+      "bullets": [
+        "OpenAI operates as a partnership focused on ensuring artificial general intelligence (AGI) benefits humanity safely.",
+        "Company details: 1,001-5,000 employees, headquartered in San Francisco, CA.",
+        "The B2B Signals quarterly research series tracks enterprise AI adoption.",
+        "Frontier firms demonstrate 16x higher Codex usage in agentic workflows.",
+        "By early 2026, ChatGPT adoption became more mainstream across demographics for recurring tasks.",
+        "The 'ChatGPT Futures Class of 2026' showcases 26 students who used the tool throughout university for projects like mapping space objects and preserving languages."
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "linkedin",
+    "url": "https://www.linkedin.com/company/openai/",
+    "author": null,
+    "date": null,
+    "extraction_confidence": "low",
+    "confidence_reason": "LinkedIn login wall detected",
+    "total_tokens_used": 1425,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 1425,
+    "total_latency_ms": 39511,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "OpenAI's Recent Strategic and Product Updates",
+      "brief_summary": "OpenAI has announced significant developments, including a rebuilt voice infrastructure with new GPT-Realtime models, the formation of the OpenAI Deployment Company via the acquisition of Tomoro and a multi-firm partnership, and new features like 'Trusted Contact' for user safety and 'Daybreak' for cyber defense. The company also released ChatGPT Images 2.0 and provided insights into enterprise AI adoption and the mainstreaming of ChatGPT for various tasks.",
+      "tags": [
+        "OpenAI",
+        "AI Research",
+        "Voice AI",
+        "ChatGPT",
+        "Enterprise Solutions",
+        "Business Partnerships",
+        "Acquisitions",
+        "AI Safety",
+        "Cyber Security",
+        "Image Generation",
+        "AI Adoption"
+      ],
+      "detailed_summary": [
+        {
+          "heading": "Product & Feature Announcements",
+          "bullets": [
+            "Rebuilt voice infrastructure for ChatGPT and the Realtime API.",
+            "Launched GPT-Realtime-2 in the API, a voice model with GPT-5-class reasoning.",
+            "Introduced streaming models GPT-Realtime-Translate and GPT-Realtime-Whisper.",
+            "Launched 'Trusted Contact' in ChatGPT, an optional safety feature for eligible adult users to notify a trusted person during a self-harm crisis, developed with input from the American Psychological Association.",
+            "Introduced 'Daybreak' for cyber defense, utilizing OpenAI models and Codex with security partners.",
+            "Released ChatGPT Images 2.0, an image model featuring web search and self-checking capabilities."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Business Expansion & Strategic Partnerships",
+          "bullets": [
+            "Launched the OpenAI Deployment Company to embed engineers in businesses.",
+            "Initiated this venture with the acquisition of Tomoro, adding approximately 150 Forward Deployed Engineers and Deployment Specialists.",
+            "The new company is a partnership with 19 firms, majority-owned by OpenAI.",
+            "TPG serves as the lead partner.",
+            "Advent, Bain Capital, and Brookfield are co-lead founding partners.",
+            "B Capital, BBVA, Emergence Capital, Goanna, Goldman Sachs, SoftBank Corp., Warburg Pincus LLC, and WCAS are founding partners.",
+            "Bain & Company, Capgemini, and McKinsey & Company are investors."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Company Context & AI Adoption Trends",
+          "bullets": [
+            "OpenAI operates as a partnership focused on ensuring artificial general intelligence (AGI) benefits humanity safely.",
+            "Company details: 1,001-5,000 employees, headquartered in San Francisco, CA.",
+            "The B2B Signals quarterly research series tracks enterprise AI adoption.",
+            "Frontier firms demonstrate 16x higher Codex usage in agentic workflows.",
+            "By early 2026, ChatGPT adoption became more mainstream across demographics for recurring tasks.",
+            "The 'ChatGPT Futures Class of 2026' showcases 26 students who used the tool throughout university for projects like mapping space objects and preserving languages."
+          ],
+          "sub_sections": {}
+        }
+      ],
+      "route_subtype": "company",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": "gemini-2.5-flash-rate-limited"
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}

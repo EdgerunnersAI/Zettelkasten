@@ -1,0 +1,146 @@
+{
+  "mini_title": "The Transformer Architecture for Sequence Transduction",
+  "brief_summary": "Ashish Vaswani et al. (2017) introduced the Transformer, a novel neural network architecture for sequence transduction tasks. It replaces traditional RNNs/CNNs with an attention-only mechanism, demonstrating superior quality, parallelizability, and reduced training time in machine translation.",
+  "tags": [
+    "transformer",
+    "attention-mechanisms",
+    "sequence-transduction",
+    "machine-translation",
+    "neural-networks"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Research Question/Purpose",
+      "bullets": [
+        "To propose a new network architecture, the Transformer, for sequence transduction tasks.",
+        "To replace complex recurrent or convolutional neural networks (RNNs/CNNs) in encoder-decoder configurations with an attention-only mechanism.",
+        "To achieve superior quality, greater parallelizability, and significantly less training time compared to existing models."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Method",
+      "bullets": [
+        "The Transformer architecture is based solely on attention mechanisms, entirely dispensing with recurrence and convolutions.",
+        "Experiments were conducted on two machine translation tasks: WMT 2014 English-to-German and WMT 2014 English-to-French.",
+        "The model's generalization capabilities were tested by applying it to English constituency parsing with both large and limited training data."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Findings",
+      "bullets": [
+        "The Transformer demonstrated superior quality, increased parallelizability, and significantly less training time compared to previous models.",
+        "On the WMT 2014 English-to-German translation task, the model achieved a 28.4 BLEU score, improving on existing best results (including ensembles) by over 2 BLEU.",
+        "On the WMT 2014 English-to-French task, it established a new single-model state-of-the-art BLEU score of 41.8.",
+        "Training for the English-to-French task required 3.5 days on eight GPUs, which is a small fraction of the training costs of previous models.",
+        "The Transformer generalized well, successfully applying to English constituency parsing with both large and limited training data."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Limitations",
+      "bullets": [
+        "No specific limitations were mentioned in the provided summary text."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Citations",
+      "bullets": [
+        "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \u0141., & Polosukhin, I. (2017). Attention Is All You Need. *Advances in Neural Information Processing Systems*, 30."
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "arxiv",
+    "url": "https://arxiv.org/abs/1706.03762",
+    "author": null,
+    "date": "2017-06-12T17:57:34Z",
+    "extraction_confidence": "high",
+    "confidence_reason": "arXiv export API metadata fetched",
+    "total_tokens_used": 1193,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 1193,
+    "total_latency_ms": 23954,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "The Transformer Architecture for Sequence Transduction",
+      "brief_summary": "Ashish Vaswani et al. (2017) introduced the Transformer, a novel neural network architecture for sequence transduction tasks. It replaces traditional RNNs/CNNs with an attention-only mechanism, demonstrating superior quality, parallelizability, and reduced training time in machine translation.",
+      "tags": [
+        "Transformer",
+        "Attention Mechanisms",
+        "Sequence Transduction",
+        "Machine Translation",
+        "Neural Networks"
+      ],
+      "detailed_summary": [
+        {
+          "heading": "Research Question/Purpose",
+          "bullets": [
+            "To propose a new network architecture, the Transformer, for sequence transduction tasks.",
+            "To replace complex recurrent or convolutional neural networks (RNNs/CNNs) in encoder-decoder configurations with an attention-only mechanism.",
+            "To achieve superior quality, greater parallelizability, and significantly less training time compared to existing models."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Method",
+          "bullets": [
+            "The Transformer architecture is based solely on attention mechanisms, entirely dispensing with recurrence and convolutions.",
+            "Experiments were conducted on two machine translation tasks: WMT 2014 English-to-German and WMT 2014 English-to-French.",
+            "The model's generalization capabilities were tested by applying it to English constituency parsing with both large and limited training data."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Findings",
+          "bullets": [
+            "The Transformer demonstrated superior quality, increased parallelizability, and significantly less training time compared to previous models.",
+            "On the WMT 2014 English-to-German translation task, the model achieved a 28.4 BLEU score, improving on existing best results (including ensembles) by over 2 BLEU.",
+            "On the WMT 2014 English-to-French task, it established a new single-model state-of-the-art BLEU score of 41.8.",
+            "Training for the English-to-French task required 3.5 days on eight GPUs, which is a small fraction of the training costs of previous models.",
+            "The Transformer generalized well, successfully applying to English constituency parsing with both large and limited training data."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Limitations",
+          "bullets": [
+            "No specific limitations were mentioned in the provided summary text."
+          ],
+          "sub_sections": {}
+        },
+        {
+          "heading": "Citations",
+          "bullets": [
+            "Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, \u0141., & Polosukhin, I. (2017). Attention Is All You Need. *Advances in Neural Information Processing Systems*, 30."
+          ],
+          "sub_sections": {}
+        }
+      ],
+      "route_subtype": "abstract",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": "gemini-2.5-flash-rate-limited"
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}

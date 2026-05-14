@@ -1,0 +1,15 @@
+{
+  "source": "reddit",
+  "iter": 1,
+  "status": "soft_target_met",
+  "composite_score": 97.0,
+  "baseline_score": 94.18,
+  "delta": 2.82,
+  "checks": {
+    "summary_json": true,
+    "eval_json": true,
+    "baseline_score_json": true,
+    "manual_review_prompt": true
+  },
+  "next_actions": []
+}

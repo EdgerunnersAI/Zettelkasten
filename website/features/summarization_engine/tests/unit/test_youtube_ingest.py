@@ -9,6 +9,7 @@ from website.features.summarization_engine.source_ingest.youtube.ingest import (
 from website.features.summarization_engine.source_ingest.youtube.tiers import (
     TierName,
     TierResult,
+    tier_piped_pool,
     _vtt_to_plaintext,
 )
 
@@ -120,3 +121,39 @@ Later point
     assert _vtt_to_plaintext(vtt) == (
         "[00:00] Opening line [00:09] Next idea [1:05:00] Later point"
     )
+
+
+@pytest.mark.asyncio
+async def test_piped_pool_dereferences_caption_url(httpx_mock):
+    httpx_mock.add_response(
+        url="https://piped.video/streams/abc123",
+        json={
+            "subtitles": [
+                {
+                    "code": "en",
+                    "url": "https://piped.video/api/v1/captions/abc123/en.vtt",
+                }
+            ],
+        },
+    )
+    httpx_mock.add_response(
+        url="https://piped.video/api/v1/captions/abc123/en.vtt",
+        text="""WEBVTT
+
+00:00:00.000 --> 00:00:04.000
+This caption is long enough to prove the URL was dereferenced and converted.
+
+00:00:04.000 --> 00:00:08.000
+More transcript text with enough content for the pool tier to accept it.
+""",
+    )
+
+    result = await tier_piped_pool(
+        "abc123",
+        {"piped_instances": ["piped.video"], "instance_health_ttl_hours": 1},
+    )
+
+    assert result.success is True
+    assert result.tier == TierName.PIPED_POOL
+    assert "This caption is long enough" in result.transcript
+    assert result.extra["caption_url"].endswith("/en.vtt")

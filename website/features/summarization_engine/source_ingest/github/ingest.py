@@ -62,7 +62,8 @@ class GitHubIngestor(BaseIngestor):
     source_type = SourceType.GITHUB
 
     async def ingest(self, url: str, *, config: dict[str, Any]) -> IngestResult:
-        owner, repo = _parse_repo(url)
+        route = _parse_github_route(url)
+        owner, repo = route["owner"], route["repo"]
         headers = {"Accept": "application/vnd.github+json"}
         token = _github_token(config)
         if token:
@@ -78,6 +79,18 @@ class GitHubIngestor(BaseIngestor):
                 raise_extraction("GitHub repository not found", self.source_type, "404")
             repo_resp.raise_for_status()
             repo_data = repo_resp.json()
+
+            if route["subtype"] != "repo":
+                object_result = await _ingest_github_object(
+                    client,
+                    url=url,
+                    owner=owner,
+                    repo=repo,
+                    repo_data=repo_data,
+                    route=route,
+                )
+                if object_result is not None:
+                    return object_result
 
             readme = await _optional_readme(client, owner, repo)
             languages = await _optional_json(client, f"https://api.github.com/repos/{owner}/{repo}/languages", {})
@@ -132,6 +145,7 @@ class GitHubIngestor(BaseIngestor):
         metadata = {
             "owner": owner,
             "repo": repo,
+            "github_subtype": "repo",
             "full_name": repo_data.get("full_name"),
             "stars": repo_data.get("stargazers_count", 0),
             "forks": repo_data.get("forks_count", 0),
@@ -249,11 +263,144 @@ class GitHubIngestor(BaseIngestor):
 
 
 def _parse_repo(url: str) -> tuple[str, str]:
+    route = _parse_github_route(url)
+    return route["owner"], route["repo"]
+
+
+def _parse_github_route(url: str) -> dict[str, str]:
     parsed = urlparse(url)
     parts = [part for part in parsed.path.split("/") if part]
     if len(parts) < 2 or not re.match(r"^[A-Za-z0-9_.-]+$", parts[0]):
         raise_extraction("Invalid GitHub repository URL", SourceType.GITHUB, "bad_url")
-    return parts[0], parts[1].removesuffix(".git")
+    subtype = "repo"
+    identifier = ""
+    if len(parts) >= 4 and parts[2] in {"issues", "issue"}:
+        subtype = "issue"
+        identifier = parts[3]
+    elif len(parts) >= 4 and parts[2] in {"pull", "pulls"}:
+        subtype = "pull_request"
+        identifier = parts[3]
+    elif len(parts) >= 4 and parts[2] == "commit":
+        subtype = "commit"
+        identifier = parts[3]
+    elif len(parts) >= 3 and parts[2] == "releases":
+        subtype = "release"
+        identifier = "/".join(parts[3:])
+    elif len(parts) >= 4 and parts[2] in {"blob", "tree"}:
+        subtype = parts[2]
+        identifier = "/".join(parts[3:])
+    return {
+        "owner": parts[0],
+        "repo": parts[1].removesuffix(".git"),
+        "subtype": subtype,
+        "identifier": identifier,
+    }
+
+
+async def _ingest_github_object(
+    client: httpx.AsyncClient,
+    *,
+    url: str,
+    owner: str,
+    repo: str,
+    repo_data: dict[str, Any],
+    route: dict[str, str],
+) -> IngestResult | None:
+    subtype = route["subtype"]
+    ident = route["identifier"]
+    api_base = f"https://api.github.com/repos/{owner}/{repo}"
+    payload: dict[str, Any] | None = None
+    if subtype == "issue":
+        payload = await _optional_json(client, f"{api_base}/issues/{ident}", {})
+    elif subtype == "pull_request":
+        payload = await _optional_json(client, f"{api_base}/pulls/{ident}", {})
+    elif subtype == "commit":
+        payload = await _optional_json(client, f"{api_base}/commits/{ident}", {})
+    elif subtype == "release":
+        tag = ident.removeprefix("tag/")
+        payload = await _optional_json(client, f"{api_base}/releases/tags/{tag}", {})
+    elif subtype in {"blob", "tree"}:
+        return _degraded_file_context_result(
+            url=url,
+            owner=owner,
+            repo=repo,
+            repo_data=repo_data,
+            route=route,
+        )
+    if not payload:
+        return None
+
+    title = (
+        payload.get("title")
+        or payload.get("name")
+        or payload.get("commit", {}).get("message")
+        or f"{subtype} {ident}"
+    )
+    body = payload.get("body") or payload.get("commit", {}).get("message") or ""
+    sections = {
+        "Repository": f"{repo_data.get('full_name', f'{owner}/{repo}')}\n{repo_data.get('description') or ''}",
+        subtype.replace("_", " ").title(): (
+            f"{title}\nState: {payload.get('state') or payload.get('mergeable_state') or 'unknown'}\n"
+            f"Author: {((payload.get('user') or {}).get('login')) or ((payload.get('author') or {}).get('login')) or 'unknown'}\n"
+            f"Comments: {payload.get('comments', 0)}\n{body}"
+        ),
+    }
+    return IngestResult(
+        source_type=SourceType.GITHUB,
+        url=url,
+        original_url=url,
+        raw_text=join_sections(sections),
+        sections=sections,
+        metadata={
+            "owner": owner,
+            "repo": repo,
+            "full_name": repo_data.get("full_name"),
+            "github_subtype": subtype,
+            "github_object_id": ident,
+            "title": compact_text(str(title), max_chars=160),
+            "state": payload.get("state"),
+        },
+        extraction_confidence="high" if body or title else "medium",
+        confidence_reason=f"GitHub {subtype} object fetched",
+        fetched_at=utc_now(),
+    )
+
+
+def _degraded_file_context_result(
+    *,
+    url: str,
+    owner: str,
+    repo: str,
+    repo_data: dict[str, Any],
+    route: dict[str, str],
+) -> IngestResult:
+    subtype = route["subtype"]
+    ident = route["identifier"]
+    sections = {
+        "Repository": f"{repo_data.get('full_name', f'{owner}/{repo}')}\n{repo_data.get('description') or ''}",
+        "File Context": (
+            f"This GitHub URL points to a {subtype} path: {ident}. "
+            "The engine treats this as degraded file-context metadata unless a dedicated file fetch succeeds."
+        ),
+    }
+    return IngestResult(
+        source_type=SourceType.GITHUB,
+        url=url,
+        original_url=url,
+        raw_text=join_sections(sections),
+        sections=sections,
+        metadata={
+            "owner": owner,
+            "repo": repo,
+            "full_name": repo_data.get("full_name"),
+            "github_subtype": subtype,
+            "github_object_id": ident,
+            "degraded_file_context": True,
+        },
+        extraction_confidence="medium",
+        confidence_reason=f"GitHub {subtype} URL treated as degraded file context",
+        fetched_at=utc_now(),
+    )
 
 
 def _github_token(config: dict[str, Any]) -> str:

@@ -1,0 +1,10 @@
+{
+  "source": "hackernews",
+  "iter": 1,
+  "baseline_dir": null,
+  "baseline_kind": "legacy_summary_eval",
+  "composite_score": null,
+  "notes": [
+    "No prior baseline found; iter becomes first measured baseline."
+  ]
+}

@@ -8,6 +8,7 @@ import pytest
 from website.features.summarization_engine.core.errors import (
     ExtractionConfidenceError,
     RoutingError,
+    UnsupportedURLShapeError,
 )
 from website.features.summarization_engine.core.models import (
     DetailedSummarySection,
@@ -205,3 +206,76 @@ async def test_orchestrator_rejects_thin_content():
                 user_id=UUID("00000000-0000-0000-0000-000000000001"),
                 gemini_client=AsyncMock(),
             )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_rejects_unsupported_youtube_channel_before_ingest():
+    from website.features.summarization_engine.core.orchestrator import summarize_url
+
+    with patch(
+        "website.features.summarization_engine.core.orchestrator.get_ingestor"
+    ) as get_ingestor:
+        with pytest.raises(UnsupportedURLShapeError) as exc:
+            await summarize_url(
+                "https://www.youtube.com/@somechannel",
+                user_id=UUID("00000000-0000-0000-0000-000000000001"),
+                gemini_client=AsyncMock(),
+            )
+
+    assert exc.value.source_type == "youtube"
+    assert exc.value.subtype == "channel"
+    assert exc.value.reason == "unsupported_youtube_channel"
+    get_ingestor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_attaches_route_contract_metadata():
+    from website.features.summarization_engine.core.orchestrator import summarize_url_bundle
+
+    fake_ingest = IngestResult(
+        source_type=SourceType.GITHUB,
+        url="https://github.com/foo/bar/issues/10",
+        original_url="https://github.com/foo/bar/issues/10",
+        raw_text="Issue content with enough detail to pass the minimum content gate and exercise route metadata propagation.",
+        extraction_confidence="high",
+        confidence_reason="issue ok",
+        fetched_at=datetime.now(timezone.utc),
+    )
+    fake_meta = SummaryMetadata(
+        source_type=SourceType.GITHUB,
+        url="https://github.com/foo/bar/issues/10",
+        extraction_confidence="high",
+        confidence_reason="issue ok",
+        total_tokens_used=100,
+        total_latency_ms=1500,
+    )
+    fake_summary = SummaryResult(
+        mini_title="Fake issue",
+        brief_summary="A fake issue used for testing route metadata propagation.",
+        tags=["github", "issue", "test", "route", "metadata", "contract", "demo"],
+        detailed_summary=[DetailedSummarySection(heading="Overview", bullets=["Fake data"])],
+        metadata=fake_meta,
+    )
+
+    mock_ingestor = AsyncMock()
+    mock_ingestor.ingest.return_value = fake_ingest
+    mock_summarizer = AsyncMock()
+    mock_summarizer.summarize.return_value = fake_summary
+
+    with patch(
+        "website.features.summarization_engine.core.orchestrator.get_ingestor"
+    ) as get_ingestor, patch(
+        "website.features.summarization_engine.core.orchestrator.get_summarizer"
+    ) as get_summarizer:
+        get_ingestor.return_value = lambda: mock_ingestor
+        get_summarizer.return_value = lambda client, config: mock_summarizer
+
+        bundle = await summarize_url_bundle(
+            "https://github.com/foo/bar/issues/10",
+            user_id=UUID("00000000-0000-0000-0000-000000000001"),
+            gemini_client=AsyncMock(),
+        )
+
+    assert bundle.ingest_result.metadata["route_subtype"] == "issue"
+    assert bundle.ingest_result.metadata["route_supported"] is True
+    assert bundle.summary_result.metadata.structured_payload["route_subtype"] == "issue"

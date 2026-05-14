@@ -1,0 +1,262 @@
+{
+  "mini_title": "psf/requests",
+  "brief_summary": "psf/requests is a popular Python HTTP/1.1 library that simplifies HTTP requests by automating tasks like query string addition and form-encoding. Its main stack includes Python and Makefile. Users adopt it via `pip install requests`. Core public interfaces mentioned include the `json` method, `Session` objects, `HTTPDigestAuth`, and `PreparedRequest.copy()`.",
+  "tags": [
+    "gh-psf-requests",
+    "python",
+    "library",
+    "http-client",
+    "http",
+    "networking",
+    "api-client",
+    "web-development",
+    "http-1-1"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Overview",
+      "bullets": [
+        "psf/requests is a Python HTTP/1.1 library designed to simplify HTTP requests."
+      ],
+      "sub_sections": {
+        "Core argument": [
+          "psf/requests is a Python HTTP/1.1 library designed to simplify HTTP requests."
+        ],
+        "Architecture": [
+          "It automates common tasks like adding query strings or form-encoding data, and manages underlying complexities such as Keep-Alive, connection pooling, and session persistence.",
+          "The library is primarily written in Python, with a small component in Makefile, and is structured with dedicated directories for tests and documentation."
+        ],
+        "Stack": [
+          "Python, Makefile."
+        ]
+      }
+    },
+    {
+      "heading": "Features and modules",
+      "bullets": [],
+      "sub_sections": {
+        "Overview": [
+          "psf/requests is a popular Python HTTP/1.1 library, described as simple and elegant.",
+          "Approximately 300 million downloads per week and used by over 4,000,000 GitHub repositories.",
+          "Officially supports Python 3.10+.",
+          "Usability signals: pip install requests."
+        ],
+        "Core Features": [
+          "Simplifies HTTP requests by automating tasks like adding query strings or form-encoding PUT/POST data.",
+          "Recommends the `json` method for modern use.",
+          "Includes Keep-Alive and connection pooling.",
+          "Supports international domains.",
+          "Provides session management with cookie persistence.",
+          "Offers browser-style TLS/SSL verification.",
+          "Supports Basic/Digest authentication.",
+          "Performs automatic content decompression.",
+          "Handles multi-part file uploads.",
+          "Includes SOCKS proxy support.",
+          "Manages connection timeouts.",
+          "Enables streaming downloads.",
+          "Supports `.netrc`.",
+          "Public surface: json method, Session objects, HTTPDigestAuth, PreparedRequest.copy()."
+        ],
+        "Architecture / Modules": [
+          "The repository is 99.3% Python and 0.7% Makefile.",
+          "Contains `tests` and `docs_dir` directories.",
+          "Utilizes 10 GitHub Actions workflows."
+        ],
+        "Operational Guidance": [
+          "Installation is via `pip install requests`.",
+          "When cloning, it is recommended to use the `-c fetch.fsck.badTimezone=ignore` flag to prevent a timestamp error (issue #2690)."
+        ],
+        "Ongoing Initiatives & Bug Fixes": [
+          "Major ongoing initiative: addition of inline type annotations (RFC #7271, PR #7272), with a call for feedback from maintainers of dependent projects.",
+          "Numerous issues and pull requests focus on documentation improvements, such as clarifying the `timeout` parameter's scope (#7350), explaining `ChunkedEncodingError` (#7341), warning against using Session objects across forked processes (#7297), adding a comprehensive error handling example (#7289), and announcing a documentation localization project (#7357).",
+          "Recent bug fixes address preserving leading slashes in URLs for S3 (#7315), incorrect `Content-Length` for `StringIO` with multi-byte characters (#7201), malformed chunked requests with `None` values in data (#7217), `no_proxy` being ignored on redirects (#7194), and an issue where `REQUESTS_CA_BUNDLE` could override `session.verify=False` (#7384).",
+          "Other fixes include adding RFC 7616 support for non-Latin credentials in `HTTPDigestAuth` (#7232) and ensuring `PreparedRequest.copy()` does not share hooks with the original request (#7213)."
+        ],
+        "Tests / Benchmarks / Examples": [
+          "The repository contains a `tests` directory.",
+          "The `docs_dir` directory is present."
+        ]
+      }
+    },
+    {
+      "heading": "Benchmarks and examples",
+      "bullets": [
+        "The repository contains a `tests` directory.",
+        "The `docs_dir` directory is present."
+      ],
+      "sub_sections": {}
+    },
+    {
+      "heading": "Closing remarks",
+      "bullets": [
+        "Roadmap: Core public interfaces mentioned include the `json` method, `Session` objects, `HTTPDigestAuth`, and `PreparedRequest.copy()`."
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "github",
+    "url": "https://github.com/psf/requests",
+    "author": "psf",
+    "date": null,
+    "extraction_confidence": "high",
+    "confidence_reason": "repo metadata and README fetched",
+    "total_tokens_used": 2647,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 2647,
+    "total_latency_ms": 33732,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "psf/requests",
+      "architecture_overview": "psf/requests is a Python HTTP/1.1 library designed to simplify HTTP requests. It automates common tasks like adding query strings or form-encoding data, and manages underlying complexities such as Keep-Alive, connection pooling, and session persistence. The library is primarily written in Python, with a small component in Makefile, and is structured with dedicated directories for tests and documentation.",
+      "brief_summary": "psf/requests is a popular Python HTTP/1.1 library that simplifies HTTP requests by automating tasks like query string addition and form-encoding. Its main stack includes Python and Makefile. Users adopt it via `pip install requests`. Core public interfaces mentioned include the `json` method, `Session` objects, `HTTPDigestAuth`, and `PreparedRequest.copy()`.",
+      "tags": [
+        "gh-psf-requests",
+        "python",
+        "library",
+        "http-client",
+        "http",
+        "networking",
+        "api-client",
+        "web-development",
+        "http-1-1"
+      ],
+      "benchmarks_tests_examples": [
+        "The repository contains a `tests` directory.",
+        "The `docs_dir` directory is present."
+      ],
+      "detailed_summary": [
+        {
+          "heading": "Overview",
+          "bullets": [
+            "psf/requests is a popular Python HTTP/1.1 library, described as simple and elegant.",
+            "Approximately 300 million downloads per week and used by over 4,000,000 GitHub repositories.",
+            "Officially supports Python 3.10+."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Overview",
+          "main_stack": [
+            "Python",
+            "Makefile"
+          ],
+          "public_interfaces": [],
+          "usability_signals": [
+            "pip install requests"
+          ]
+        },
+        {
+          "heading": "Core Features",
+          "bullets": [
+            "Simplifies HTTP requests by automating tasks like adding query strings or form-encoding PUT/POST data.",
+            "Recommends the `json` method for modern use.",
+            "Includes Keep-Alive and connection pooling.",
+            "Supports international domains.",
+            "Provides session management with cookie persistence.",
+            "Offers browser-style TLS/SSL verification.",
+            "Supports Basic/Digest authentication.",
+            "Performs automatic content decompression.",
+            "Handles multi-part file uploads.",
+            "Includes SOCKS proxy support.",
+            "Manages connection timeouts.",
+            "Enables streaming downloads.",
+            "Supports `.netrc`."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Core Features",
+          "main_stack": [],
+          "public_interfaces": [
+            "json method",
+            "Session objects",
+            "HTTPDigestAuth",
+            "PreparedRequest.copy()"
+          ],
+          "usability_signals": []
+        },
+        {
+          "heading": "Architecture / Modules",
+          "bullets": [
+            "The repository is 99.3% Python and 0.7% Makefile.",
+            "Contains `tests` and `docs_dir` directories.",
+            "Utilizes 10 GitHub Actions workflows."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Architecture / Modules",
+          "main_stack": [],
+          "public_interfaces": [],
+          "usability_signals": []
+        },
+        {
+          "heading": "Operational Guidance",
+          "bullets": [
+            "Installation is via `pip install requests`.",
+            "When cloning, it is recommended to use the `-c fetch.fsck.badTimezone=ignore` flag to prevent a timestamp error (issue #2690)."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Operational Guidance",
+          "main_stack": [],
+          "public_interfaces": [],
+          "usability_signals": []
+        },
+        {
+          "heading": "Ongoing Initiatives & Bug Fixes",
+          "bullets": [
+            "Major ongoing initiative: addition of inline type annotations (RFC #7271, PR #7272), with a call for feedback from maintainers of dependent projects.",
+            "Numerous issues and pull requests focus on documentation improvements, such as clarifying the `timeout` parameter's scope (#7350), explaining `ChunkedEncodingError` (#7341), warning against using Session objects across forked processes (#7297), adding a comprehensive error handling example (#7289), and announcing a documentation localization project (#7357).",
+            "Recent bug fixes address preserving leading slashes in URLs for S3 (#7315), incorrect `Content-Length` for `StringIO` with multi-byte characters (#7201), malformed chunked requests with `None` values in data (#7217), `no_proxy` being ignored on redirects (#7194), and an issue where `REQUESTS_CA_BUNDLE` could override `session.verify=False` (#7384).",
+            "Other fixes include adding RFC 7616 support for non-Latin credentials in `HTTPDigestAuth` (#7232) and ensuring `PreparedRequest.copy()` does not share hooks with the original request (#7213)."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Ongoing Initiatives & Bug Fixes",
+          "main_stack": [],
+          "public_interfaces": [],
+          "usability_signals": []
+        },
+        {
+          "heading": "Tests / Benchmarks / Examples",
+          "bullets": [
+            "The repository contains a `tests` directory.",
+            "The `docs_dir` directory is present."
+          ],
+          "sub_sections": {},
+          "module_or_feature": "Tests / Benchmarks / Examples",
+          "main_stack": [],
+          "public_interfaces": [],
+          "usability_signals": []
+        }
+      ],
+      "_github_archetype": {
+        "archetype": "cli_tool",
+        "confidence": 0.6,
+        "reasons": [
+          "cli_tokens=1"
+        ]
+      },
+      "_dense_verify": {
+        "archetype": "framework_api",
+        "missing_fact_count": 0
+      },
+      "owner_login": "psf",
+      "route_subtype": "repo",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": null
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}

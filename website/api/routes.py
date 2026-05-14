@@ -417,6 +417,20 @@ def _v2_assemble_graph(
 
     links: list[dict] = []
     seen_links: set[tuple[str, str, str]] = set()  # (src, dst, relation)
+
+    def _normalize_connection_strength(value: object) -> float:
+        if value is None:
+            return 1.0
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 1.0
+        if numeric <= 0:
+            return 0.0
+        if numeric <= 1:
+            return numeric
+        return min(numeric / 10.0, 1.0)
+
     for ws_id in workspace_ids:
         edge_rows = kg_repo.list_workspace_edges(ws_id)
         if not edge_rows:
@@ -481,6 +495,9 @@ def _v2_assemble_graph(
                             "weight": None,
                             "link_type": "tag",
                             "description": description,
+                            "connection_strength": _normalize_connection_strength(
+                                edge.get("weight")
+                            ),
                         }
                     )
 

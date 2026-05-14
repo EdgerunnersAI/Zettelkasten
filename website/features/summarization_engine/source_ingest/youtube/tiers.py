@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import httpx
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +390,12 @@ async def _try_pool(
                     _mark_unhealthy(instance)
                     continue
                 data = resp.json()
-                transcript = _extract_transcript_from_pool_response(data)
+                caption_url = _extract_caption_url_from_pool_response(data)
+                transcript = ""
+                if caption_url:
+                    caption_resp = await client.get(urljoin(str(resp.url), caption_url))
+                    if caption_resp.status_code == 200:
+                        transcript = _caption_text_to_plaintext(caption_resp.text)
                 if transcript and len(transcript) > 100:
                     return TierResult(
                         tier=tier_name,
@@ -397,7 +403,7 @@ async def _try_pool(
                         success=True,
                         confidence="high",
                         latency_ms=int((time.monotonic() - start) * 1000),
-                        extra={"instance": instance},
+                        extra={"instance": instance, "caption_url": caption_url},
                     )
         except Exception as exc:
             logger.warning("[%s] instance=%s exc=%s", tier_name.value, instance, exc)
@@ -411,7 +417,7 @@ async def _try_pool(
     )
 
 
-def _extract_transcript_from_pool_response(data: dict) -> str:
+def _extract_caption_url_from_pool_response(data: dict) -> str:
     """Return the first English captions URL advertised by the pool response."""
     subtitles = data.get("subtitles") or data.get("captions") or []
     for subtitle in subtitles:
@@ -423,6 +429,29 @@ def _extract_transcript_from_pool_response(data: dict) -> str:
         if "en" in code:
             return subtitle.get("url", "") or ""
     return ""
+
+
+def _caption_text_to_plaintext(text: str) -> str:
+    stripped = (text or "").lstrip()
+    if stripped.startswith("WEBVTT"):
+        return _vtt_to_plaintext(text)
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return text.strip()
+    if isinstance(parsed, list):
+        parts = []
+        for item in parsed:
+            if isinstance(item, dict):
+                value = item.get("text") or item.get("transcript") or item.get("body")
+                if value:
+                    parts.append(str(value))
+        return " ".join(parts).strip()
+    if isinstance(parsed, dict):
+        value = parsed.get("text") or parsed.get("transcript")
+        if value:
+            return str(value).strip()
+    return text.strip()
 
 
 async def tier_piped_pool(video_id: str, config: dict) -> TierResult:

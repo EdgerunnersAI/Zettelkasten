@@ -1,0 +1,182 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary is well-structured with clear headings and logically ordered bullet points, ensuring a smooth flow of information."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The summary uses clean, grammatical prose with no awkward phrasing or errors that impede readability."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 0.9375,
+      "items": [
+        {
+          "claim": "OpenAI is dedicated to ensuring that general-purpose artificial intelligence benefits all of humanity.",
+          "fact": null,
+          "sentence": "OpenAI operates as a partnership focused on ensuring artificial general intelligence (AGI) benefits humanity safely.",
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "completeness": {
+      "score": 0.8548,
+      "items": [
+        {
+          "claim": "OpenAI is dedicated to putting the alignment of interests first \u2014 ahead of profit.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "OpenAI's investment in diversity, equity, and inclusion is ongoing, executed through a wide range of initiatives, and championed and supported by leadership.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "Codex allows users to bring projects, docs, slides, files, and recent work history into it to get work done faster without coding.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "Leading firms are using AI to help employees build skills and confidence, not just complete tasks faster.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "AI use is moving from general productivity to becoming more specialized across business functions.",
+          "fact": null,
+          "sentence": null,
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 0.7778,
+      "items": [
+        {
+          "claim": null,
+          "fact": null,
+          "sentence": null,
+          "span": "OpenAI has announced significant developments, including a rebuilt voice infrastructure with new GPT-Realtime models, the formation of the OpenAI Deployment Company via the acquisition of Tomoro and a multi-firm partnership, and new features like 'Trusted Contact' for user safety and 'Daybreak' for cyber defense. The company also released ChatGPT Images 2.0 and provided insights into enterprise AI adoption and the mainstreaming of ChatGPT for various tasks.",
+          "importance": null
+        }
+      ]
+    }
+  },
+  "summac_lite": {
+    "score": 0.95,
+    "contradicted_sentences": [],
+    "neutral_sentences": [
+      {
+        "sentence": "OpenAI operates as a partnership focused on ensuring artificial general intelligence (AGI) benefits humanity safely.",
+        "reason": "The source states 'general-purpose artificial intelligence' while the summary uses 'artificial general intelligence (AGI)'. This is a slight rephrasing that introduces a specific acronym not present in the source's mission statement."
+      }
+    ]
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 23.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.what_this_is",
+          "brief.main_topic",
+          "brief.major_units",
+          "brief.distinctive_signal",
+          "brief.no_fabrication"
+        ],
+        "criteria_missed": [
+          "brief.length_5_to_7_sentences"
+        ]
+      },
+      {
+        "id": "detailed_summary",
+        "score": 38.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.no_invented_content",
+          "detailed.logical_order",
+          "detailed.bullets_focused",
+          "detailed.bullets_specific"
+        ],
+        "criteria_missed": [
+          "detailed.one_bullet_per_unit"
+        ]
+      },
+      {
+        "id": "tags",
+        "score": 12.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.count_7_to_10",
+          "tags.topical_specificity",
+          "tags.no_unsupported"
+        ],
+        "criteria_missed": [
+          "tags.source_type_marker"
+        ]
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.fast_identifier",
+          "label.makes_sense_alone"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": [
+      {
+        "id": "invented_fact",
+        "source_region": "OpenAI operates as a partnership focused on ensuring artificial general intelligence (AGI) benefits humanity safely.",
+        "auto_cap": 60
+      }
+    ]
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 86.20689655172413,
+    "qafact": 0.0,
+    "summac": 95.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author",
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_universal.v1",
+    "implementation_fingerprint": "cd268f44bbd74fc4814db4f316611ab20af8341651ff8d16b0711c35405da730",
+    "rubric_sha256": "88ac2921ff4de203726d4ec2c67434eb71e83c88c91440284a02c5606fd61134",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 7868,
+    "total_tokens_out": 1629,
+    "latency_ms": 40797,
+    "numeric_grounding_score": 1.0,
+    "unsupported_numeric_claims": []
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "1=disjointed/contradicts itself, 2=mostly ordered with minor jumps, 3=fully logical flow",
+      "reasoning": "The summary maintains a logical flow, presenting an overview before detailing the show's premise, and bullets within sections are well-ordered."
+    },
+    "fluency": {
+      "score": 3,
+      "anchor": "1=ungrammatical/awkward, 2=minor errors that don't impede reading, 3=clean prose",
+      "reasoning": "The summary is well-written with no grammatical errors or awkward phrasing, making it easy to read."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 1.0,
+      "items": []
+    },
+    "completeness": {
+      "score": 0.826,
+      "items": [
+        {
+          "claim": "The show's core premise or tagline is 'Every company has a story.'",
+          "fact": null,
+          "sentence": "The 'Acquired' podcast, created by Ben Gilbert and David Rosenthal, ran from 2015 to 2026, producing 213 episodes. Its premise is to teach listeners the playbooks that built the world\u2019s greatest companies and how to apply them. The show has a 'Clean' rating and is copyrighted in 2025 by ACQ, LLC.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "The show's core premise or tagline is 'Every company has a story.'",
+          "fact": null,
+          "sentence": "Teaches listeners the 'playbooks that built the world\u2019s greatest companies'.",
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 1.0,
+      "items": []
+    }
+  },
+  "summac_lite": {
+    "score": 1.0,
+    "contradicted_sentences": [],
+    "neutral_sentences": []
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 18.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.what_this_is",
+          "brief.main_topic",
+          "brief.no_fabrication"
+        ],
+        "criteria_missed": [
+          "brief.major_units",
+          "brief.distinctive_signal",
+          "brief.length_5_to_7_sentences"
+        ]
+      },
+      {
+        "id": "detailed_summary",
+        "score": 39.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.no_invented_content",
+          "detailed.logical_order",
+          "detailed.bullets_focused",
+          "detailed.bullets_specific"
+        ],
+        "criteria_missed": [
+          "detailed.one_bullet_per_unit"
+        ]
+      },
+      {
+        "id": "tags",
+        "score": 12.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.topical_specificity",
+          "tags.source_type_marker",
+          "tags.no_unsupported"
+        ],
+        "criteria_missed": [
+          "tags.count_7_to_10"
+        ]
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.fast_identifier",
+          "label.makes_sense_alone"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": null,
+      "omission_cap": 75,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": [
+      {
+        "id": "missing_primary_unit",
+        "source_region": "brief_summary, detailed_summary",
+        "auto_cap": 75
+      }
+    ]
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 100.0,
+    "finesure": 94.2,
+    "qafact": 85.89,
+    "summac": 100.0
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author",
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_universal.v1",
+    "implementation_fingerprint": "cd268f44bbd74fc4814db4f316611ab20af8341651ff8d16b0711c35405da730",
+    "rubric_sha256": "88ac2921ff4de203726d4ec2c67434eb71e83c88c91440284a02c5606fd61134",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 4786,
+    "total_tokens_out": 1153,
+    "latency_ms": 27245,
+    "numeric_grounding_score": 1.0,
+    "unsupported_numeric_claims": []
+  }
+}

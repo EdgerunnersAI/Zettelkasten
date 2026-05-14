@@ -1,0 +1,3 @@
+# URL: https://podcasts.apple.com/us/podcast/acquired/id1050462261
+
+Acquired Ben Gilbert and David Rosenthal Every company has a story. Learn the playbooks that built the world’s greatest companies — and how you can apply them. Trailer Hosts & Guests About Every company has a story. Learn the playbooks that built the world’s greatest companies — and how you can apply them. Information - CreatorBen Gilbert and David Rosenthal - Years Active2015 - 2026 - Episodes213 - RatingClean - Copyright© Copyright 2025 ACQ, LLC - Show Website

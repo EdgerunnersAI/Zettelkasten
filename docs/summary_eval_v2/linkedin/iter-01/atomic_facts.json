@@ -1,0 +1,127 @@
+[
+  {
+    "url": "https://www.linkedin.com/company/openai/",
+    "facts": [
+      {
+        "claim": "OpenAI is an AI research and deployment company.",
+        "importance": 5
+      },
+      {
+        "claim": "OpenAI is dedicated to ensuring that general-purpose artificial intelligence benefits all of humanity.",
+        "importance": 5
+      },
+      {
+        "claim": "OpenAI is dedicated to putting the alignment of interests first \u2014 ahead of profit.",
+        "importance": 5
+      },
+      {
+        "claim": "OpenAI is launching the OpenAI Deployment Company to help businesses build around intelligence.",
+        "importance": 5
+      },
+      {
+        "claim": "The OpenAI Deployment Company will extend OpenAI\u2019s ability to embed engineers specialized in frontier AI deployment directly inside businesses tackling complex problems in demanding environments.",
+        "importance": 5
+      },
+      {
+        "claim": "OpenAI is introducing GPT-Realtime-2 in the API, its most intelligent voice model yet.",
+        "importance": 5
+      },
+      {
+        "claim": "GPT-Realtime-2 brings GPT-5-class reasoning to voice agents.",
+        "importance": 5
+      },
+      {
+        "claim": "OpenAI rebuilt parts of its voice infrastructure to make ChatGPT voice and the Realtime API faster and more reliable for people around the world.",
+        "importance": 4
+      },
+      {
+        "claim": "AI is an extremely powerful tool that must be created with safety and human needs at its core.",
+        "importance": 4
+      },
+      {
+        "claim": "OpenAI believes artificial intelligence has the potential to help people solve immense global challenges.",
+        "importance": 4
+      },
+      {
+        "claim": "OpenAI wants the upside of AI to be widely shared.",
+        "importance": 4
+      },
+      {
+        "claim": "ChatGPT adoption broadened in early 2026, becoming a more mainstream tool, used by a broader mix of people, in more countries, and for increasingly recurring tasks.",
+        "importance": 4
+      },
+      {
+        "claim": "Daybreak is frontier AI for cyber defenders.",
+        "importance": 4
+      },
+      {
+        "claim": "Daybreak brings together the most capable OpenAI models, Codex, and security partners to accelerate cyber defense and continuously secure software.",
+        "importance": 4
+      },
+      {
+        "claim": "ChatGPT Images 2.0 is OpenAI's first image model with thinking capabilities.",
+        "importance": 4
+      },
+      {
+        "claim": "ChatGPT Images 2.0 enables searching the web for real-time information, creating multiple distinct images from one prompt, and double-checking its own outputs.",
+        "importance": 4
+      },
+      {
+        "claim": "OpenAI has agreed to acquire Tomoro, which will bring approximately 150 experienced Forward Deployed Engineers and Deployment Specialists from day one to the OpenAI Deployment Company.",
+        "importance": 4
+      },
+      {
+        "claim": "The OpenAI Deployment Company is a committed partnership between OpenAI and 19 leading global investment firms, consultancies, and system integrators.",
+        "importance": 4
+      },
+      {
+        "claim": "OpenAI is rolling out Trusted Contact in ChatGPT, a new optional safety feature.",
+        "importance": 4
+      },
+      {
+        "claim": "Trusted Contact helps eligible users connect with someone they trust during moments of emotional crisis.",
+        "importance": 4
+      },
+      {
+        "claim": "Trusted Contact allows adult users to choose one trusted person ahead of time who may be notified if OpenAI's systems detect signs of a serious safety concern involving self-harm.",
+        "importance": 4
+      },
+      {
+        "claim": "Voice agents are now real-time collaborators that can listen, reason, and solve complex problems as conversations unfold due to GPT-Realtime-2.",
+        "importance": 4
+      },
+      {
+        "claim": "Enterprises are building an AI advantage through agentic workflows, with Codex usage 16x higher at frontier firms.",
+        "importance": 4
+      },
+      {
+        "claim": "Students from the ChatGPT Futures Class of 2026 are using AI in remarkable ways, such as mapping unknown objects in space, detecting disaster survivors, and improving healthcare.",
+        "importance": 4
+      },
+      {
+        "claim": "OpenAI's investment in diversity, equity, and inclusion is ongoing, executed through a wide range of initiatives, and championed and supported by leadership.",
+        "importance": 3
+      },
+      {
+        "claim": "OpenAI's specialties include artificial intelligence and machine learning.",
+        "importance": 3
+      },
+      {
+        "claim": "Codex allows users to bring projects, docs, slides, files, and recent work history into it to get work done faster without coding.",
+        "importance": 3
+      },
+      {
+        "claim": "Trusted Contact was developed with input from experts from the American Psychological Association, OpenAI\u2019s Global Physician\u2019s Network, and its Expert Council on Well-Being and AI.",
+        "importance": 3
+      },
+      {
+        "claim": "Enterprise AI adoption is moving into a new phase from access to depth.",
+        "importance": 3
+      },
+      {
+        "claim": "The ChatGPT Futures Class of 2026 is the first graduating class to have ChatGPT throughout all four years of university.",
+        "importance": 3
+      }
+    ]
+  }
+]

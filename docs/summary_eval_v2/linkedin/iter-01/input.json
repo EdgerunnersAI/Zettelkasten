@@ -1,0 +1,89 @@
+{
+  "source": "linkedin",
+  "iter": 1,
+  "urls": [
+    "https://www.linkedin.com/company/openai/"
+  ],
+  "started_at": "2026-05-14T17:06:30.740061+00:00",
+  "ended_at": "2026-05-14T17:08:42.289368+00:00",
+  "env": "dev",
+  "held_out": false,
+  "prompt_version": "evaluator.v7",
+  "records": [
+    {
+      "url": "https://www.linkedin.com/company/openai/",
+      "composite": 90.1,
+      "extraction_confidence": "low",
+      "latency_ms": 131495,
+      "ingestor_version": "2.0.0"
+    }
+  ],
+  "gemini_calls": {
+    "role_breakdown": {
+      "billing_calls": 0,
+      "free_calls": 4
+    },
+    "quota_exhausted_events": [
+      {
+        "ts": 1778778404.4667578,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778778408.5974755,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778778438.8082914,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 25.0
+      },
+      {
+        "ts": 1778778439.4316206,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 24.0
+      },
+      {
+        "ts": 1778778481.9036033,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778778482.5324578,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 30.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "mini_title": "Jack Dorsey's First Tweet",
+  "brief_summary": "On March 21, 2006, the user 'jack' (@jack) posted the message: 'just setting up my twttr'.",
+  "tags": [
+    "twitter",
+    "first-tweet",
+    "jack-dorsey",
+    "social-media-history"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Tweet Details",
+      "bullets": [
+        "Date of post: March 21, 2006",
+        "User who posted: 'jack' (@jack)",
+        "Content of the tweet: 'just setting up my twttr'"
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "twitter",
+    "url": "https://twitter.com/jack/status/20",
+    "author": null,
+    "date": null,
+    "extraction_confidence": "medium",
+    "confidence_reason": "tweet text extracted",
+    "total_tokens_used": 509,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 509,
+    "total_latency_ms": 30438,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "Jack Dorsey's First Tweet",
+      "brief_summary": "On March 21, 2006, the user 'jack' (@jack) posted the message: 'just setting up my twttr'.",
+      "tags": [
+        "Twitter",
+        "First Tweet",
+        "Jack Dorsey",
+        "Social Media History"
+      ],
+      "detailed_summary": [
+        {
+          "heading": "Tweet Details",
+          "bullets": [
+            "Date of post: March 21, 2006",
+            "User who posted: 'jack' (@jack)",
+            "Content of the tweet: 'just setting up my twttr'"
+          ],
+          "sub_sections": {}
+        }
+      ],
+      "route_subtype": "status",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": "gemini-2.5-flash-rate-limited"
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}

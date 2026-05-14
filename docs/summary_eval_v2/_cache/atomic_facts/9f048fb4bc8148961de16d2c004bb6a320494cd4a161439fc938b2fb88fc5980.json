@@ -1,0 +1,36 @@
+{
+  "facts": [
+    {
+      "claim": "The user 'jack' (@jack) posted the message 'just setting up my twttr' on March 21, 2006.",
+      "importance": 5
+    },
+    {
+      "claim": "The tweet 'just setting up my twttr' was posted by the user 'jack'.",
+      "importance": 4
+    },
+    {
+      "claim": "The user 'jack' (@jack) posted a tweet on March 21, 2006.",
+      "importance": 4
+    },
+    {
+      "claim": "The tweet containing the message 'just setting up my twttr' was posted on March 21, 2006.",
+      "importance": 4
+    },
+    {
+      "claim": "The author of the tweet is identified as 'jack'.",
+      "importance": 3
+    },
+    {
+      "claim": "The Twitter handle associated with the author is '@jack'.",
+      "importance": 3
+    },
+    {
+      "claim": "The content of the tweet is 'just setting up my twttr'.",
+      "importance": 3
+    },
+    {
+      "claim": "The tweet was posted on March 21, 2006.",
+      "importance": 3
+    }
+  ]
+}

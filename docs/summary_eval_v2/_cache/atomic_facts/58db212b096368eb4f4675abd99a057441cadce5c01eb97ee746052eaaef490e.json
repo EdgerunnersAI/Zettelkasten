@@ -1,0 +1,64 @@
+{
+  "facts": [
+    {
+      "claim": "arXiv is the world’s largest and oldest scientific preprint server.",
+      "importance": 5
+    },
+    {
+      "claim": "People with disabilities often cannot read papers on arXiv because they are available almost exclusively in PDF format, which has low native accessibility.",
+      "importance": 5
+    },
+    {
+      "claim": "Adding HTML as a format will bring arXiv closer to fulfilling the promise of truly open science.",
+      "importance": 5
+    },
+    {
+      "claim": "arXiv is a champion of open science.",
+      "importance": 4
+    },
+    {
+      "claim": "arXiv started in 1991.",
+      "importance": 4
+    },
+    {
+      "claim": "arXiv presently holds more than 2.4 million articles.",
+      "importance": 4
+    },
+    {
+      "claim": "Cutting-edge research in many fields of Physics, Math, and Computer Science is first made available on arXiv.",
+      "importance": 4
+    },
+    {
+      "claim": "arXiv has a mandate to continuously improve access to scientific research.",
+      "importance": 4
+    },
+    {
+      "claim": "arXiv's long-term mission is to serve the needs of the scientific community through openness, collaboration and scholarship.",
+      "importance": 4
+    },
+    {
+      "claim": "Accessibility is inherent to arXiv's mission of championing open science.",
+      "importance": 4
+    },
+    {
+      "claim": "Scientists with disabilities recommended adding HTML as a format for papers to make research more accessible on arXiv.",
+      "importance": 4
+    },
+    {
+      "claim": "PDF will always be playing catch up with HTML when it comes to accessibility.",
+      "importance": 4
+    },
+    {
+      "claim": "arXiv is growing at an ever-increasing rate.",
+      "importance": 3
+    },
+    {
+      "claim": "arXiv has made good progress in making its website more accessible according to W3C WAI guidelines.",
+      "importance": 3
+    },
+    {
+      "claim": "arXiv will retain PDFs on arXiv as always.",
+      "importance": 3
+    }
+  ]
+}

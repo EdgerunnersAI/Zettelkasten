@@ -86,3 +86,13 @@ def test_case_insensitive_placeholders_coerced():
 def test_whitespace_only_speakers_coerced():
     payload = YouTubeStructuredPayload(**_base_kwargs(speakers=["   ", ""]))
     assert payload.speakers == ["The speaker"]
+
+
+def test_chess_opening_is_not_treated_as_speaker():
+    payload = YouTubeStructuredPayload(
+        **_base_kwargs(
+            speakers=["Queen's Gambit Declined"],
+            entities_discussed=["Queen's Gambit Declined", "Claude Shannon"],
+        )
+    )
+    assert payload.speakers == ["Claude Shannon"]

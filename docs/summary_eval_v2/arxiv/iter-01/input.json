@@ -1,0 +1,59 @@
+{
+  "source": "arxiv",
+  "iter": 1,
+  "urls": [
+    "https://arxiv.org/abs/1706.03762"
+  ],
+  "started_at": "2026-05-14T16:50:05.407786+00:00",
+  "ended_at": "2026-05-14T16:51:56.128942+00:00",
+  "env": "dev",
+  "held_out": false,
+  "prompt_version": "evaluator.v7",
+  "records": [
+    {
+      "url": "https://arxiv.org/abs/1706.03762",
+      "composite": 76.22,
+      "extraction_confidence": "high",
+      "latency_ms": 110531,
+      "ingestor_version": "2.0.0"
+    }
+  ],
+  "gemini_calls": {
+    "role_breakdown": {
+      "billing_calls": 0,
+      "free_calls": 4
+    },
+    "quota_exhausted_events": [
+      {
+        "ts": 1778777427.689254,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 16.0
+      },
+      {
+        "ts": 1778777431.7088563,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 12.0
+      },
+      {
+        "ts": 1778777448.2506723,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 30.0
+      }
+    ]
+  }
+}

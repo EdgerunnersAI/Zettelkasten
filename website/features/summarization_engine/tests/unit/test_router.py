@@ -2,7 +2,10 @@
 import pytest
 
 from website.features.summarization_engine.core.models import SourceType
-from website.features.summarization_engine.core.router import detect_source_type
+from website.features.summarization_engine.core.router import (
+    detect_route_decision,
+    detect_source_type,
+)
 
 
 @pytest.mark.parametrize(
@@ -45,3 +48,42 @@ def test_detect_source_type_empty_returns_web():
 
 def test_detect_source_type_malformed_returns_web():
     assert detect_source_type("not-a-url") == SourceType.WEB
+
+
+@pytest.mark.parametrize(
+    ("url", "subtype", "supported"),
+    [
+        ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "video", True),
+        ("https://youtu.be/dQw4w9WgXcQ", "video", True),
+        ("https://www.youtube.com/shorts/dQw4w9WgXcQ", "video", True),
+        ("https://www.youtube.com/embed/dQw4w9WgXcQ", "video", True),
+        ("https://www.youtube.com/@somechannel", "channel", False),
+        ("https://www.youtube.com/playlist?list=PL123", "playlist", False),
+        ("https://github.com/foo/bar", "repo", True),
+        ("https://github.com/foo/bar/issues/10", "issue", True),
+        ("https://github.com/foo/bar/pull/11", "pull_request", True),
+        ("https://github.com/foo/bar/commit/abc123", "commit", True),
+        ("https://github.com/foo/bar/releases/tag/v1.0.0", "release", True),
+        ("https://github.com/foo/bar/blob/main/README.md", "blob", True),
+        ("https://github.com/foo/bar/tree/main/src", "tree", True),
+        ("https://www.linkedin.com/posts/satya_activity-1234", "post", True),
+        ("https://www.linkedin.com/login", "authwall", False),
+        ("https://arxiv.org/abs/2310.11511", "abstract", True),
+        ("https://arxiv.org/pdf/2310.11511", "pdf", True),
+        ("https://ar5iv.labs.arxiv.org/html/2310.11511", "html", True),
+        ("https://open.spotify.com/episode/abc123", "episode", True),
+        ("https://twitter.com/user/status/1234567890", "status", True),
+    ],
+)
+def test_detect_route_decision_subtypes(url, subtype, supported):
+    decision = detect_route_decision(url)
+    assert decision.subtype == subtype
+    assert decision.supported is supported
+
+
+def test_detect_route_decision_marks_bad_youtube_shape_without_changing_family():
+    decision = detect_route_decision("https://www.youtube.com/@somechannel")
+
+    assert decision.source_type == SourceType.YOUTUBE
+    assert decision.supported is False
+    assert decision.reason == "unsupported_youtube_channel"

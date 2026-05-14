@@ -1,0 +1,79 @@
+{
+  "source": "twitter",
+  "iter": 1,
+  "urls": [
+    "https://twitter.com/jack/status/20"
+  ],
+  "started_at": "2026-05-14T17:01:44.622600+00:00",
+  "ended_at": "2026-05-14T17:03:00.137291+00:00",
+  "env": "dev",
+  "held_out": false,
+  "prompt_version": "evaluator.v7",
+  "records": [
+    {
+      "url": "https://twitter.com/jack/status/20",
+      "composite": 97.0,
+      "extraction_confidence": "medium",
+      "latency_ms": 75460,
+      "ingestor_version": "2.0.0"
+    }
+  ],
+  "gemini_calls": {
+    "role_breakdown": {
+      "billing_calls": 0,
+      "free_calls": 4
+    },
+    "quota_exhausted_events": [
+      {
+        "ts": 1778778112.2064884,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778778115.6657674,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778778137.3927739,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 26.0
+      },
+      {
+        "ts": 1778778138.1799488,
+        "kind": "unavailable",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 2.18867118993676
+      },
+      {
+        "ts": 1778778144.2681408,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-flash",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 19.0
+      }
+    ]
+  }
+}

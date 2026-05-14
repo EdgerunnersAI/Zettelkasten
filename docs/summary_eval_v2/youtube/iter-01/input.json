@@ -1,0 +1,49 @@
+{
+  "source": "youtube",
+  "iter": 1,
+  "urls": [
+    "https://www.youtube.com/watch?v=UF8uR6Z6KLc"
+  ],
+  "started_at": "2026-05-14T16:18:55.934468+00:00",
+  "ended_at": "2026-05-14T16:22:55.117053+00:00",
+  "env": "dev",
+  "held_out": false,
+  "prompt_version": "evaluator.v7",
+  "records": [
+    {
+      "url": "https://www.youtube.com/watch?v=UF8uR6Z6KLc",
+      "composite": 92.4,
+      "extraction_confidence": "high",
+      "latency_ms": 239120,
+      "ingestor_version": "2.0.0"
+    }
+  ],
+  "gemini_calls": {
+    "role_breakdown": {
+      "billing_calls": 0,
+      "free_calls": 4
+    },
+    "quota_exhausted_events": [
+      {
+        "ts": 1778775646.9769866,
+        "kind": "rate_limit",
+        "key_index": 0,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 1,
+        "cooldown_secs": 30.0
+      },
+      {
+        "ts": 1778775651.7009656,
+        "kind": "rate_limit",
+        "key_index": 1,
+        "key_role": "free",
+        "model": "gemini-2.5-pro",
+        "role": "free",
+        "attempt": 2,
+        "cooldown_secs": 30.0
+      }
+    ]
+  }
+}

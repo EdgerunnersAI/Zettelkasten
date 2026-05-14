@@ -467,3 +467,79 @@ def test_v2_graph_has_no_self_loops_unless_actual_self_loop(monkeypatch) -> None
     )
     self_loop_node = nodes_by_id[self_loops[0].source]
     assert self_loop_node.name == "Bravo"
+
+
+def test_v2_graph_links_emit_connection_strength_for_default_filter(monkeypatch) -> None:
+    """v2 links must carry connection_strength so /knowledge-graph's default
+    min_strength=0.7 does not erase valid edges.
+    """
+    import uuid
+
+    import website.api.routes as routes_module
+
+    workspace_id = uuid.uuid4()
+    profile_id = uuid.uuid4()
+    z_a, z_b = (str(uuid.uuid4()) for _ in range(2))
+    n1, n2 = 101, 202
+
+    class _StubContent:
+        def list_workspace_zettels(self, ws_id, *, limit, offset):
+            assert ws_id == workspace_id
+            return [
+                {
+                    "canonical": {
+                        "id": z_a,
+                        "source_type": "web",
+                        "title": "Alpha",
+                        "normalized_url": "https://a",
+                        "publication_date": "2026-01-01",
+                    },
+                    "ai_summary": "alpha summary",
+                    "user_tags": [],
+                },
+                {
+                    "canonical": {
+                        "id": z_b,
+                        "source_type": "web",
+                        "title": "Bravo",
+                        "normalized_url": "https://b",
+                        "publication_date": "2026-01-02",
+                    },
+                    "ai_summary": "bravo summary",
+                    "user_tags": [],
+                },
+            ]
+
+    class _StubKG:
+        def list_workspace_edges(self, ws_id):
+            return [
+                {
+                    "id": 1,
+                    "src_node_id": n1,
+                    "dst_node_id": n2,
+                    "relation_type": "shared_tag",
+                    "shared_tag_label": "shared",
+                    "weight": 0.82,
+                    "evidence_canonical_zettel_id": z_a,
+                }
+            ]
+
+        def list_node_zettel_mapping(self, ws_id, kg_node_ids, *, limit=50000):
+            return {n1: [z_a], n2: [z_b]}
+
+    monkeypatch.setattr(
+        routes_module,
+        "get_supabase_v2_scope_for_read",
+        lambda sub: (_StubContent(), profile_id, [workspace_id]),
+    )
+    monkeypatch.setattr(routes_module, "V2KGRepository", _StubKG)
+
+    graph = routes_module._v2_assemble_graph(
+        user_sub=str(uuid.uuid4()), limit=100, offset=0
+    )
+    assert graph is not None
+    payload = graph.model_dump()
+
+    assert payload["links"][0]["connection_strength"] == pytest.approx(0.82)
+    filtered = routes_module._apply_min_strength_filter(payload, 0.7)
+    assert len(filtered["links"]) == 1

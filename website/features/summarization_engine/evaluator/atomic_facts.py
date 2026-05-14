@@ -88,7 +88,8 @@ async def extract_atomic_facts(
                 err2,
                 head2,
             )
-            raise
+            cache.put(key, {"facts": [], "error": "parse_failed"})
+            return []
 
     if isinstance(raw, dict) and "facts" in raw:
         facts = raw["facts"]

@@ -83,6 +83,26 @@ class UnsupportedVideoError(EngineError):
         self.url = url
 
 
+class UnsupportedURLShapeError(RoutingError):
+    """Raised when a source family is known but the URL object is unsupported."""
+
+    def __init__(
+        self,
+        *,
+        source_type: str,
+        subtype: str,
+        reason: str,
+        url: str = "",
+    ):
+        super().__init__(
+            f"Unsupported {source_type} URL shape: {subtype} ({reason})",
+            url=url,
+        )
+        self.source_type = source_type
+        self.subtype = subtype
+        self.reason = reason
+
+
 class SummarizationError(EngineError):
     """Raised when the LLM summarization pipeline fails."""
 

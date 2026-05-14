@@ -1,0 +1,56 @@
+{
+  "prod_calls": {
+    "count": 2,
+    "tokens_in": 7513,
+    "tokens_out": 2360,
+    "total_tokens": 9873,
+    "by_model": {
+      "gemini-2.5-pro": {
+        "count": 1,
+        "tokens_in": 6451,
+        "tokens_out": 967,
+        "total_tokens": 7418
+      },
+      "gemini-2.5-flash": {
+        "count": 1,
+        "tokens_in": 1062,
+        "tokens_out": 1393,
+        "total_tokens": 2455
+      }
+    }
+  },
+  "eval_calls": {
+    "count": 2,
+    "tokens_in": 19733,
+    "tokens_out": 2570,
+    "total_tokens": 22303,
+    "by_model": {
+      "gemini-2.5-flash": {
+        "count": 2,
+        "tokens_in": 19733,
+        "tokens_out": 2570,
+        "total_tokens": 22303
+      }
+    }
+  },
+  "grand_total": {
+    "count": 4,
+    "tokens_in": 27246,
+    "tokens_out": 4930,
+    "total_tokens": 32176,
+    "by_model": {
+      "gemini-2.5-pro": {
+        "count": 1,
+        "tokens_in": 6451,
+        "tokens_out": 967,
+        "total_tokens": 7418
+      },
+      "gemini-2.5-flash": {
+        "count": 3,
+        "tokens_in": 20795,
+        "tokens_out": 3963,
+        "total_tokens": 24758
+      }
+    }
+  }
+}

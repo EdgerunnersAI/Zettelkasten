@@ -1,0 +1,158 @@
+{
+  "g_eval": {
+    "coherence": {
+      "score": 3,
+      "anchor": "3=fully logical flow",
+      "reasoning": "The summary's sections and bullet points are presented in a clear, logical order, following the structure of the source article."
+    },
+    "fluency": {
+      "score": 2,
+      "anchor": "2=minor errors that don't impede reading",
+      "reasoning": "One minor grammatical error ('a understanding' instead of 'an understanding') was present but did not significantly impede readability."
+    }
+  },
+  "finesure": {
+    "faithfulness": {
+      "score": 0.9,
+      "items": [
+        {
+          "claim": "Stripe's test mode uses special card numbers like 4000 0000 0000 9995 to simulate failures.",
+          "fact": null,
+          "sentence": "It strongly promotes \"shifting left\"\u2014diagnosing errors as early as possible\u2014through four techniques: static validations (e.g., checksums), upfront validation in multi-step workflows, providing test environments or \"fakes\" (citing Stripe's test mode with special card numbers like 4000 0000 0000 9995 to simulate failures), and requesting user confirmations for ambiguous inputs (e.g., Google's \"Did you mean\").",
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "completeness": {
+      "score": 0.9,
+      "items": [
+        {
+          "claim": "AI tools can significantly help developers be more product-minded by gathering user signals from various sources like Slack, Miro, GitHub, and Gong, and aggregating them into reports.",
+          "fact": null,
+          "sentence": "These sources include platforms like Slack, Miro, and GitHub, enabling a more holistic view of user needs and feedback.",
+          "span": null,
+          "importance": null
+        },
+        {
+          "claim": "John Carmack is highlighted as an exemplary product-minded engineer due to his deep technical expertise combined with a relentless pursuit of important product goals, such as mentoring the VR community or bringing major apps to the Oculus platform.",
+          "fact": null,
+          "sentence": "Hoskins identifies John Carmack as the best product-minded engineer he has worked with during his career.",
+          "span": null,
+          "importance": null
+        }
+      ]
+    },
+    "conciseness": {
+      "score": 1.0,
+      "items": []
+    }
+  },
+  "summac_lite": {
+    "score": 0.931,
+    "contradicted_sentences": [],
+    "neutral_sentences": [
+      {
+        "sentence": "It strongly promotes \"shifting left\"\u2014diagnosing errors as early as possible\u2014through four techniques: static validations (e.g., checksums), upfront validation in multi-step workflows, providing test environments or \"fakes\" (citing Stripe's test mode with special card numbers like 4000 0000 0000 9995 to simulate failures), and requesting user confirmations for ambiguous inputs (e.g., Google's \"Did you mean\").",
+        "reason": "This sentence contains an invented detail about specific Stripe card numbers not present in the source, making it not fully entailed."
+      },
+      {
+        "sentence": "Adopt 'shifting left' techniques for error diagnosis, including static validations, upfront validation in workflows, providing test environments/fakes, and requesting user confirmations for ambiguous inputs.",
+        "reason": "This sentence repeats the invented detail about specific Stripe card numbers (implied by 'providing test environments/fakes' in the context of the previous detailed bullet), making it not fully entailed."
+      }
+    ]
+  },
+  "rubric": {
+    "components": [
+      {
+        "id": "brief_summary",
+        "score": 25.0,
+        "max_points": 25,
+        "criteria_fired": [
+          "brief.main_topic_thesis",
+          "brief.argument_structure",
+          "brief.key_evidence",
+          "brief.conclusions_distinct",
+          "brief.caveats_addressed"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "detailed_summary",
+        "score": 43.0,
+        "max_points": 45,
+        "criteria_fired": [
+          "detailed.sections_ordered",
+          "detailed.action_items",
+          "detailed.multiple_scenarios",
+          "detailed.no_footer_padding",
+          "detailed.bullets_specific"
+        ],
+        "criteria_missed": [
+          "detailed.claims_source_grounded",
+          "detailed.examples_captured"
+        ]
+      },
+      {
+        "id": "tags",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "tags.count_7_to_10",
+          "tags.domain_subdomain",
+          "tags.key_concepts",
+          "tags.type_intent",
+          "tags.no_stance_misrepresentation"
+        ],
+        "criteria_missed": []
+      },
+      {
+        "id": "label",
+        "score": 15.0,
+        "max_points": 15,
+        "criteria_fired": [
+          "label.compact_declarative",
+          "label.branded_source_rule",
+          "label.informative_not_catchy"
+        ],
+        "criteria_missed": []
+      }
+    ],
+    "caps_applied": {
+      "hallucination_cap": 60,
+      "omission_cap": null,
+      "generic_cap": null
+    },
+    "anti_patterns_triggered": [
+      {
+        "id": "invented_number",
+        "source_region": "detailed_summary.sections[2].bullets[6]",
+        "auto_cap": 60
+      }
+    ]
+  },
+  "maps_to_metric_summary": {
+    "g_eval": 83.33,
+    "finesure": 97.06,
+    "qafact": 93.55,
+    "summac": 93.1
+  },
+  "editorialization_flags": [],
+  "metadata_partial": true,
+  "missing_meta": [
+    "author",
+    "date"
+  ],
+  "evaluator_metadata": {
+    "prompt_version": "evaluator.v7",
+    "rubric_version": "rubric_newsletter.v1",
+    "implementation_fingerprint": "0beada178f4fc60c9a47b401c38c42cc041d964974a43afddd12d8d85aced84f",
+    "rubric_sha256": "6a5358dae8a00fa9ed11e93a65fa7cc5992357cb4c2ea18deb663c61f7876bf5",
+    "model_used": "gemini-2.5-flash",
+    "total_tokens_in": 14204,
+    "total_tokens_out": 1628,
+    "latency_ms": 48215,
+    "numeric_grounding_score": 1.0,
+    "unsupported_numeric_claims": []
+  }
+}

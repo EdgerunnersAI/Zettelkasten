@@ -1,0 +1,17 @@
+{
+  "source": "arxiv",
+  "iter": 1,
+  "status": "hard_target_met",
+  "composite_score": 82.0,
+  "baseline_score": null,
+  "delta": null,
+  "checks": {
+    "summary_json": true,
+    "eval_json": true,
+    "baseline_score_json": true,
+    "manual_review_prompt": true
+  },
+  "next_actions": [
+    "Continue source-specific hardening toward the soft target."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "source": "github",
+  "iter": 1,
+  "status": "soft_target_met",
+  "composite_score": 100.0,
+  "baseline_score": 68.26,
+  "delta": 31.74,
+  "checks": {
+    "summary_json": true,
+    "eval_json": true,
+    "baseline_score_json": true,
+    "manual_review_prompt": true
+  },
+  "next_actions": []
+}

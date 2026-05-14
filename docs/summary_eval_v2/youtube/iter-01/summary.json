@@ -1,0 +1,189 @@
+{
+  "mini_title": "Steve Jobs Stanford Commencement Address",
+  "brief_summary": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect. The lecture moves through Connecting the Dots, Love and Loss, and Death. Along the way Steve Jobs references Apple, Reed College, and Macintosh.",
+  "tags": [
+    "lecture",
+    "steve-jobs",
+    "commencement-address",
+    "stanford-university",
+    "life-lessons",
+    "entrepreneurship",
+    "apple-history",
+    "personal-growth",
+    "career-advice",
+    "motivation"
+  ],
+  "detailed_summary": [
+    {
+      "heading": "Overview",
+      "bullets": [
+        "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect."
+      ],
+      "sub_sections": {
+        "Format and speakers": [
+          "Format: lecture.",
+          "Speakers: Steve Jobs."
+        ],
+        "Core argument": [
+          "Steve Jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect. He emphasizes the importance of following one's heart and intuition, especially in the face of adversity and the certainty of death."
+        ]
+      }
+    },
+    {
+      "heading": "Chapter walkthrough",
+      "bullets": [],
+      "sub_sections": {
+        "Connecting the Dots": [
+          "Steve Jobs recounts his adoption process, noting his biological mother's initial desire for him to be adopted by college graduates.",
+          "He describes dropping out of Reed College after six months due to its expense and his inability to perceive its value.",
+          "During his time as a \"drop-in\" at Reed, he attended a calligraphy class, which he considered the best in the country.",
+          "Ten years later, the knowledge of typography gained from this class was integrated into the original Macintosh computer.",
+          "He posits that the beautiful typography in personal computers, including Windows, might not exist without his calligraphy experience.",
+          "Jobs concludes that one can only connect life's \"dots\" in retrospect, urging trust in future connections."
+        ],
+        "Love and Loss": [
+          "Jobs details starting Apple with Steve Wozniak in his parents' garage at age 20, growing it into a significant company within a decade.",
+          "At age 30, he was publicly fired from Apple after a disagreement with the board of directors and a co-leader.",
+          "Despite the devastation, he realized his enduring love for his work and decided to embark on new ventures.",
+          "He describes being fired as a liberating experience, replacing the burden of success with the lightness of a new beginning.",
+          "In the subsequent five years, he founded NeXT and Pixar, and married his wife, Laurene.",
+          "Pixar produced Toy Story, the world's first computer-animated film.",
+          "Apple later acquired NeXT, facilitating Jobs's return to Apple and integrating NeXT's technology into Apple's core."
+        ],
+        "Death": [
+          "Jobs shares a personal philosophy adopted at 17: to live each day as if it were his last.",
+          "For 33 years, he has used this question daily to assess his life choices and make necessary changes.",
+          "He recounts a recent diagnosis of pancreatic cancer, initially believed to be incurable with a short prognosis.",
+          "A subsequent biopsy revealed a rare, operable form of the disease, leading to successful surgery and recovery.",
+          "This near-death experience reinforced his belief that time is finite and should not be wasted living someone else's life.",
+          "He encourages the graduates to avoid dogma and to bravely follow their inner voice and intuition."
+        ]
+      }
+    },
+    {
+      "heading": "Closing remarks",
+      "bullets": [
+        "Recap: Jobs concludes by referencing the farewell message from The Whole Earth Catalog, \"Stay hungry, stay foolish,\" as a guiding principle for continuous curiosity and bold exploration. He extends this wish to the graduating class, encouraging them to maintain a lifelong pursuit of knowledge and unconventional thinking."
+      ],
+      "sub_sections": {}
+    }
+  ],
+  "metadata": {
+    "source_type": "youtube",
+    "url": "https://www.youtube.com/watch?v=UF8uR6Z6KLc",
+    "author": null,
+    "date": null,
+    "extraction_confidence": "high",
+    "confidence_reason": "transcript via tier=gemini_filedata len=11971",
+    "total_tokens_used": 3030,
+    "gemini_pro_tokens": 0,
+    "gemini_flash_tokens": 3030,
+    "total_latency_ms": 41595,
+    "cod_iterations_used": 0,
+    "self_check_missing_count": 0,
+    "patch_applied": false,
+    "engine_version": "2.0.0",
+    "structured_payload": {
+      "mini_title": "Steve Jobs Stanford Commencement Address",
+      "brief_summary": "In this lecture, Steve Jobs argues that steve jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect. The lecture moves through Connecting the Dots, Love and Loss, and Death. Along the way Steve Jobs references Apple, Reed College, and Macintosh.",
+      "tags": [
+        "steve-jobs",
+        "commencement-address",
+        "stanford-university",
+        "life-lessons",
+        "entrepreneurship",
+        "apple-history",
+        "personal-growth",
+        "career-advice",
+        "motivation",
+        "lecture"
+      ],
+      "speakers": [
+        "Steve Jobs"
+      ],
+      "guests": null,
+      "entities_discussed": [
+        "Apple",
+        "Reed College",
+        "Macintosh",
+        "Windows",
+        "NeXT",
+        "Pixar",
+        "Toy Story",
+        "The Whole Earth Catalog"
+      ],
+      "detailed_summary": {
+        "thesis": "Steve Jobs argues that one can only understand the significance of life's events by looking backward, and therefore, it is crucial to trust that seemingly disparate experiences will eventually connect. He emphasizes the importance of following one's heart and intuition, especially in the face of adversity and the certainty of death.",
+        "format": "lecture",
+        "chapters_or_segments": [
+          {
+            "timestamp": "",
+            "title": "Connecting the Dots",
+            "bullets": [
+              "Steve Jobs recounts his adoption process, noting his biological mother's initial desire for him to be adopted by college graduates.",
+              "He describes dropping out of Reed College after six months due to its expense and his inability to perceive its value.",
+              "During his time as a \"drop-in\" at Reed, he attended a calligraphy class, which he considered the best in the country.",
+              "Ten years later, the knowledge of typography gained from this class was integrated into the original Macintosh computer.",
+              "He posits that the beautiful typography in personal computers, including Windows, might not exist without his calligraphy experience.",
+              "Jobs concludes that one can only connect life's \"dots\" in retrospect, urging trust in future connections."
+            ]
+          },
+          {
+            "timestamp": "",
+            "title": "Love and Loss",
+            "bullets": [
+              "Jobs details starting Apple with Steve Wozniak in his parents' garage at age 20, growing it into a significant company within a decade.",
+              "At age 30, he was publicly fired from Apple after a disagreement with the board of directors and a co-leader.",
+              "Despite the devastation, he realized his enduring love for his work and decided to embark on new ventures.",
+              "He describes being fired as a liberating experience, replacing the burden of success with the lightness of a new beginning.",
+              "In the subsequent five years, he founded NeXT and Pixar, and married his wife, Laurene.",
+              "Pixar produced Toy Story, the world's first computer-animated film.",
+              "Apple later acquired NeXT, facilitating Jobs's return to Apple and integrating NeXT's technology into Apple's core."
+            ]
+          },
+          {
+            "timestamp": "",
+            "title": "Death",
+            "bullets": [
+              "Jobs shares a personal philosophy adopted at 17: to live each day as if it were his last.",
+              "For 33 years, he has used this question daily to assess his life choices and make necessary changes.",
+              "He recounts a recent diagnosis of pancreatic cancer, initially believed to be incurable with a short prognosis.",
+              "A subsequent biopsy revealed a rare, operable form of the disease, leading to successful surgery and recovery.",
+              "This near-death experience reinforced his belief that time is finite and should not be wasted living someone else's life.",
+              "He encourages the graduates to avoid dogma and to bravely follow their inner voice and intuition."
+            ]
+          }
+        ],
+        "demonstrations": [],
+        "closing_takeaway": "Jobs concludes by referencing the farewell message from The Whole Earth Catalog, \"Stay hungry, stay foolish,\" as a guiding principle for continuous curiosity and bold exploration. He extends this wish to the graduating class, encouraging them to maintain a lifelong pursuit of knowledge and unconventional thinking."
+      },
+      "attribution_confidence": "high",
+      "_youtube_format": {
+        "format": "explainer",
+        "confidence": 0.625
+      },
+      "_dense_verify": {
+        "format_label": "talk",
+        "missing_fact_count": 0
+      },
+      "route_subtype": "video",
+      "route_supported": true
+    },
+    "is_schema_fallback": false,
+    "model_used": [
+      {
+        "role": "dense_verify",
+        "model": "gemini-2.5-pro",
+        "starting_model": "gemini-2.5-pro",
+        "fallback_reason": "gemini-2.5-pro-rate-limited"
+      },
+      {
+        "role": "summarizer",
+        "model": "gemini-2.5-flash",
+        "starting_model": "gemini-2.5-flash",
+        "fallback_reason": null
+      }
+    ],
+    "fallback_reason": "gemini-2.5-pro-rate-limited"
+  }
+}
