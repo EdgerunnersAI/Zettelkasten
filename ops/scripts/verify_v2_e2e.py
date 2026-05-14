@@ -1,7 +1,7 @@
 """End-to-end exerciser for the v2 write path.
 
 Mints a real auth user via Supabase admin API, signs them in, and POSTs to
-/api/summarize. After the request, queries both schemas and reports which
+/api/zettels/add. After the request, queries both schemas and reports which
 landed data:
 
 - public.kg_nodes (v1 / legacy) — should be empty in pure v2 mode
@@ -73,7 +73,7 @@ async def main() -> int:
         for k, v in before.items():
             print(f"  {k:50} {v}")
 
-        # Boot FastAPI + post /api/summarize against a real test user
+        # Boot FastAPI + post /api/zettels/add against a real test user
         # Create a real auth.users row + profile/workspace via the supabase admin API
         from supabase import create_client
         supa_url = os.environ["SUPABASE_URL"]
@@ -110,11 +110,17 @@ async def main() -> int:
             # Reddit is reliable + has a known shape the engine handles.
             test_url = "https://docs.python.org/3/whatsnew/3.12.html"
             r = tc.post(
-                "/api/summarize",
-                json={"url": test_url},
+                "/api/zettels/add",
+                json={
+                    "url": test_url,
+                    "client_action_id": "verify-v2-e2e",
+                    "persist": True,
+                    "surface": "home",
+                    "mode": "sync",
+                },
                 headers={"Authorization": f"Bearer {jwt}"},
             )
-            print(f"\nPOST /api/summarize → {r.status_code}: {r.text[:200]}")
+            print(f"\nPOST /api/zettels/add -> {r.status_code}: {r.text[:200]}")
 
             r2 = tc.get("/api/graph", headers={"Authorization": f"Bearer {jwt}"})
             graph_data = r2.json() if r2.status_code == 200 else {}

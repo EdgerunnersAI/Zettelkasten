@@ -7,7 +7,7 @@ SE-04) the contract has two layers:
     /writers/supabase.py:104-157``): ``_resolve_workspace_id`` MUST be called
     BEFORE the upsert RPC. If the user has no default workspace we raise
     ``_UnknownWorkspaceError`` and skip persistence entirely.
-  * In the legacy ``/api/summarize`` route (``website/api/routes.py:806``):
+  * In the Add Zettel facade (``website/api/zettels_routes.py``):
     ``consume_entitlement`` MUST run only AFTER ``persist_summarized_result``
     returns. If the persist raises, the entitlement debit must NOT happen
     (otherwise users get billed for failed summaries).
@@ -159,13 +159,14 @@ async def test_writer_wraps_persist_exception_in_writer_error() -> None:
 
 @pytest.mark.asyncio
 async def test_route_consumes_entitlement_after_persist_success(monkeypatch):
-    """Patch the four collaborators of the legacy ``/api/summarize`` handler
+    """Patch the four collaborators of the Add Zettel facade
     and verify the call order:
 
         require_entitlement → summarize_url → persist_summarized_result
         → consume_entitlement
     """
-    from website.api import routes as routes_mod
+    from website.api import zettels_routes as routes_mod
+    from website.api.module_runners import summarization as runner
 
     order: list[str] = []
 
@@ -174,16 +175,7 @@ async def test_route_consumes_entitlement_after_persist_success(monkeypatch):
 
     async def fake_summarize(*_a, **_kw):
         order.append("summarize")
-        return {
-            "title": "T",
-            "summary": "S",
-            "tags": [],
-            "source_type": "web",
-            "source_url": "https://example.com",
-            "is_raw_fallback": False,
-            "tokens_used": 10,
-            "latency_ms": 20,
-        }
+        return SimpleNamespace()
 
     async def fake_persist(_result, *, user_sub):
         order.append("persist")
@@ -191,22 +183,49 @@ async def test_route_consumes_entitlement_after_persist_success(monkeypatch):
             result=_result,
             supabase_saved=False,
             file_saved=True,
+            supabase_duplicate=False,
+            file_node_id="web-test",
+            supabase_node_id=None,
         )
 
     async def fake_consume(*_a, **_kw):
         order.append("consume")
 
-    monkeypatch.setattr(routes_mod, "require_entitlement", fake_require)
-    monkeypatch.setattr(routes_mod, "summarize_url", fake_summarize)
-    monkeypatch.setattr(routes_mod, "persist_summarized_result", fake_persist)
-    monkeypatch.setattr(routes_mod, "consume_entitlement", fake_consume)
-    # Rate limiter must allow the call.
-    monkeypatch.setattr(routes_mod, "_check_rate_limit", lambda _ip: True)
+    monkeypatch.setattr(runner, "require_entitlement", fake_require)
+    monkeypatch.setattr(runner, "summarize_url_bundle", fake_summarize)
+    monkeypatch.setattr(runner, "persist_summarized_result", fake_persist)
+    monkeypatch.setattr(runner, "consume_entitlement", fake_consume)
+    monkeypatch.setattr(routes_mod, "_gemini_client", lambda: object())
+    monkeypatch.setattr(
+        runner,
+        "summary_dto",
+        lambda _bundle: runner.SummaryDTO(
+            title="T",
+            summary="S",
+            brief_summary="B",
+            detailed_summary="S",
+            tags=[],
+            source_type="web",
+            source_url="https://example.com",
+            one_line_summary="B",
+            tokens_used=10,
+            latency_ms=20,
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(runner, "quality_dto", lambda _bundle: runner.QualityDTO(confidence="high"))
 
-    body = SimpleNamespace(url="https://example.com", client_action_id="a-1")
-    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    body = routes_mod.AddZettelRequest(
+        url="https://example.com",
+        client_action_id="a-1",
+        surface="landing",
+    )
 
-    await routes_mod.summarize(body=body, request=request, user=None)
+    await routes_mod._run_add_zettel(
+        body,
+        user=None,
+        effective_user_id=routes_mod._zoro_user_id(),
+    )
 
     assert order == ["require", "summarize", "persist", "consume"], (
         f"route call order broken: {order}"
@@ -220,7 +239,8 @@ async def test_route_does_not_consume_when_persist_fails(monkeypatch):
     This is the billing-correctness invariant: a user must not be debited
     a Zettel for a write that didn't land.
     """
-    from website.api import routes as routes_mod
+    from website.api import zettels_routes as routes_mod
+    from website.api.module_runners import summarization as runner
 
     consume_called = {"n": 0}
 
@@ -228,16 +248,7 @@ async def test_route_does_not_consume_when_persist_fails(monkeypatch):
         return None
 
     async def fake_summarize(*_a, **_kw):
-        return {
-            "title": "T",
-            "summary": "S",
-            "tags": [],
-            "source_type": "web",
-            "source_url": "https://example.com",
-            "is_raw_fallback": False,
-            "tokens_used": 10,
-            "latency_ms": 20,
-        }
+        return SimpleNamespace()
 
     async def fake_persist(*_a, **_kw):
         raise RuntimeError("supabase down")
@@ -245,17 +256,42 @@ async def test_route_does_not_consume_when_persist_fails(monkeypatch):
     async def fake_consume(*_a, **_kw):
         consume_called["n"] += 1
 
-    monkeypatch.setattr(routes_mod, "require_entitlement", fake_require)
-    monkeypatch.setattr(routes_mod, "summarize_url", fake_summarize)
-    monkeypatch.setattr(routes_mod, "persist_summarized_result", fake_persist)
-    monkeypatch.setattr(routes_mod, "consume_entitlement", fake_consume)
-    monkeypatch.setattr(routes_mod, "_check_rate_limit", lambda _ip: True)
+    monkeypatch.setattr(runner, "require_entitlement", fake_require)
+    monkeypatch.setattr(runner, "summarize_url_bundle", fake_summarize)
+    monkeypatch.setattr(runner, "persist_summarized_result", fake_persist)
+    monkeypatch.setattr(runner, "consume_entitlement", fake_consume)
+    monkeypatch.setattr(routes_mod, "_gemini_client", lambda: object())
+    monkeypatch.setattr(
+        runner,
+        "summary_dto",
+        lambda _bundle: runner.SummaryDTO(
+            title="T",
+            summary="S",
+            brief_summary="B",
+            detailed_summary="S",
+            tags=[],
+            source_type="web",
+            source_url="https://example.com",
+            one_line_summary="B",
+            tokens_used=10,
+            latency_ms=20,
+            metadata={},
+        ),
+    )
+    monkeypatch.setattr(runner, "quality_dto", lambda _bundle: runner.QualityDTO(confidence="high"))
 
-    body = SimpleNamespace(url="https://example.com", client_action_id="a-1")
-    request = SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
+    body = routes_mod.AddZettelRequest(
+        url="https://example.com",
+        client_action_id="a-1",
+        surface="landing",
+    )
 
     with pytest.raises(Exception):
-        await routes_mod.summarize(body=body, request=request, user=None)
+        await routes_mod._run_add_zettel(
+            body,
+            user=None,
+            effective_user_id=routes_mod._zoro_user_id(),
+        )
 
     assert consume_called["n"] == 0, (
         "BILLING BUG: consume_entitlement called even though persist failed"

@@ -1,7 +1,7 @@
 """Backward-compatible re-exports for the canonical persist module.
 
 The canonical implementation now lives at :mod:`website.core.persist` so every
-ingest path (website ``/api/summarize``, eval register scripts, future callers)
+ingest path (Add Zettel, eval register scripts, future callers)
 goes through a single function. This shim keeps existing imports working unchanged.
 """
 

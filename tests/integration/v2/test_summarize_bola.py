@@ -5,8 +5,8 @@ Two surfaces to defend:
   * ``POST /api/v2/summarize`` — uses ``get_optional_user``; the writer's
     ``user_id`` MUST come from the JWT ``sub`` claim, never from the body.
     A swap of JWTs MUST flip the writer's user_id.
-  * ``POST /api/summarize`` (legacy) — uses ``get_optional_user`` and
-    threads ``user["sub"]`` into ``persist_summarized_result``.
+  * ``POST /api/zettels/add`` — uses ``get_optional_user`` and threads the
+    authenticated UUID into canonical persistence.
 
 Plus the OWASP API1:2023 BOLA UUID-leak guard borrowed from
 ``test_pricing_bola.py``: even when persistence succeeds, error responses

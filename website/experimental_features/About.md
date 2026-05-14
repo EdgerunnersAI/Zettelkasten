@@ -11,7 +11,7 @@
 
 ## What This Folder Does Not Own
 
-- The core URL summarization pipeline. Nexus calls `website.core.pipeline.summarize_url()` rather than implementing summarization itself.
+- The core URL summarization pipeline. Nexus calls the summarization engine rather than implementing summarization itself.
 - Canonical persistence for summarized results. Nexus uses `website.core.persist.persist_summarized_result()` through the compatibility shim in `nexus/service/persist.py`.
 - The production RAG pipeline under `website/features/rag_pipeline/`.
 - Global FastAPI app setup, auth dependencies, Supabase clients, or database schema migrations.

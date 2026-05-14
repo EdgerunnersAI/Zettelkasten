@@ -1,8 +1,7 @@
 """Canonical persistence helpers for summarize → write-everywhere fanout.
 
 This module is the **single source of truth** for persisting a summarize
-result into the knowledge graph. Every ingest path (website ``/api/summarize``,
-eval register scripts, future callers) should call
+result into the knowledge graph. Every ingest path should call
 :func:`persist_summarized_result`.
 
 Historically this code lived at
@@ -411,7 +410,7 @@ async def persist_summarized_result(
     user_sub: str | None = None,
     captured_on: date | None = None,
 ) -> PersistenceOutcome:
-    """Persist a summarize result using the same KG behavior as ``/api/summarize``."""
+    """Persist a summarized result using the canonical Add Zettel KG behavior."""
 
     payload = dict(result)
     captured_on = captured_on or date.today()
@@ -523,7 +522,8 @@ async def _persist_supabase_v2_zettel(
         workspace=workspace,
         chunks=chunks,
     )
-    return str(result.canonical_zettel_id), result.was_new, not result.was_new
+    persisted_id = result.workspace_zettel_id or result.canonical_zettel_id
+    return str(persisted_id), result.workspace_zettel_id is not None, not result.was_new
 
 
 def _encode_summary_payload(payload: dict[str, Any]) -> str:
@@ -575,7 +575,7 @@ def _schedule_rag_chunks(
     user_uuid: UUID,
     node_id: str,
 ) -> None:
-    """Ingest RAG chunks off critical path so /api/summarize returns faster."""
+    """Ingest RAG chunks off critical path so Add Zettel returns faster."""
 
     async def _run() -> None:
         try:

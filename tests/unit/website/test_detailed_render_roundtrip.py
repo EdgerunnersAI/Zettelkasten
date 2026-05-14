@@ -1,7 +1,7 @@
 # tests/unit/website/test_detailed_render_roundtrip.py
 """End-to-end Python-side render round-trip for the composed layout.
 
-Guarantees the output of _render_detailed_summary (consumed by the frontend's
+Guarantees the output of render_detailed_summary (consumed by the frontend's
 renderMarkdownLite) contains:
   - `## Overview` h2
   - `### Format and speakers` and `### Core argument` h3 nested under Overview
@@ -11,7 +11,7 @@ renderMarkdownLite) contains:
 """
 from __future__ import annotations
 
-from website.core.pipeline import _render_detailed_summary
+from website.core.summary_rendering import render_detailed_summary
 from website.features.summarization_engine.summarization.youtube.layout import (
     compose_youtube_detailed,
 )
@@ -54,44 +54,44 @@ def _payload(**detailed_overrides) -> YouTubeStructuredPayload:
 
 
 def test_markdown_round_trip_has_overview_h2():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "## Overview" in md
 
 
 def test_markdown_round_trip_has_format_and_thesis_h3():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "### Format and speakers" in md
     assert "### Core argument" in md
 
 
 def test_markdown_round_trip_has_chapter_walkthrough_h2_and_chapter_h3():
     # Product decision (2026-04-25): timestamps stripped from chapter headings.
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "## Chapter walkthrough" in md
     assert "### Intro" in md
     assert "### 00:15" not in md
 
 
 def test_markdown_round_trip_uses_closing_remarks_not_closing_takeaway():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "## Closing remarks" in md
     assert "Closing Takeaway" not in md
 
 
 def test_markdown_round_trip_has_no_json_leakage():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "{\"" not in md
     assert "{'" not in md
     assert "timestamp\":" not in md
 
 
 def test_markdown_round_trip_omits_demonstrations_when_empty():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     assert "## Demonstrations" not in md
 
 
 def test_markdown_round_trip_includes_demonstrations_when_present():
-    md = _render_detailed_summary(
+    md = render_detailed_summary(
         compose_youtube_detailed(_payload(demonstrations=["Live DMT extraction demo."]))
     )
     assert "## Demonstrations" in md

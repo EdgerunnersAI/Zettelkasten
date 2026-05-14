@@ -58,7 +58,7 @@ This file keeps the current pricing structure and constraints handy for humans. 
 
 ## Metering Rules
 
-- Zettel entitlement is checked before `/api/summarize` starts extraction or Gemini work.
+- Zettel entitlement is checked before `/api/zettels/add` starts extraction or Gemini work.
 - Kasten entitlement is checked before `POST /api/rag/sandboxes` creates a sandbox.
 - RAG question entitlement is checked before retrieval, rerank, or Gemini answer work starts.
 - Subscription quota is consumed before one-time credit packs.

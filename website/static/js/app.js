@@ -259,27 +259,29 @@
 
     startLoading(url);
 
-    var fetchHeaders = { 'Content-Type': 'application/json' };
     var authToken = typeof getAuthToken === 'function' ? getAuthToken() : null;
-    if (authToken) {
-      fetchHeaders['Authorization'] = 'Bearer ' + authToken;
+
+    if (!window.ZKAddZettel || typeof window.ZKAddZettel.add !== 'function') {
+      stopLoading();
+      submitBtn.disabled = false;
+      showError('Add Zettel API helper failed to load. Please refresh and try again.');
+      return;
     }
 
-    fetch('/api/summarize', {
-      method: 'POST',
-      headers: fetchHeaders,
-      body: JSON.stringify({ url: url }),
+    window.ZKAddZettel.add({
+      url: url,
+      token: authToken,
+      clientActionId: window.ZKAddZettel.makeActionId('landing'),
+      persist: true,
+      surface: 'landing',
+      mode: 'auto'
     })
-      .then(function (res) {
-        if (!res.ok) {
-          return res.json().then(function (data) {
-            throw new Error(data.detail || 'Request failed with status ' + res.status);
-          });
-        }
-        return res.json();
-      })
       .then(function (data) {
-        showResult(data);
+        var summary = data.summary || {};
+        summary.node_id = data.node_id;
+        summary.workspace_zettel_id = data.workspace_zettel_id;
+        summary.persistence = data.persistence;
+        showResult(summary);
       })
       .catch(function (err) {
         showError(err.message || 'An unexpected error occurred. Please try again.');

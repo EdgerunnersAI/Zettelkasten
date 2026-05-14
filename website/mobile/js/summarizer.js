@@ -142,19 +142,19 @@
 
     showLoading();
 
-    fetch('/api/summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url })
-    })
-    .then(function (res) {
-      if (res.status === 429) throw new Error('Rate limited — please wait a moment.');
-      if (!res.ok) throw new Error('Server error (' + res.status + ')');
-      return res.json();
+    if (!window.ZKAddZettel || typeof window.ZKAddZettel.add !== 'function') {
+      return showError('Add Zettel API helper failed to load. Please refresh and try again.');
+    }
+
+    window.ZKAddZettel.add({
+      url: url,
+      clientActionId: window.ZKAddZettel.makeActionId('landing'),
+      persist: true,
+      surface: 'landing',
+      mode: 'auto'
     })
     .then(function (data) {
-      if (data.error) throw new Error(data.error);
-      showResult(data);
+      showResult(data.summary || {});
     })
     .catch(function (err) {
       showError(err.message || 'Something went wrong. Please try again.');

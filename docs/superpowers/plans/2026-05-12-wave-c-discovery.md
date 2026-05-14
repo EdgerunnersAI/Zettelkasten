@@ -140,7 +140,7 @@ All 8 minor groups in spec match reality, with the additions noted above (markdo
 1. **Spec assumed `_graph_cache` is per-user populated.** Reality: only `_graph_cache_global` is written by the handler; `_graph_cache` exists only as an invalidation target. Either dead code OR an unfinished per-user cache slot. **THIS IS A P1 SECURITY-RELEVANT FINDING** — KG-05 (cache-key tenant isolation) becomes simpler (no per-user cache to confuse) but the dead globals should be flagged for cleanup.
 2. **v2 / per-user responses are uncached.** No thundering-herd protection on `_v2_assemble_graph` for authenticated users — KG-11 (50 parallel under cache miss) needs to test BOTH the cached file-store path and the always-uncached v2 path. The latter has zero protection today.
 3. Spec KG-12 mentions `/api/graph/query`, `/search`, `/rebuild-links` retired. Confirmed: `/api/graph/query` (`routes.py:633`), `/api/graph/search` (`routes.py:670`) return deprecation responses; `/api/graph/rebuild-links` is **HARD DELETED** (no handler, FastAPI returns 404).
-4. Spec lists "Cache invalidation: `/api/summarize` success + nuke routes reset caches" — also need to add `delete_zettel` (`routes.py:486-488`) and an apparent purchase-success path at `routes.py:686-708`.
+4. Spec lists "Cache invalidation: Add Zettel success + nuke routes reset caches" — also need to add `delete_zettel` (`routes.py:486-488`) and an apparent purchase-success path at `routes.py:686-708`.
 
 ### Plan amendments required (knowledge_graph)
 - KG-05: revise — there is no per-user cache slot in the read path, so the test should ASSERT no cross-tenant leakage AND assert `_graph_cache` (per-user global) is never written by `graph_data` (regression guard against accidental per-user caching without keying).

@@ -791,13 +791,13 @@
     var targetRect = spacer.getBoundingClientRect();
 
     // Start API call immediately (runs in parallel with animation)
-    var apiPromise = fetch('/api/summarize', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ url: url, client_action_id: pricingActionId })
+    var apiPromise = window.ZKAddZettel.add({
+      url: url,
+      token: token,
+      clientActionId: pricingActionId,
+      persist: true,
+      surface: 'home',
+      mode: 'auto'
     });
 
     // Create skeleton now — it'll be revealed seamlessly during shatter
@@ -832,33 +832,11 @@
     if (addUrlInput) addUrlInput.value = '';
 
     try {
-      var resp = await apiPromise;
-
-      if (!resp.ok) {
-        var errMsg = 'Failed to process URL (HTTP ' + resp.status + ')';
-        var quotaDetail = null;
-        try {
-          var err = await resp.json();
-          quotaDetail = err.detail && err.detail.code === 'quota_exhausted' ? err.detail : null;
-          errMsg = (err.detail && err.detail.message) || err.detail || errMsg;
-        } catch (_parseErr) {
-          var rawText = '';
-          try { rawText = await resp.text(); } catch (_) {}
-          if (rawText) errMsg = rawText.slice(0, 200);
-        }
-        if (quotaDetail && window.ZKPricing) {
-          await window.ZKPricing.openPurchase({
-            detail: quotaDetail,
-            source: 'home:add-zettel',
-            resumeAction: { type: 'add_zettel', url: url, clientActionId: pricingActionId },
-            onResume: function () { return addZettel(url, token, pricingActionId); }
-          });
-          return;
-        }
-        throw new Error(errMsg);
-      }
-
-      var result = await resp.json();
+      var envelope = await apiPromise;
+      var result = envelope.summary || {};
+      result.node_id = envelope.node_id;
+      result.workspace_zettel_id = envelope.workspace_zettel_id;
+      result.persistence = envelope.persistence;
 
       // Morph skeleton into real card
       var today = new Date().toISOString().slice(0, 10);
@@ -913,6 +891,16 @@
       // UX-8: refresh the My Zettels badge authoritatively from /api/graph.
       refreshMyZettelsBadge(token);
     } catch (e) {
+      var quotaDetail = e && e.detail && e.detail.code === 'quota_exhausted' ? e.detail : null;
+      if (quotaDetail && window.ZKPricing) {
+        await window.ZKPricing.openPurchase({
+          detail: quotaDetail,
+          source: 'home:add-zettel',
+          resumeAction: { type: 'add_zettel', url: url, clientActionId: pricingActionId },
+          onResume: function () { return addZettel(url, token, pricingActionId); }
+        });
+        return;
+      }
       if (skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
       if (addError) addError.textContent = e.message;
       if (addZettelDropdown) addZettelDropdown.classList.add('open');

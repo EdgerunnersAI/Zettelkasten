@@ -89,7 +89,7 @@ No existing `respx` or `httpx_mock` fixture in repo (verify in Phase 1) — Phas
 | File | Lines | Surface |
 |---|---|---|
 | `website/features/user_home/index.html` | 341 | Welcome heading, `home-vault` panel (zettels), avatar header (duplicates `header.html` markup — see Risk #3 below), avatar dropdown, summary loader DOM, add-zettel form, avatar-picker modal, phone-collect modal not present in shipped HTML (see stale citation in §2) |
-| `website/features/user_home/js/home.js` | 1411 | IIFE-wrapped. Top-level: `resolveDOM`, `setBodyScrollLocked`, `toSafeHttpUrl`, `init` (line 76), supabase boot, `/api/me` fetch, `/api/rag/sandboxes` fetch, `/api/summarize` fetch (line 791) with `client_action_id`, `window.ZKPricing.openPurchase` quota-exhausted resume flow, `/api/graph?view=my` fetch (line 267 + 560), avatar-modal bind, kasten create form, sign-out, `init()` invoked at DOMContentLoaded (line 1407) AND immediately (line 1409). |
+| `website/features/user_home/js/home.js` | 1411 | IIFE-wrapped. Top-level: `resolveDOM`, `setBodyScrollLocked`, `toSafeHttpUrl`, `init` (line 76), supabase boot, `/api/me` fetch, `/api/rag/sandboxes` fetch, Add Zettel facade call with `client_action_id`, `window.ZKPricing.openPurchase` quota-exhausted resume flow, `/api/graph?view=my` fetch (line 267 + 560), avatar-modal bind, kasten create form, sign-out, `init()` invoked at DOMContentLoaded (line 1407) AND immediately (line 1409). |
 | `website/features/user_home/css/home.css` | (not opened) | Color/typography rules subject to UH-03 scan |
 | Mounts | `app.py:234-235` | `/home/css/*`, `/home/js/*` static |
 | Route | `app.py:361-364` (`@app.get("/home")`) | `if _is_mobile(request): RedirectResponse("/m/", 302); else _render_with_shell(HOME_DIR / "index.html")` |
@@ -117,7 +117,7 @@ Stale citations: 1 of 8 confirmed stale (UH-05). Spec was authored before phone-
 | `GET /api/me` | WAVE-A | reuse `mint_user` fixture from `tests/integration/v2/conftest.py` |
 | `PUT /api/me/avatar` (via `window.ZKHeader.setAvatarById`) | header surface | covered by HD-* |
 | `GET /api/rag/sandboxes` | WAVE-B (rag kasten) | `tests/integration/v2/` patterns exist |
-| `POST /api/summarize` | WAVE-C (summarization_engine) | dispatched via `mock_gemini_pool` from WAVE-C plan |
+| `POST /api/zettels/add` | WAVE-C (summarization_engine) | dispatched via `mock_gemini_pool` from WAVE-C plan |
 | `GET /api/graph?view=my` | WAVE-C (knowledge_graph) | `mock_supabase_kg_v2` per WAVE-C plan |
 | `POST /api/rag/sandboxes` (kasten create) | WAVE-B | quota-exhausted `code:quota_exhausted` path → `window.ZKPricing.openPurchase` round-trip |
 | Pricing surface `window.ZKPricing.openPurchase` | WAVE-A footer/pricing | confirm `ZKPricing` exposes a Playwright-stubbable seam |
@@ -132,7 +132,7 @@ Mocks established:
 |---|---|---|
 | Double `init()` invocation (line 1407 AND 1409) creates race: DOMContentLoaded handler runs again after immediate call resolves async work. | `home.js:1405-1410` | Concurrency test — guard against duplicate `/api/me` fetches |
 | Header avatar markup duplicated in `index.html:27-62` vs `header.html` — page renders BOTH if a future commit injects header via `_render_with_shell`. Spec says no `<!--ZK_HEADER-->` placeholder in `/home`'s `index.html` — verify before UH-07. | `home/index.html:18-63` | UH-07 must lock current behaviour (single header) AND assert placeholder absence |
-| `toSafeHttpUrl` is the only client-side SSRF guard before `/api/summarize`; relies on `URL()` constructor. Server-side `validate_url()` is the canonical check. | `home.js:60-72` | Cross-wave: WAVE-C already covers SSRF (`SE-01`). |
+| `toSafeHttpUrl` is the only client-side SSRF guard before Add Zettel submission; relies on `URL()` constructor. Server-side `validate_url()` is the canonical check. | `home.js:60-72` | Cross-wave: WAVE-C already covers SSRF (`SE-01`). |
 | Color-rule violation surface: 4 inline `<svg>` blocks in `index.html` use `stroke="currentColor"`; computed-style scan must run with logged-in DOM, not raw HTML | `index.html:34,40,46,56` | UH-03 must use Playwright `evaluate()` to grab `getComputedStyle` |
 | `client_action_id` for idempotency uses `Date.now()+Math.random().toString(36).slice(2)` — collisions possible at 1k+ users/sec but irrelevant at current scale; flag for 10k+ ramp | `home.js:719, 1233` | Document in Phase 1 plan |
 | BFLA: `/api/graph?view=my` (`home.js:267, 560`) — must assert server denies `view=my` with another user's session. WAVE-C `KG-11`. | n/a | Already in WAVE-C scope |

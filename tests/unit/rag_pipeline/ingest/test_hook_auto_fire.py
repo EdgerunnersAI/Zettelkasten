@@ -1,4 +1,4 @@
-"""Bug 1 regression: /api/summarize must auto-trigger ingest_node_chunks.
+"""Bug 1 regression: Add Zettel persistence must auto-trigger ingest_node_chunks.
 
 Iter-06 production observation: rag_chunks_enabled=False default + Dockerfile
 not bundling ops/config.yaml meant the hook never fired in prod. The fix is

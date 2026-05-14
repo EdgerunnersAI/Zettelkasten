@@ -15,7 +15,7 @@ This file is the folder-level map for the feature layer. It is intentionally bro
 ## What This Folder Does Not Own
 
 - FastAPI app assembly, global middleware, mobile redirects, static mounts, and shared HTML shell injection. Those live in `website/app.py`.
-- Most legacy/public API handlers, including `/api/summarize`, `/api/graph`, zettel mutation, RAG chat routes, sandbox/Kasten APIs, auth dependencies, and Nexus APIs. Those live under `website/api/`, although they call services in this folder.
+- Most public API handlers, including `/api/zettels/add`, `/api/graph`, zettel mutation, RAG chat routes, sandbox/Kasten APIs, auth dependencies, and Nexus APIs. Those live under `website/api/`, although they call services in this folder.
 - Core persistence, URL normalization, settings, graph file-store mutation, Supabase v2 clients/repositories, and DB version gating. Those live under `website/core/`.
 - Supabase SQL schema ownership. That lives under `supabase/`.
 - Mobile page assets, footer about/pricing pages, experimental Nexus/PageIndex code, deployment scripts, and root project docs.
@@ -31,7 +31,7 @@ This file is the folder-level map for the feature layer. It is intentionally bro
 | `knowledge_graph/` | Desktop graph UI assets and file-backed public graph data asset | Served at `/knowledge-graph`, `/kg/*`, and indirectly through `/api/graph` fallback |
 | `kg_features/` | Graph analytics and embedding utilities | `/api/graph` calls `compute_graph_metrics()`; persistence can call `generate_embedding()` |
 | `rag_pipeline/` | Authenticated RAG runtime over zettels and Kastens | Used by `/api/rag/*` and `/api/rag/sandboxes*` routes |
-| `summarization_engine/` | v2 URL ingestion, summarization, batch, writers, evaluator, dashboard, and `/api/v2` routes | Called by `website/core/pipeline.py` and mounted by `website/app.py` |
+| `summarization_engine/` | v2 URL ingestion, summarization, batch, writers, evaluator, dashboard, and `/api/v2` routes | Called by the Add Zettel facade and mounted by `website/app.py` |
 | `user_auth/` | Supabase auth callback page and auth client assets | Served at `/auth/callback` and mounted under `/auth/*` |
 | `user_home/` | Signed-in home page assets | Served at `/home`; uses shared header/footer and API auth state |
 | `user_zettels/` | Personal zettel stream UI | Served at `/home/zettels`; talks to graph/zettel APIs |
@@ -44,7 +44,8 @@ This file is the folder-level map for the feature layer. It is intentionally bro
 
 - `website/app.py:create_app()` includes feature routers from `summarization_engine.api`, `user_pricing.routes`, and `web_monitor`.
 - `website/app.py:create_app()` mounts feature assets under `/kg/*`, `/auth/*`, `/browser-cache/*`, `/home/*`, `/user-pricing/*`, `/header/*`, `/artifacts`, and `/summarization-engine/*`.
-- `website/api/routes.py` exposes `/api/summarize`, `/api/graph`, and zettel mutation routes. It calls `website.core.pipeline`, `website.core.persist`, `kg_features.analytics`, and `user_pricing.entitlements`.
+- `website/api/zettels_routes.py` exposes `/api/zettels/add` and calls the summarization engine plus `website.core.persist`.
+- `website/api/routes.py` exposes `/api/graph` and zettel mutation routes. It calls `website.core.persist`, `kg_features.analytics`, and `user_pricing.entitlements`.
 - `website/api/chat_routes.py` exposes `/api/rag/*` chat/session endpoints and streams answers through `rag_pipeline.service.get_rag_runtime()`.
 - `website/api/sandbox_routes.py` exposes `/api/rag/nodes` and `/api/rag/sandboxes*` Kasten/sandbox endpoints backed by RAG memory and Supabase v2 repositories.
 - `summarization_engine.api.routes` exposes `/api/v2/summarize`, `/api/v2/batch`, `/api/v2/batch/upload`, and `/api/v2/batch/stream`.
@@ -57,12 +58,11 @@ This file is the folder-level map for the feature layer. It is intentionally bro
 
 ### Public Or Signed-In URL Capture
 
-1. The browser posts a URL to `/api/summarize`.
-2. `website/api/routes.py` validates the request, rate-limits by IP, and checks zettel entitlement through `user_pricing.entitlements`.
-3. `website/core/pipeline.py` resolves redirects, normalizes the URL, and delegates to `summarization_engine.core.orchestrator`.
-4. The summarization engine validates URL safety, detects source type, runs the registered ingestor, rejects near-empty extraction, runs the registered summarizer, and returns the legacy-compatible summary payload.
-5. `website/core/persist.py` writes through Supabase v2 when a user/workspace scope is available and updates the file-store graph fallback when appropriate.
-6. The entitlement consume step runs only after accepted work.
+1. The browser posts a URL to `/api/zettels/add`.
+2. `website/api/zettels_routes.py` validates the request, rate-limits by IP, checks zettel entitlement, resolves the effective user, and calls `summarization_engine.core.orchestrator.summarize_url_bundle()`.
+3. The summarization engine validates URL safety, detects source type, runs the registered ingestor, rejects near-empty extraction, runs the registered summarizer, and returns an engine bundle.
+4. `website/core/persist.py` writes through Supabase v2 when a user/workspace scope is available and updates the file-store graph fallback when appropriate.
+5. The entitlement consume step runs only after persistence succeeds.
 
 ### Public Graph Read
 

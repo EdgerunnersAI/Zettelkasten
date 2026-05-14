@@ -13,7 +13,7 @@ Folder-scoped developer notes for `website/features/summarization_engine`, the v
 
 ## What this folder does not own
 
-- URL redirect resolution and legacy response shaping for `/api/summarize`; `website/core/pipeline.py` handles those and delegates to `summarize_url_bundle()`.
+- Website-specific Add Zettel request shaping and persistence; `website/api/zettels_routes.py` handles those and delegates to `summarize_url_bundle()`.
 - The API-key pool implementation; this engine consumes `website/features/api_key_switching`.
 - Knowledge-graph storage policy outside explicit writers. The orchestrator does not persist summaries; callers choose writers.
 - Supabase schema ownership, auth policy, pricing, chat, or RAG runtime behavior.
@@ -48,8 +48,8 @@ Folder-scoped developer notes for `website/features/summarization_engine`, the v
   - `api.routes.router` is an `APIRouter(prefix="/api/v2")` mounted by `website/app.py`.
   - `/api/v2/summarize` returns `SummarizeV2Response`; it writes to Supabase only when `write_to_supabase` is true.
   - `/api/v2/batch` accepts URL lists, `/api/v2/batch/upload` accepts uploaded CSV/JSON, and `/api/v2/batch/stream` wraps batch results in SSE progress events.
-- Legacy website caller:
-  - `website/core/pipeline.py::summarize_url()` resolves redirects, normalizes the URL, delegates to `summarize_url_bundle()`, then converts the result back to the legacy API shape.
+- Website Add Zettel caller:
+  - `website/api/zettels_routes.py` resolves redirects, normalizes the URL, delegates to `summarize_url_bundle()`, persists through `website.core.persist`, then returns the Add Zettel response envelope.
 
 ## Representative runtime flows
 
@@ -64,9 +64,9 @@ Folder-scoped developer notes for `website/features/summarization_engine`, the v
 7. The registered summarizer runs source-specific or default summarization and returns `SummaryResult`.
 8. If `write_to_supabase` is true, `SupabaseWriter.write()` persists the result and returns writer metadata.
 
-### Legacy `/api/summarize`
+### Add Zettel facade
 
-`website/api/routes.py` still calls `website/core/pipeline.py::summarize_url()`. That pipeline resolves redirects, normalizes the URL, uses a fixed website user id, delegates to this engine, and maps `SummaryResult` plus `IngestResult` into the older response fields.
+`website/api/zettels_routes.py` is the website-native facade for Add Zettel. It resolves authenticated users, maps unauthenticated captures to the Zoro user, calls `summarize_url_bundle()`, persists through `persist_summarized_result()`, and returns a stable JSON envelope.
 
 ### Batch
 

@@ -1,7 +1,7 @@
 """Dynamic composition of Reddit DetailedSummarySection hierarchy.
 
 The extractor routes RedditStructuredPayload through this module so the
-renderer (``website/core/pipeline.py::_render_detailed_summary``) receives
+renderer (``website/core/summary_rendering.py::render_detailed_summary``) receives
 populated ``sub_sections`` rather than raw schema-key headings. Keeping the
 layout here — not in common/structured.py — mirrors the youtube/layout.py
 pattern and lets us unit-test without importing the extractor.

@@ -141,7 +141,7 @@ async def notify_app_error(
     alerting must never be in the critical response path.
 
     Args:
-        route: request path (e.g. ``/api/summarize``).
+        route: request path (e.g. ``/api/zettels/add``).
         exc_type: class name of the exception (e.g. ``ValueError``).
         message: stringified exception — truncate before calling if huge.
         request_id: optional x-request-id header value for trace correlation.

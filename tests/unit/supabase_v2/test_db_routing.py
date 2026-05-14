@@ -62,7 +62,7 @@ async def test_persist_routes_to_v2_when_scope_available(monkeypatch) -> None:
     )
 
     assert outcome.supabase_saved is True
-    assert outcome.supabase_node_id == "00000000-0000-0000-0000-000000000111"
+    assert outcome.supabase_node_id == "00000000-0000-0000-0000-000000000222"
     zettel, workspace, chunks = repo.calls[0]
     assert zettel.normalized_url == "https://example.com"
     assert workspace.workspace_id == UUID("00000000-0000-0000-0000-000000000002")

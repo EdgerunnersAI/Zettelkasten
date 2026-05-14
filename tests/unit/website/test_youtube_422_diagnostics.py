@@ -1,31 +1,23 @@
-"""UX-4: /api/summarize 422 diagnostic payload for YouTube failures.
-
-Covers:
-  (a) YouTube extraction-confidence failure -> structured 422 detail with
-      message + tier_results + url.
-  (b) Non-YouTube extraction-confidence failure -> generic string detail
-      preserved (backwards-compatible).
-  (c) Successful summarize still returns 200 (regression guard).
-"""
-
+"""UX-4: /api/zettels/add 422 diagnostic payload for extraction failures."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from website.app import create_app
-from website.features.summarization_engine.core.errors import (
-    ExtractionConfidenceError,
-)
+from website.features.summarization_engine.core.errors import ExtractionConfidenceError
 
 
 @pytest.fixture
 def client() -> TestClient:
-    from website.api import routes
+    from website.api import zettels_routes
 
-    routes._rate_store.clear()
+    zettels_routes._RATE_STORE.clear()
+    zettels_routes._IDEMPOTENCY_CACHE.clear()
     return TestClient(create_app())
 
 
@@ -34,25 +26,27 @@ _YT_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 def _yt_tier_results() -> list[dict]:
     return [
-        {"tier": "ytdlp_player_rotation", "status": "failed",
-         "reason": "all player clients failed", "latency_ms": 1200},
-        {"tier": "transcript_api_direct", "status": "failed",
-         "reason": "no captions", "latency_ms": 300},
-        {"tier": "piped_pool", "status": "failed",
-         "reason": "all instances unhealthy", "latency_ms": 50},
-        {"tier": "invidious_pool", "status": "failed",
-         "reason": "all instances unhealthy", "latency_ms": 50},
-        {"tier": "gemini_audio", "status": "failed",
-         "reason": "yt-dlp blocked", "latency_ms": 800},
-        {"tier": "metadata_only", "status": "failed",
-         "reason": "oembed 429", "latency_ms": 200},
+        {
+            "tier": "ytdlp_player_rotation",
+            "status": "failed",
+            "reason": "all player clients failed",
+            "latency_ms": 1200,
+        },
+        {"tier": "transcript_api_direct", "status": "failed", "reason": "no captions", "latency_ms": 300},
+        {"tier": "piped_pool", "status": "failed", "reason": "all instances unhealthy", "latency_ms": 50},
+        {"tier": "invidious_pool", "status": "failed", "reason": "all instances unhealthy", "latency_ms": 50},
+        {"tier": "gemini_audio", "status": "failed", "reason": "yt-dlp blocked", "latency_ms": 800},
+        {"tier": "metadata_only", "status": "failed", "reason": "oembed 429", "latency_ms": 200},
     ]
 
 
 class TestYouTube422Diagnostics:
-    def test_youtube_extraction_failure_returns_structured_detail(
-        self, client: TestClient
+    def test_youtube_extraction_failure_returns_problem_detail(
+        self, client: TestClient, monkeypatch
     ) -> None:
+        from website.api import zettels_routes
+        from website.api.module_runners import summarization as runner
+
         exc = ExtractionConfidenceError(
             "Insufficient content extracted (12 chars). Reason: All tiers failed",
             source_type="youtube",
@@ -60,73 +54,103 @@ class TestYouTube422Diagnostics:
             tier_results=_yt_tier_results(),
             url=_YT_URL,
         )
-        with patch(
-            "website.api.routes.summarize_url",
-            new_callable=AsyncMock,
-            side_effect=exc,
-        ):
-            resp = client.post("/api/summarize", json={"url": _YT_URL})
+        monkeypatch.setattr(runner, "require_entitlement", AsyncMock())
+        monkeypatch.setattr(runner, "resolve_redirects", AsyncMock(return_value=_YT_URL))
+        monkeypatch.setattr(runner, "normalize_url", lambda url: url)
+        monkeypatch.setattr(zettels_routes, "_gemini_client", lambda: object())
+        monkeypatch.setattr(runner, "summarize_url_bundle", AsyncMock(side_effect=exc))
+
+        resp = client.post(
+            "/api/zettels/add",
+            json={
+                "url": _YT_URL,
+                "client_action_id": "yt-422",
+                "persist": True,
+                "surface": "landing",
+                "mode": "sync",
+            },
+        )
 
         assert resp.status_code == 422
+        assert resp.headers["content-type"].startswith("application/problem+json")
         body = resp.json()
-        detail = body["detail"]
-        assert isinstance(detail, dict), f"expected dict detail, got: {detail!r}"
-        # New copy
-        assert "YouTube transcript unavailable" in detail["message"]
-        assert "datacenter IP" in detail["message"]
-        # Structured tier results
-        assert isinstance(detail["tier_results"], list)
-        tier_names = [t["tier"] for t in detail["tier_results"]]
+        assert body["title"] == "Insufficient content"
+        assert body["reason"] == "All tiers failed"
+        assert isinstance(body["tier_results"], list)
+        tier_names = [t["tier"] for t in body["tier_results"]]
         assert "ytdlp_player_rotation" in tier_names
         assert "metadata_only" in tier_names
-        # URL echoed back
-        assert detail["url"] == _YT_URL
 
-    def test_non_youtube_failure_keeps_generic_string_detail(
-        self, client: TestClient
+    def test_successful_youtube_add_zettel_returns_200(
+        self, client: TestClient, monkeypatch
     ) -> None:
-        exc = ExtractionConfidenceError(
-            "Insufficient content extracted (10 chars). Reason: paywalled",
-            source_type="newsletter",
-            reason="paywalled",
+        from website.api import zettels_routes
+        from website.api.module_runners import summarization as runner
+        from website.features.summarization_engine.core.models import (
+            IngestResult,
+            SourceType,
+            SummaryMetadata,
+            SummaryResult,
         )
-        with patch(
-            "website.api.routes.summarize_url",
-            new_callable=AsyncMock,
-            side_effect=exc,
-        ):
-            resp = client.post(
-                "/api/summarize", json={"url": "https://example.com/post"}
-            )
 
-        assert resp.status_code == 422
-        detail = resp.json()["detail"]
-        # Backward-compatible string
-        assert isinstance(detail, str)
-        assert "Could not extract enough content" in detail
+        metadata = SummaryMetadata(
+            source_type=SourceType.YOUTUBE,
+            url=_YT_URL,
+            extraction_confidence="high",
+            confidence_reason="ok",
+            total_tokens_used=50,
+            total_latency_ms=250,
+        )
+        bundle = SimpleNamespace(
+            summary_result=SummaryResult(
+                mini_title="YT Title",
+                brief_summary="Brief",
+                detailed_summary=[],
+                tags=["source/youtube"],
+                metadata=metadata,
+            ),
+            ingest_result=IngestResult(
+                source_type=SourceType.YOUTUBE,
+                url=_YT_URL,
+                original_url=_YT_URL,
+                raw_text="youtube content " * 20,
+                metadata={"tier_used": "primary"},
+                extraction_confidence="high",
+                confidence_reason="ok",
+                fetched_at=datetime.now(timezone.utc),
+            ),
+        )
+        monkeypatch.setattr(runner, "require_entitlement", AsyncMock())
+        monkeypatch.setattr(runner, "consume_entitlement", AsyncMock())
+        monkeypatch.setattr(runner, "resolve_redirects", AsyncMock(return_value=_YT_URL))
+        monkeypatch.setattr(runner, "normalize_url", lambda url: url)
+        monkeypatch.setattr(zettels_routes, "_gemini_client", lambda: object())
+        monkeypatch.setattr(runner, "summarize_url_bundle", AsyncMock(return_value=bundle))
+        monkeypatch.setattr(
+            runner,
+            "persist_summarized_result",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    result={},
+                    file_node_id="yt-title",
+                    supabase_node_id=None,
+                    file_saved=True,
+                    supabase_saved=False,
+                    supabase_duplicate=False,
+                )
+            ),
+        )
 
-    def test_successful_youtube_summarize_returns_200(
-        self, client: TestClient
-    ) -> None:
-        mock_result = {
-            "title": "YT Title",
-            "summary": "Body",
-            "brief_summary": "Brief",
-            "tags": ["source/youtube"],
-            "source_type": "youtube",
-            "source_url": _YT_URL,
-            "one_line_summary": "One",
-            "is_raw_fallback": False,
-            "tokens_used": 50,
-            "latency_ms": 250,
-            "metadata": {},
-        }
-        with patch(
-            "website.api.routes.summarize_url",
-            new_callable=AsyncMock,
-            return_value=mock_result,
-        ):
-            resp = client.post("/api/summarize", json={"url": _YT_URL})
+        resp = client.post(
+            "/api/zettels/add",
+            json={
+                "url": _YT_URL,
+                "client_action_id": "yt-ok",
+                "persist": True,
+                "surface": "landing",
+                "mode": "sync",
+            },
+        )
 
         assert resp.status_code == 200
-        assert resp.json()["title"] == "YT Title"
+        assert resp.json()["summary"]["title"] == "YT Title"

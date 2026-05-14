@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from website.core.pipeline import _render_detailed_summary
+from website.core.summary_rendering import render_detailed_summary
 from website.features.summarization_engine.summarization.youtube.layout import (
     compose_youtube_detailed,
 )
@@ -99,7 +99,7 @@ def _payload() -> YouTubeStructuredPayload:
 
 
 def test_frontend_parser_sees_overview_and_chapter_and_closing():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     nodes = parse_markdown_lite(md)
     h2_texts = [n["text"] for n in nodes if n["type"] == "h2"]
     h3_texts = [n["text"] for n in nodes if n["type"] == "h3"]
@@ -115,7 +115,7 @@ def test_frontend_parser_sees_overview_and_chapter_and_closing():
 
 
 def test_frontend_parser_finds_all_chapter_bullets():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     nodes = parse_markdown_lite(md)
     bullets = [n["text"] for n in nodes if n["type"] == "li"]
     # Overview first-sentence bullet + 2 format/speakers + 1 thesis + 5 chapter + 1 demo + 1 closing = 11
@@ -125,7 +125,7 @@ def test_frontend_parser_finds_all_chapter_bullets():
 
 
 def test_no_unknown_markdown_constructs_emitted():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     # renderMarkdownLite does not parse: h1, h4, h5, numbered lists, code blocks, blockquotes.
     forbidden = (r"^# ", r"^#### ", r"^##### ", r"^\s*\d+\.\s", r"^```", r"^> ")
     for line in md.split("\n"):
@@ -134,7 +134,7 @@ def test_no_unknown_markdown_constructs_emitted():
 
 
 def test_frontend_parser_preserves_bullet_text_intact():
-    md = _render_detailed_summary(compose_youtube_detailed(_payload()))
+    md = render_detailed_summary(compose_youtube_detailed(_payload()))
     nodes = parse_markdown_lite(md)
     bullets = [n["text"] for n in nodes if n["type"] == "li"]
     # The 5 chapter bullets should appear verbatim.

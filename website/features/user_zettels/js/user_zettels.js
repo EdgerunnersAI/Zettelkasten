@@ -774,13 +774,13 @@
       listEl.insertBefore(skeleton, listEl.firstChild);
     }
 
-    var apiPromise = fetch('/api/summarize', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + _token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ url: url, client_action_id: pricingActionId })
+    var apiPromise = window.ZKAddZettel.add({
+      url: url,
+      token: _token,
+      clientActionId: pricingActionId,
+      persist: true,
+      surface: 'zettels',
+      mode: 'auto'
     });
 
     if (addUrlInput) addUrlInput.value = '';
@@ -792,23 +792,11 @@
     }
 
     try {
-      var resp = await apiPromise;
-      if (!resp.ok) {
-        var errBody = await resp.json();
-        var quotaDetail = errBody && errBody.detail && errBody.detail.code === 'quota_exhausted' ? errBody.detail : null;
-        if (quotaDetail && window.ZKPricing) {
-          await window.ZKPricing.openPurchase({
-            detail: quotaDetail,
-            source: 'my-zettels:add-zettel',
-            resumeAction: { type: 'add_zettel', url: url, clientActionId: pricingActionId },
-            onResume: function () { return addZettel(url, pricingActionId); }
-          });
-          return;
-        }
-        throw new Error((errBody.detail && errBody.detail.message) || errBody.detail || 'Failed to process URL');
-      }
-
-      var result = await resp.json();
+      var envelope = await apiPromise;
+      var result = envelope.summary || {};
+      result.node_id = envelope.node_id;
+      result.workspace_zettel_id = envelope.workspace_zettel_id;
+      result.persistence = envelope.persistence;
       var newNode = normalizeNode({
         id: result.node_id || buildNodeId(result.title || 'untitled', result.source_type || 'web'),
         name: result.title || 'Untitled',
@@ -839,6 +827,16 @@
         applyFilters();
       }
     } catch (err) {
+      var quotaDetail = err && err.detail && err.detail.code === 'quota_exhausted' ? err.detail : null;
+      if (quotaDetail && window.ZKPricing) {
+        await window.ZKPricing.openPurchase({
+          detail: quotaDetail,
+          source: 'my-zettels:add-zettel',
+          resumeAction: { type: 'add_zettel', url: url, clientActionId: pricingActionId },
+          onResume: function () { return addZettel(url, pricingActionId); }
+        });
+        return;
+      }
       console.error('[user_zettels] Add failed:', err);
       if (skeleton && skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
       if (spacer && spacer.parentNode) spacer.parentNode.removeChild(spacer);

@@ -84,7 +84,7 @@ flowchart TD
 |-- website/                   # FastAPI app, static pages, APIs, core services, features
 |   |-- app.py                 # App factory, route mounting, static asset mounting
 |   |-- api/                   # Public API, auth, RAG chat, sandbox/Kasten, Nexus routes
-|   |-- core/                  # Pipeline adapter, persistence, settings, graph store, Supabase v2 clients
+|   |-- core/                  # Persistence, settings, graph store, Supabase v2 clients
 |   |-- features/              # Product feature packages and UI assets
 |   |-- experimental_features/ # Live-gated experiments such as Nexus and local PageIndex RAG
 |   |-- mobile/                # Mobile summarizer and graph pages
@@ -103,12 +103,12 @@ flowchart TD
 flowchart TB
     Browser["Browser UI"] --> FastAPI["website/app.py"]
     FastAPI --> Routes["website/api/*"]
-    Routes --> Pipeline["website/core/pipeline.py"]
-    Pipeline --> Engine["features/summarization_engine"]
+    Routes --> AddZettel["website/api/zettels_routes.py"]
+    AddZettel --> Engine["features/summarization_engine"]
     Engine --> Ingestors["source_ingest/*"]
     Engine --> Summarizers["summarization/*"]
     Summarizers --> Gemini["Gemini key pool"]
-    Routes --> Persist["website/core/persist.py"]
+    AddZettel --> Persist["website/core/persist.py"]
     Persist --> FileGraph["features/knowledge_graph/content/graph.json"]
     Persist --> Supabase["Supabase v2 repositories"]
     Routes --> RAG["features/rag_pipeline"]
@@ -116,7 +116,7 @@ flowchart TB
     Routes --> Monitor["features/web_monitor"]
 ```
 
-The public `/api/summarize` path keeps a legacy response shape for the web UI, but it delegates extraction and summarization to the v2 summarization engine. Persistence is composed outside the engine: current code writes through Supabase v2 when a user/workspace scope is available and keeps the file graph as the public fallback surface.
+The public Add Zettel path is `POST /api/zettels/add`. It resolves auth, maps anonymous captures to the canonical Zoro user, delegates extraction and summarization to the summarization engine, then persists through `website/core/persist.py`.
 
 ## For Builders
 

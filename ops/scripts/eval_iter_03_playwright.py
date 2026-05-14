@@ -191,7 +191,7 @@ DEFAULT_KASTEN = "Knowledge Management & Personal Productivity"
 # (newsletter + web essay) to the Knowledge Management Kasten, then asks two
 # targeted questions whose gold answers live ONLY in those new Zettels. This
 # verifies the entire pipeline end-to-end:
-#   /api/summarize  →  kg_nodes write  →  chunk + embed  →  rag_sandbox_members
+#   /api/zettels/add  →  kg_nodes write  →  chunk + embed  →  rag_sandbox_members
 #   /api/rag/sandboxes/{id}/members      →  POST (bulk add)
 #   /api/rag/adhoc                       →  retrieval picks up the new chunks
 #
@@ -989,7 +989,7 @@ def phase_diversify_sources(page: Page, token: str, sandbox_id: str) -> tuple[Ph
     """Add 2 new Zettels (newsletter + web) to the Knowledge Management Kasten.
 
     Two-step API flow that mirrors the URL-paste UX:
-      1. POST /api/summarize  with the URL → creates kg_node, returns node_id.
+      1. POST /api/zettels/add  with the URL → creates kg_node, returns node_id.
       2. POST /api/rag/sandboxes/{sandbox_id}/members → adds the new node to
          the Kasten (idempotent — sandbox_routes' bulk-add silently skips
          already-members).
@@ -1004,17 +1004,18 @@ def phase_diversify_sources(page: Page, token: str, sandbox_id: str) -> tuple[Ph
     for entry in DIVERSIFY_URLS:
         url = entry["url"]
         label = entry["label"]
-        # Step 1: summarize → kg_node
+        # Step 1: Add Zettel -> kg_node
         t0 = time.time()
-        sum_resp = api_fetch_json(page, "/api/summarize", token, method="POST",
-                                  body={"url": url}, timeout_ms=120_000)
+        sum_resp = api_fetch_json(page, "/api/zettels/add", token, method="POST",
+                                  body={"url": url, "client_action_id": f"eval-iter-03-{label}", "persist": True, "surface": "home", "mode": "sync"}, timeout_ms=120_000)
         ok = bool(sum_resp.get("ok"))
         body = sum_resp.get("body") or {}
+        summary = body.get("summary") or {}
         node_id = body.get("node_id") or body.get("id") or (body.get("node") or {}).get("id")
-        source_type = body.get("source_type") or (body.get("node") or {}).get("source_type")
-        title = body.get("title") or (body.get("node") or {}).get("name")
+        source_type = summary.get("source_type") or body.get("source_type") or (body.get("node") or {}).get("source_type")
+        title = summary.get("title") or body.get("title") or (body.get("node") or {}).get("name")
         rep.checks.append(CheckResult(
-            name=f"POST /api/summarize {url}",
+            name=f"POST /api/zettels/add {url}",
             passed=ok and bool(node_id),
             duration_ms=_ms_since(t0),
             detail={

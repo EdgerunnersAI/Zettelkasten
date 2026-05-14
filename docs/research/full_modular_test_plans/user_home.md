@@ -23,7 +23,7 @@ Risk tier: **Moderate** (signed-in landing surface).
 | UH-02 | P1 | Visual regression baseline (Playwright `toHaveScreenshot`, 0.2 threshold) |
 | UH-03 | P1 | Color-rule conformance — no purple HSL 250-290 / `#A78BFA`-class; teal accent only; static + computed-style scan |
 | UH-04 | P1 | Mobile UA regex routes to `/m/` (Pixel + iPhone UA strings) |
-| UH-05 | P2 | **D-3 PIVOT (2026-05-12):** phone-collect modal was removed from `index.html`; UH-05 now tests the quota-exhausted resume flow at `home.js:846-851` — `POST /api/summarize` 402 with `code:quota_exhausted` must invoke `window.ZKPricing.openPurchase`. Implemented at `tests/integration/browser/test_user_home_quota.py`. |
+| UH-05 | P2 | **D-3 PIVOT (2026-05-12):** phone-collect modal was removed from `index.html`; UH-05 now tests the quota-exhausted resume flow in Add Zettel — `POST /api/zettels/add` 402 with `code:quota_exhausted` must invoke `window.ZKPricing.openPurchase`. Implemented at `tests/integration/browser/test_user_home_quota.py`. |
 | UH-06 | P2 | axe-core WCAG 2.2 AA scan |
 | UH-07 | P2 | Shell composition regression — broken header/footer must not hide auth regression |
 | UH-08 | P3 | Synthetic signed-in home monitor — **OPERATIONAL DEFER (2026-05-12):** lives as a `mcp__scheduled-tasks` cron, not in the pytest suite. See § UH-08 below for the canonical payload. |

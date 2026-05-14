@@ -3,11 +3,11 @@
 Original UH-05 spec called for a phone-collect modal round-trip, but the
 modal was removed from ``index.html`` (verified: 341-line index, no phone
 markup). D-3 pivot: instead lock the *quota-exhausted* path that
-``home.js:846-851`` actually ships — when ``POST /api/summarize`` returns
+``home.js`` actually ships — when ``POST /api/zettels/add`` returns
 402 with ``code: "quota_exhausted"``, ``window.ZKPricing.openPurchase``
 is invoked with the offending tier.
 
-The test intercepts ``/api/summarize`` via Playwright's route handler so
+The test intercepts ``/api/zettels/add`` via Playwright's route handler so
 no Supabase/Gemini calls happen, then stubs ``window.ZKPricing`` on the
 page to capture the openPurchase argument shape.
 """
@@ -47,7 +47,7 @@ def test_quota_exhausted_opens_purchase(authed_browser, base_url):
 
     page = ctx.new_page()
 
-    # Intercept /api/summarize POST → 402 quota_exhausted. All other
+    # Intercept /api/zettels/add POST → 402 quota_exhausted. All other
     # requests fall through to the real server.
     def _route_summarize(route):
         if route.request.method == "POST":
@@ -59,7 +59,7 @@ def test_quota_exhausted_opens_purchase(authed_browser, base_url):
         else:
             route.continue_()
 
-    page.route("**/api/summarize", _route_summarize)
+    page.route("**/api/zettels/add", _route_summarize)
 
     page.goto(f"{base_url}/home", wait_until="domcontentloaded")
     page.wait_for_load_state("networkidle")

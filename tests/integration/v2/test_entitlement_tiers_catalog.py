@@ -122,8 +122,14 @@ def test_free_tier_zettel_monthly_quota_enforced(mint_user):
         statuses = []
         for i in range(quota + 1):
             r = client.post(
-                "/api/summarize",
-                json={"url": "https://example.com", "action_id": f"quota-probe-{i}"},
+                "/api/zettels/add",
+                json={
+                    "url": "https://example.com",
+                    "client_action_id": f"quota-probe-{i}",
+                    "persist": True,
+                    "surface": "home",
+                    "mode": "sync",
+                },
                 headers={"Authorization": f"Bearer {user.jwt}"},
             )
             statuses.append(r.status_code)

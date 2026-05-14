@@ -22,13 +22,16 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from website.core.pipeline import summarize_url
 from website.core.persist import (
     PersistenceOutcome,
     persist_summarized_result,
 )
+from website.core.summary_rendering import render_detailed_summary
+from website.core.url_utils import normalize_url, resolve_redirects
 from website.core.supabase_v2.client import get_v2_client, is_v2_configured
 from website.core.supabase_v2.repositories.core_repository import CoreRepository
+from website.features.summarization_engine.core.client_factory import build_tiered_gemini_client
+from website.features.summarization_engine.core.orchestrator import summarize_url_bundle
 from website.experimental_features.nexus.service.token_store import ProviderTokenStore
 from website.experimental_features.nexus.source_ingest.common.models import (
     ImportRequest,
@@ -305,10 +308,31 @@ def _normalize_artifacts(raw_result: Any, provider: NexusProvider) -> tuple[list
     return artifacts, metadata
 
 
-async def summarize_artifact_url(url: str) -> dict[str, Any]:
-    """Summarize an artifact URL using the website-native summarization pipeline."""
+async def summarize_artifact_url(url: str, *, user_id: UUID) -> dict[str, Any]:
+    """Summarize an artifact URL using the summarization engine."""
 
-    return await summarize_url(url)
+    resolved = await resolve_redirects(url)
+    normalized = normalize_url(resolved)
+    bundle = await summarize_url_bundle(
+        normalized,
+        user_id=user_id,
+        gemini_client=build_tiered_gemini_client(),
+    )
+    result = bundle.summary_result
+    detailed = render_detailed_summary(result.detailed_summary) or result.brief_summary
+    return {
+        "title": result.mini_title,
+        "summary": detailed,
+        "brief_summary": result.brief_summary,
+        "detailed_summary": detailed,
+        "tags": list(result.tags or []),
+        "source_type": result.metadata.source_type.value,
+        "source_url": result.metadata.url,
+        "one_line_summary": result.brief_summary,
+        "tokens_used": result.metadata.total_tokens_used,
+        "latency_ms": result.metadata.total_latency_ms,
+        "metadata": result.metadata.model_dump(mode="json", exclude_none=True),
+    }
 
 
 def _create_run(
@@ -778,7 +802,10 @@ async def _process_single_artifact(
         return artifact_result, "skipped"
 
     try:
-        summary_result = await summarize_artifact_url(artifact.url)
+        summary_result = await summarize_artifact_url(
+            artifact.url,
+            user_id=UUID(auth_user_sub),
+        )
         persistence = await persist_summarized_result(
             summary_result,
             user_sub=auth_user_sub,

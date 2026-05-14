@@ -10,7 +10,7 @@ Zettelkasten Website — a FastAPI web app that captures URLs (Reddit, YouTube, 
 **Repo**: https://github.com/chintanmehta21/Zettelkasten_KG
 **Verified sources**: YouTube, GitHub, Newsletter (Substack), Generic (HN/web)
 
-Single interface: a FastAPI web UI (`website/`) with REST API at `/api/summarize` and an interactive 3D knowledge graph at `/knowledge-graph`.
+Single interface: a FastAPI web UI (`website/`) with Add Zettel API at `/api/zettels/add` and an interactive 3D knowledge graph at `/knowledge-graph`.
 
 ## Production Change Discipline
 
@@ -190,13 +190,13 @@ The `Settings` singleton is accessed everywhere via `get_settings()` (lru_cache)
 
 ## Architecture
 
-### Pipeline (the core flow)
+### Add Zettel Pipeline (the core flow)
 
-`website/core/pipeline.py` sequences the full capture: resolve redirects -> normalize URL -> detect source type -> extract content -> Gemini summarise -> build tags -> return structured result. The pipeline is stateless: no disk writes, no dedup updates.
+`website/api/zettels_routes.py` is the website Add Zettel facade. It validates and normalizes URLs, resolves the authenticated user, maps anonymous captures to the canonical Zoro user, calls `website/features/summarization_engine/core/orchestrator.py::summarize_url_bundle`, converts the engine result into the website DTO, then persists through `website/core/persist.py::persist_summarized_result`.
 
 #### API Key Pool & Model Fallback
 
-A centralized `GeminiKeyPool` (`website/features/api_key_switching/`) manages up to 10 API keys with key-first traversal: `key1/gemini-2.5-flash` → `key2/gemini-2.5-flash` → ... → `key1/gemini-2.5-flash-lite` → `key2/gemini-2.5-flash-lite`. On a 429 rate-limit, it tries the next key (same model) before downgrading to the next model tier. Content-aware routing sends short/simple content to `flash-lite` first to preserve `flash` quota for complex content. Keys are loaded from an `api_env` file (one key per line) at project root or `/etc/secrets/api_env` (the secret-file path mounted into the droplet container; the path was originally adopted from Render conventions and carried over), with fallback to `GEMINI_API_KEY` for backward compatibility. If ALL keys/models fail, the pipeline degrades gracefully — returns raw extracted content with `is_raw_fallback=True`. For YouTube, it can bypass transcript extraction and send the video URL directly to Gemini's video understanding API.
+A centralized `GeminiKeyPool` (`website/features/api_key_switching/`) manages up to 10 API keys with key-first traversal: `key1/gemini-2.5-flash` → `key2/gemini-2.5-flash` → ... → `key1/gemini-2.5-flash-lite` → `key2/gemini-2.5-flash-lite`. On a 429 rate-limit, it tries the next key (same model) before downgrading to the next model tier. Content-aware routing sends short/simple content to `flash-lite` first to preserve `flash` quota for complex content. Keys are loaded from an `api_env` file (one key per line) at project root or `/etc/secrets/api_env` (the secret-file path mounted into the droplet container; the path was originally adopted from Render conventions and carried over), with fallback to `GEMINI_API_KEY` for backward compatibility. If ALL keys/models fail, the engine surfaces a structured failure to the caller. For YouTube, it can bypass transcript extraction and send the video URL directly to Gemini's video understanding API.
 
 ### Source Extractors
 
@@ -206,13 +206,13 @@ Each source (Reddit, YouTube, GitHub, Newsletter, generic web) is encapsulated i
 
 FastAPI app. Two main pages: a URL summarizer at `/` and a 3D knowledge graph visualizer at `/knowledge-graph`. Mobile browsers auto-redirect to `/m/` (detected via user-agent regex in `website/app.py`).
 
-- `website/api/routes.py` — `POST /api/summarize` with in-memory rate limiting (10 req/min per IP); `GET /api/graph` returns KG data (Supabase-first with 30s TTL cache, file-store fallback); `GET /api/health` (used by container / load balancer health checks)
-- `website/core/pipeline.py` — extraction/summarization pipeline; **stateless**: no disk writes, no dedup updates. Returns a structured dict with title, summary, tags, latency_ms, etc.
+- `website/api/zettels_routes.py` — `POST /api/zettels/add` with typed request/response DTOs, idempotency, bounded concurrency, structured problem responses, and optional 202 status polling.
+- `website/api/routes.py` — `GET /api/graph` returns KG data and `GET /api/health` serves container / load balancer health checks.
 - `website/core/graph_store.py` — thread-safe in-memory store backed by `website/features/knowledge_graph/content/graph.json`. Auto-links new nodes to existing ones based on shared normalized tags. Node IDs use source-type prefixes (`yt-`, `gh-`, `rd-`, `ss-`, `md-`, `web-`) + slugified title.
 
 #### Supabase Knowledge Graph (`website/core/supabase_kg/`)
 
-Optional Supabase-backed KG that replaces the file-based `graph.json` store. When `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set (`is_supabase_configured()` returns True), the API dual-writes: every `POST /api/summarize` writes to both the file store and Supabase, and `GET /api/graph` reads from Supabase first.
+Supabase v2 is the canonical user zettel store. Add Zettel persistence writes through `content.canonical_zettels`, `content.workspace_zettels`, and `content.canonical_chunks` via `content.upsert_canonical_zettel`; the file graph remains a public graph mirror/fallback surface.
 
 - `client.py` — Supabase client init via `get_supabase_client()`, gated by `is_supabase_configured()`
 - `models.py` — Pydantic models: `KGNode`, `KGLink`, `KGUser`, `KGGraph` (with Create variants)

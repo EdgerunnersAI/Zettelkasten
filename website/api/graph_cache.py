@@ -290,7 +290,7 @@ class UserGraphCache:
         racing followers seeing CancelledError mid-await.
         """
         target = str(user_id)
-        # Synchronous: callers (POST /api/summarize, DELETE/PATCH /zettels)
+        # Synchronous: callers (POST /api/zettels/add, DELETE/PATCH /zettels)
         # are already in async handlers; we want this fire-and-forget cheap.
         keys = [k for k in self._store.keys() if k[0] == target]
         for k in keys:

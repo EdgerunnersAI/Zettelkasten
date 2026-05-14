@@ -20,6 +20,7 @@ from website.api.chat_routes import router as chat_router
 from website.api.nexus import router as nexus_router
 from website.api.routes import router as api_router
 from website.api.sandbox_routes import router as sandbox_router
+from website.api.zettels_routes import router as zettels_router
 from website.features.summarization_engine.api import router as engine_v2_router
 from website.features.user_pricing.routes import router as pricing_router
 from website.features.web_monitor import router as web_monitor_router
@@ -143,6 +144,7 @@ def create_app(lifespan=None) -> FastAPI:
 
     # API routes
     app.include_router(api_router)
+    app.include_router(zettels_router)
     app.include_router(engine_v2_router)
     app.include_router(chat_router)
     app.include_router(sandbox_router)

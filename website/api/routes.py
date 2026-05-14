@@ -16,28 +16,20 @@ from pydantic import BaseModel, field_validator
 from website.api.auth import get_current_user, get_optional_user
 from website.api.graph_cache import bucket_for_strength, get_default_cache
 from website.core.db_version import get_db_schema_version, use_supabase_v2
-from website.core.pipeline import summarize_url
-from website.features.summarization_engine.core.errors import ExtractionConfidenceError
 from website.core.graph_store import _SOURCE_PREFIX, get_graph
 from website.core.graph_models import KGGraph
 from website.core.persist import (
     extract_summary_parts,
     get_supabase_v2_scope,
     get_supabase_v2_scope_for_read,
-    persist_summarized_result,
 )
 from website.core.supabase_v2.repositories.kg_repository import KGRepository as V2KGRepository
-from website.features.user_pricing.entitlements import consume_entitlement, require_entitlement
-from website.features.user_pricing.models import Meter
 
 logger = logging.getLogger("website.api")
 
 router = APIRouter(prefix="/api")
-
-# Simple in-memory rate limiter: {ip: [timestamps]}
-_rate_store: dict[str, list[float]] = defaultdict(list)
-_RATE_LIMIT = 10  # requests per minute
 _RATE_WINDOW = 60  # seconds
+_rate_store: dict[str, list[float]] = defaultdict(list)
 
 # In-memory graph cache (30-second TTL).
 # WAVE-C 1c-A.3: the legacy ``_graph_cache`` global was dead code (never
@@ -193,23 +185,6 @@ def _enrich_graph_with_analytics(
     return graph_dict
 
 
-class SummarizeRequest(BaseModel):
-    url: str
-    client_action_id: str | None = None
-
-    @field_validator("url")
-    @classmethod
-    def validate_url(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("URL is required")
-        if len(v) > 2048:
-            raise ValueError("URL too long (max 2048 characters)")
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("URL must start with http:// or https://")
-        return v
-
-
 class AvatarUpdateRequest(BaseModel):
     avatar_id: int
 
@@ -219,17 +194,6 @@ class AvatarUpdateRequest(BaseModel):
         if not (0 <= v <= 59):
             raise ValueError("avatar_id must be between 0 and 59")
         return v
-
-
-def _check_rate_limit(ip: str) -> bool:
-    """Return True if the request is allowed."""
-    now = time.time()
-    # Prune old timestamps
-    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < _RATE_WINDOW]
-    if len(_rate_store[ip]) >= _RATE_LIMIT:
-        return False
-    _rate_store[ip].append(now)
-    return True
 
 
 @router.get("/health")
@@ -841,8 +805,6 @@ async def graph_query(
             "Deprecation": "@1715299200",
         },
     )
-
-
 @router.post("/graph/search")
 async def graph_search(
     body: GraphSearchRequest,
@@ -878,75 +840,3 @@ async def graph_search(
             "Deprecation": "@1715299200",
         },
     )
-
-
-@router.post("/summarize")
-async def summarize(body: SummarizeRequest, request: Request, user: Annotated[dict | None, Depends(get_optional_user)] = None):
-    global _graph_cache_global, _graph_cache_global_ts
-
-    ip = request.client.host if request.client else "unknown"
-    if not _check_rate_limit(ip):
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Please wait a minute before trying again.",
-        )
-
-    logger.info("Summarize request from %s: %s", ip, body.url)
-
-    try:
-        action_id = body.client_action_id or body.url
-        await require_entitlement(Meter.ZETTEL, user, action_id=action_id)
-        result = await summarize_url(body.url)
-        persistence = await persist_summarized_result(
-            result,
-            user_sub=user["sub"] if user else None,
-        )
-        await consume_entitlement(Meter.ZETTEL, user, action_id=action_id)
-        if persistence.supabase_saved:
-            # D-KG-7: full-invalidate per-user cache + anon global cache.
-            invalidate_user_graph(user["sub"] if user else None)
-            _graph_cache_global = None
-            _graph_cache_global_ts = 0
-        return {
-            **persistence.result,
-            "persistence": {
-                "file_store": persistence.file_saved,
-                "supabase": persistence.supabase_saved,
-            },
-        }
-    except HTTPException:
-        raise
-    except ExtractionConfidenceError as exc:
-        logger.warning("Extraction too thin for %s: %s", body.url, exc)
-        is_youtube = (exc.source_type or "").lower() == "youtube"
-        if is_youtube:
-            message = (
-                "YouTube transcript unavailable for this video. All extraction "
-                "tiers (transcript API, Piped, Invidious, Gemini audio, oEmbed, "
-                "metadata-only) failed — usually due to datacenter IP "
-                "restrictions on the host, a private or age-restricted video, "
-                "or YouTube blocking the regional fetcher. Try a different "
-                "URL, or paste the transcript content directly."
-            )
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": message,
-                    "tier_results": exc.tier_results,
-                    "url": exc.url or body.url,
-                },
-            )
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Could not extract enough content from this URL to produce "
-                "a reliable summary. This often happens with YouTube videos "
-                "when transcript access is restricted. Please try a different URL."
-            ),
-        )
-    except Exception as exc:
-        logger.error("Summarization failed for %s: %s", body.url, exc)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to process URL: {exc}",
-        )

@@ -12,7 +12,7 @@ Risk tier: **High**.
 | File-backed asset | `content/graph.json` |
 | `/api/graph` read path | `website/api/routes.py:graph_data` |
 | TTL cache | `_graph_cache` per-user, `_graph_cache_global` anonymous, 30s |
-| Cache invalidation | `/api/summarize` success + nuke routes reset caches |
+| Cache invalidation | `/api/zettels/add` success + nuke routes reset caches |
 
 ## Tasks
 

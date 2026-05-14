@@ -1,6 +1,6 @@
 """Dynamic composition of YouTube DetailedSummarySection hierarchy.
 
-The renderer (website/core/pipeline.py::_render_detailed_summary) converts
+The renderer (website/core/summary_rendering.py::render_detailed_summary) converts
 DetailedSummarySection + sub_sections into ``## h2`` / ``### h3`` / ``-``
 bullet markdown, which the frontend's renderMarkdownLite parses directly.
 Keeping layout logic here — not in common/structured.py — means it can be

@@ -4,7 +4,7 @@
 """Move specific post-fix YT zettels from legacy 'naruto' render_id user to the
 authenticated Naruto UUID f2105544-b73d-4946-8329-096d82f070d3.
 
-One-shot fix for the 3 zettels orphaned when /api/summarize was called without
+One-shot fix for the 3 zettels orphaned when the old Add Zettel route was called without
 an auth header in an earlier verification run.
 """
 from __future__ import annotations
